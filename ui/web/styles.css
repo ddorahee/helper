@@ -3,24 +3,24 @@
     --primary-color: #7c3aed;
     --primary-light: #9468ed;
     --primary-dark: #6025c2;
-    
+
     --success-color: #10b981;
     --danger-color: #ef4444;
     --warning-color: #f59e0b;
-    
+
     --bg-color: #111827;
     --content-bg: #1f2937;
     --card-bg: #374151;
     --sidebar-bg: #111827;
-    
+
     --text-primary: #f3f4f6;
     --text-secondary: #d1d5db;
     --text-muted: #9ca3af;
-    
+
     --border-color: #4b5563;
     --highlight: rgba(255, 255, 255, 0.05);
     --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    
+
     /* 애니메이션 */
     --transition-speed: 0.3s;
 }
@@ -30,20 +30,20 @@
     --primary-color: #6d28d9;
     --primary-light: #8b5cf6;
     --primary-dark: #5b21b6;
-    
+
     --success-color: #059669;
     --danger-color: #dc2626;
     --warning-color: #d97706;
-    
+
     --bg-color: #f9fafb;
     --content-bg: #f3f4f6;
     --card-bg: #ffffff;
     --sidebar-bg: #f3f4f6;
-    
+
     --text-primary: #111827;
     --text-secondary: #374151;
     --text-muted: #6b7280;
-    
+
     --border-color: #e5e7eb;
     --highlight: rgba(0, 0, 0, 0.05);
     --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
@@ -1064,7 +1064,7 @@ input:checked + .slider:before {
     .sidebar {
         width: 70px;
     }
-    
+
     .sidebar-header h1,
     .sidebar-status span,
     .nav-button span,
@@ -1072,36 +1072,36 @@ input:checked + .slider:before {
     .exit-button span {
         display: none;
     }
-    
+
     .sidebar-header {
         justify-content: center;
         padding: 0.8rem;
     }
-    
+
     .app-logo {
         margin-right: 0;
     }
-    
+
     .sidebar-status {
         justify-content: center;
         padding: 0.8rem;
     }
-    
+
     .nav-button {
         justify-content: center;
         padding: 0.8rem;
     }
-    
+
     .nav-button.active {
         border-left: none;
         border-bottom: 3px solid var(--primary-color);
     }
-    
+
     .exit-button {
         padding: 0.8rem;
         justify-content: center;
     }
-    
+
     .content {
         margin-left: 70px;
     }
@@ -1112,26 +1112,26 @@ input:checked + .slider:before {
     .timer-card {
         padding: 0.8rem;
     }
-    
+
     .timer-display {
         font-size: 2.2rem;
         margin: 0.6rem 0;
     }
-    
+
     .card {
         padding: 0.8rem;
         margin-bottom: 0.6rem;
     }
-    
+
     .card h2 {
         margin-bottom: 0.6rem;
     }
-    
+
     .mini-log-card {
         padding: 0.6rem;
         margin-top: 0.6rem;
     }
-    
+
     .control-button {
         padding: 0.6rem;
     }
@@ -1142,35 +1142,35 @@ input:checked + .slider:before {
         font-size: 1.8rem;
         margin: 0.4rem 0;
     }
-    
+
     .card h2 {
         margin-bottom: 0.4rem;
     }
-    
+
     .sidebar-header {
         padding: 0.6rem;
     }
-    
+
     .sidebar-status {
         padding: 0.4rem 0.6rem;
     }
-    
+
     .nav-button {
         padding: 0.5rem 0.6rem;
     }
-    
+
     .sidebar-footer {
         padding: 0.4rem 0.6rem;
     }
-    
+
     .time-value {
         font-size: 1.3rem;
     }
-    
+
     .time-unit {
         font-size: 0.7rem;
     }
-    
+
     .mode-icon {
         width: 20px;
         height: 20px;
@@ -1182,13 +1182,198 @@ input:checked + .slider:before {
     .controls-container {
         grid-template-columns: 1fr;
     }
-    
+
     .settings-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .mode-options,
     .time-options {
         grid-template-columns: 1fr 1fr;
+    }
+}
+
+.telegram-settings-card {
+    margin-top: 1rem;
+}
+
+.telegram-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.telegram-config {
+    background-color: var(--bg-color);
+    border-radius: 6px;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    margin-top: 0.5rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.form-group input {
+    padding: 0.7rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    transition: all var(--transition-speed);
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.1);
+}
+
+.form-help {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.telegram-actions {
+    display: flex;
+    gap: 0.8rem;
+    margin-top: 1rem;
+}
+
+.telegram-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.7rem 1rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-speed);
+    flex: 1;
+}
+
+.telegram-button svg {
+    width: 16px;
+    height: 16px;
+}
+
+.telegram-button.save {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.telegram-button.save:hover {
+    background-color: #059669;
+    transform: translateY(-1px);
+}
+
+.telegram-button.test {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.telegram-button.test:hover {
+    background-color: var(--primary-light);
+    transform: translateY(-1px);
+}
+
+.telegram-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.telegram-button:disabled:hover {
+    transform: none;
+}
+
+.telegram-help {
+    background-color: var(--highlight);
+    border-radius: 6px;
+    padding: 1rem;
+    border-left: 4px solid var(--primary-color);
+    margin-top: 1rem;
+}
+
+.telegram-help h4 {
+    color: var(--text-primary);
+    margin-bottom: 0.8rem;
+    font-size: 0.95rem;
+}
+
+.telegram-help ol {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.6;
+    padding-left: 1.2rem;
+}
+
+.telegram-help li {
+    margin-bottom: 0.4rem;
+}
+
+.telegram-help code {
+    background-color: var(--border-color);
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: var(--primary-color);
+}
+
+/* 알림 메시지 스타일 */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 1rem 1.5rem;
+    border-radius: 6px;
+    color: white;
+    font-weight: 500;
+    z-index: 1000;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+}
+
+.notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.notification.success {
+    background-color: var(--success-color);
+}
+
+.notification.error {
+    background-color: var(--danger-color);
+}
+
+.notification.info {
+    background-color: var(--primary-color);
+}
+
+/* 반응형 디자인 */
+@media (max-width: 480px) {
+    .telegram-actions {
+        flex-direction: column;
+    }
+
+    .telegram-button {
+        flex: none;
     }
 }

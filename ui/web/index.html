@@ -29,7 +29,7 @@
                 </div>
                 <h1>도우미</h1>
             </div>
-            
+
             <div class="sidebar-status">
                 <div class="status-indicator" id="status-indicator"></div>
                 <span id="status-text">준비됨</span>
@@ -222,7 +222,7 @@
                     <div id="mini-log" class="mini-log">프로그램이 시작되었습니다.</div>
                 </div>
             </section>
-            
+
             <section id="logs-section" class="content-section">
                 <div class="card logs-card">
                     <div class="logs-header">
@@ -251,7 +251,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="card logs-settings-card">
                     <h2>로그 설정</h2>
                     <div class="logs-settings">
@@ -297,7 +297,7 @@
                             </div>
                         </div>
                     </h2>
-                    
+
                     <!-- 카테고리 필터 -->
                     <div class="category-filters">
                         <span class="category-filter active" data-category="all">전체</span>
@@ -305,7 +305,7 @@
                         <span class="category-filter" data-category="daily">일상</span>
                         <span class="category-filter" data-category="shopping">쇼핑</span>
                     </div>
-                    
+
                     <!-- 할 일 추가 폼 -->
                     <form class="todo-form" id="todo-form">
                         <input type="text" class="todo-input" id="todo-input" placeholder="할 일을 입력하세요">
@@ -317,11 +317,11 @@
                             추가
                         </button>
                     </form>
-                    
+
                     <!-- 할 일 목록 -->
                     <ul class="todo-list" id="todo-list"></ul>
                 </div>
-                
+
                 <!-- TODO 통계 카드 -->
                 <div class="card todo-stats-card" id="todo-stats"></div>
             </section>
@@ -351,6 +351,63 @@
                                 <span class="slider round"></span>
                             </label>
                             <span class="settings-label">시작 시 자동 실행</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 텔레그램 설정 카드 - 올바른 위치 -->
+                <div class="card telegram-settings-card">
+                    <h2>📱 텔레그램 알림 설정</h2>
+                    <div class="telegram-form">
+                        <div class="settings-item">
+                            <label class="switch">
+                                <input type="checkbox" id="telegram-toggle">
+                                <span class="slider round"></span>
+                            </label>
+                            <span class="settings-label">텔레그램 알림 사용</span>
+                        </div>
+
+                        <div class="telegram-config" id="telegram-config" style="display: none;">
+                            <div class="form-group">
+                                <label for="bot-token">봇 토큰:</label>
+                                <input type="password" id="bot-token" placeholder="7903573798:AAGTXj_rk2xMygTee06OVVYlQhxqm95H2CU">
+                                <small class="form-help">@BotFather에서 받은 봇 토큰을 입력하세요</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="chat-id">채팅 ID:</label>
+                                <input type="text" id="chat-id" placeholder="123456789">
+                                <small class="form-help">개인 채팅 ID 또는 그룹 채팅 ID를 입력하세요</small>
+                            </div>
+
+                            <div class="telegram-actions">
+                                <button id="save-telegram-btn" class="telegram-button save">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+                                    </svg>
+                                    저장
+                                </button>
+                                <button id="test-telegram-btn" class="telegram-button test">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M22 2L11 13"></path>
+                                        <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+                                    </svg>
+                                    테스트
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="telegram-help">
+                            <h4>🤖 텔레그램 봇 설정 방법:</h4>
+                            <ol>
+                                <li>텔레그램에서 <code>@BotFather</code>를 검색하여 대화를 시작합니다.</li>
+                                <li><code>/newbot</code> 명령을 입력하여 새 봇을 생성합니다.</li>
+                                <li>봇 이름과 사용자명을 설정합니다.</li>
+                                <li>받은 토큰을 위의 "봇 토큰" 필드에 입력합니다.</li>
+                                <li><code>@userinfobot</code>에게 메시지를 보내 채팅 ID를 확인합니다.</li>
+                                <li>채팅 ID를 위의 "채팅 ID" 필드에 입력합니다.</li>
+                                <li>"저장" 버튼을 클릭한 후 "테스트" 버튼으로 연결을 확인합니다.</li>
+                            </ol>
                         </div>
                     </div>
                 </div>

@@ -82,15 +82,36 @@ type VersionPayload struct {
 	BuildDate string `json:"buildDate"`
 }
 
+func setupLogging(appConfig *config.AppConfig) {
+	logFile := appConfig.GetLogFilePath()
+
+	// 로그 파일의 디렉토리 생성 (이미 config에서 생성되지만 안전장치)
+	logDir := filepath.Dir(logFile)
+	if !dirExists(logDir) {
+		err := os.MkdirAll(logDir, 0755)
+		if err != nil {
+			fmt.Printf("경고: 로그 디렉토리를 생성할 수 없습니다: %v\n", err)
+		}
+	}
+
+	// 로그 파일 열기
+	f, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		fmt.Printf("경고: 로그 파일을 열 수 없습니다: %v\n", err)
+		return
+	}
+
+	// 표준 로그 설정
+	log.SetOutput(f)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
+}
+
 func main() {
-	// 로그 파일 설정
-	setupLogging()
-
-	// 시작 로그
-	log.Println("도우미 애플리케이션 시작")
-
-	// 애플리케이션 생성
+	// 애플리케이션 생성 (로그 설정보다 먼저)
 	app := NewApplication()
+
+	// 로그 파일 설정 - AppConfig를 매개변수로 전달
+	setupLogging(app.Config)
 
 	// 키보드 매니저 생성
 	keyboardManager := automation.NewKeyboardManager()
@@ -276,6 +297,18 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			}
 		}()
 
+		// 텔레그램 시작 알림 전송
+		if app.Config.TelegramEnabled && app.Config.TelegramBot != nil {
+			modeName := getModeName(internalMode)
+			duration := time.Duration(autoStopHours) * time.Hour
+			go func() {
+				err := app.Config.TelegramBot.SendStartNotification(modeName, duration)
+				if err != nil {
+					log.Printf("텔레그램 시작 알림 전송 실패: %v", err)
+				}
+			}()
+		}
+
 		// 응답 전송
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "Started")
@@ -314,7 +347,88 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "Stopped")
 	})
+	http.HandleFunc("/api/settings", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 
+		settingType := r.FormValue("type")
+		settingValue := r.FormValue("value")
+
+		if settingType == "" || settingValue == "" {
+			http.Error(w, "Missing parameters", http.StatusBadRequest)
+			return
+		}
+
+		var err error
+
+		// 설정 타입에 따라 처리
+		switch settingType {
+		case "mode":
+			// 모드 설정
+			if settingValue == "daeya-entrance" {
+				app.ActiveMode = ModeDaeyaEnter
+			} else if settingValue == "daeya-party" {
+				app.ActiveMode = ModeDaeyaParty
+			} else if settingValue == "kanchen-entrance" {
+				app.ActiveMode = ModeKanchenEnter
+			} else if settingValue == "kanchen-party" {
+				app.ActiveMode = ModeKanchenParty
+			}
+		case "time":
+			// 시간 설정
+			var hours int
+			fmt.Sscanf(settingValue, "%d", &hours)
+			switch hours {
+			case 1:
+				app.TimeOption = TimeOption1Hour
+			case 2:
+				app.TimeOption = TimeOption2Hour
+			case 3:
+				app.TimeOption = TimeOption3Hour
+			case 4:
+				app.TimeOption = TimeOption4Hour
+			}
+		case "dark_mode":
+			var enabled int
+			fmt.Sscanf(settingValue, "%d", &enabled)
+			err = app.Config.SetDarkMode(enabled == 1)
+		case "sound_enabled":
+			var enabled int
+			fmt.Sscanf(settingValue, "%d", &enabled)
+			err = app.Config.SetSoundEnabled(enabled == 1)
+		case "auto_startup":
+			var enabled int
+			fmt.Sscanf(settingValue, "%d", &enabled)
+			err = app.Config.SetAutoStartup(enabled == 1)
+		case "telegram_enabled":
+			var enabled int
+			fmt.Sscanf(settingValue, "%d", &enabled)
+			err = app.Config.SetTelegramEnabled(enabled == 1)
+		}
+
+		if err != nil {
+			http.Error(w, fmt.Sprintf("설정 저장 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "Settings updated")
+	})
+
+	// 설정 로드 API 추가 - 페이지 로드 시 저장된 설정 불러오기
+	http.HandleFunc("/api/settings/load", func(w http.ResponseWriter, r *http.Request) {
+		settings := map[string]interface{}{
+			"dark_mode":        app.Config.DarkMode,
+			"sound_enabled":    app.Config.SoundEnabled,
+			"auto_startup":     app.Config.AutoStartup,
+			"telegram_enabled": app.Config.TelegramEnabled,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(settings)
+	})
 	// 상태 API
 	http.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		// 상태 정보 구성
@@ -357,7 +471,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 	// 로그 API 핸들러
 	http.HandleFunc("/api/logs", func(w http.ResponseWriter, r *http.Request) {
 		// 로그 파일 읽기
-		logContent, err := readLogFile()
+		logContent, err := readLogFile(app.Config)
 		if err != nil {
 			http.Error(w, "Failed to read log file", http.StatusInternalServerError)
 			return
@@ -389,7 +503,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		}
 
 		// 로그 파일 지우기
-		err := clearLogFile()
+		err := clearLogFile(app.Config)
 		if err != nil {
 			http.Error(w, "Failed to clear log file", http.StatusInternalServerError)
 			return
@@ -399,58 +513,58 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		fmt.Fprint(w, `{"success": true}`)
 	})
 
-	// 설정 API
-	http.HandleFunc("/api/settings", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api/telegram/config", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			// 텔레그램 설정 저장
+			token := r.FormValue("token")
+			chatID := r.FormValue("chat_id")
+
+			if token == "" || chatID == "" {
+				http.Error(w, "Token과 Chat ID가 필요합니다", http.StatusBadRequest)
+				return
+			}
+
+			// 설정 저장 (파일에 자동 저장됨)
+			err := app.Config.SetTelegramConfig(token, chatID)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("설정 저장 실패: %v", err), http.StatusInternalServerError)
+				return
+			}
+
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "텔레그램 설정이 저장되었습니다")
+			return
+		}
+
+		// GET 요청인 경우 현재 설정 반환
+		status := map[string]interface{}{
+			"enabled": app.Config.TelegramEnabled,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(status)
+	})
+
+	// 텔레그램 테스트 API
+	http.HandleFunc("/api/telegram/test", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// 설정 타입과 값 가져오기
-		settingType := r.FormValue("type")
-		settingValue := r.FormValue("value")
-
-		if settingType == "" || settingValue == "" {
-			http.Error(w, "Missing parameters", http.StatusBadRequest)
+		if !app.Config.TelegramEnabled || app.Config.TelegramBot == nil {
+			http.Error(w, "텔레그램이 설정되지 않았습니다", http.StatusBadRequest)
 			return
 		}
 
-		// 설정 타입에 따라 처리
-		switch settingType {
-		case "mode":
-			// 모드 설정
-			if settingValue == "daeya-entrance" {
-				app.ActiveMode = ModeDaeyaEnter
-			} else if settingValue == "daeya-party" {
-				app.ActiveMode = ModeDaeyaParty
-			} else if settingValue == "kanchen-entrance" {
-				app.ActiveMode = ModeKanchenEnter
-			} else if settingValue == "kanchen-party" {
-				app.ActiveMode = ModeKanchenParty
-			}
-		case "time":
-			// 시간 설정
-			var hours int
-			fmt.Sscanf(settingValue, "%d", &hours)
-			switch hours {
-			case 1:
-				app.TimeOption = TimeOption1Hour
-			case 2:
-				app.TimeOption = TimeOption2Hour
-			case 3:
-				app.TimeOption = TimeOption3Hour
-			case 4:
-				app.TimeOption = TimeOption4Hour
-			}
-		case "auto_startup":
-			// 자동 시작 설정
-			var enabled int
-			fmt.Sscanf(settingValue, "%d", &enabled)
-			app.AutoStartup = (enabled == 1)
+		err := app.Config.TelegramBot.TestConnection()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("테스트 실패: %v", err), http.StatusInternalServerError)
+			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "Settings updated")
+		fmt.Fprint(w, "테스트 메시지가 전송되었습니다")
 	})
 
 	// 재설정 API
@@ -616,6 +730,18 @@ func startOperation(app *Application) {
 			go app.KeyboardManager.KanchenParty()
 		}
 	}
+
+	// 텔레그램 시작 알림 전송
+	if app.Config.TelegramEnabled && app.Config.TelegramBot != nil {
+		modeName := getModeName(app.ActiveMode)
+		duration := time.Duration(hours) * time.Hour
+		go func() {
+			err := app.Config.TelegramBot.SendStartNotification(modeName, duration)
+			if err != nil {
+				log.Printf("텔레그램 시작 알림 전송 실패: %v", err)
+			}
+		}()
+	}
 }
 
 // 중지 버튼 클릭 처리
@@ -680,6 +806,9 @@ func setupAutoStop(app *Application, hours int) {
 	duration := time.Duration(hours) * time.Hour
 	app.AutoStopTimer = time.AfterFunc(duration, func() {
 		if app.TimerManager != nil && app.TimerManager.IsRunning() {
+			// 현재 모드 이름 가져오기
+			modeName := getModeName(app.ActiveMode)
+
 			// 상태 업데이트
 			app.RunningOperation = false
 			sendEvent(app, "operationStatus", map[string]bool{"running": false})
@@ -691,34 +820,36 @@ func setupAutoStop(app *Application, hours int) {
 			if app.KeyboardManager != nil {
 				app.KeyboardManager.SetRunning(false)
 			}
+
+			// 텔레그램 완료 알림 전송
+			if app.Config.TelegramEnabled && app.Config.TelegramBot != nil {
+				go func() {
+					err := app.Config.TelegramBot.SendCompletionNotification(modeName, duration)
+					if err != nil {
+						log.Printf("텔레그램 완료 알림 전송 실패: %v", err)
+					}
+				}()
+			}
+
+			log.Printf("작업 완료: %s 모드, %v 실행", modeName, duration)
 		}
 	})
 }
 
-// 로그 파일 설정
-func setupLogging() {
-	// 로그 폴더 생성
-	logDir := "logs"
-	if !dirExists(logDir) {
-		err := os.MkdirAll(logDir, 0755)
-		if err != nil {
-			fmt.Println("경고: 로그 디렉토리를 생성할 수 없습니다:", err)
-		}
+// 모드 이름 가져오기
+func getModeName(mode int) string {
+	switch mode {
+	case ModeDaeyaEnter:
+		return "대야 (입장)"
+	case ModeDaeyaParty:
+		return "대야 (파티)"
+	case ModeKanchenEnter:
+		return "칸첸 (입장)"
+	case ModeKanchenParty:
+		return "칸첸 (파티)"
+	default:
+		return "알 수 없음"
 	}
-
-	// 로그 파일 이름 설정
-	logFile := filepath.Join(logDir, "app.log")
-
-	// 로그 파일 열기
-	f, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		fmt.Println("경고: 로그 파일을 열 수 없습니다:", err)
-		return
-	}
-
-	// 표준 로그 설정
-	log.SetOutput(f)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 }
 
 // 폴더 존재 확인
@@ -731,8 +862,8 @@ func dirExists(dirPath string) bool {
 }
 
 // 로그 파일 읽기 함수
-func readLogFile() (string, error) {
-	logFilePath := filepath.Join("logs", "app.log")
+func readLogFile(appConfig *config.AppConfig) (string, error) {
+	logFilePath := appConfig.GetLogFilePath()
 	content, err := os.ReadFile(logFilePath)
 	if err != nil {
 		return "", err
@@ -741,8 +872,8 @@ func readLogFile() (string, error) {
 }
 
 // 로그 파일 지우기 함수
-func clearLogFile() error {
-	logFilePath := filepath.Join("logs", "app.log")
+func clearLogFile(appConfig *config.AppConfig) error {
+	logFilePath := appConfig.GetLogFilePath()
 	// 파일을 비우는 방식으로 지우기
 	return os.WriteFile(logFilePath, []byte(""), 0666)
 }

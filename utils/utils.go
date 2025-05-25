@@ -54,3 +54,20 @@ func (tm *TimerManager) IsRunning() bool {
 	defer tm.Mutex.Unlock()
 	return tm.Running
 }
+
+// GetStartTime은 타이머 시작 시간을 반환합니다
+func (tm *TimerManager) GetStartTime() time.Time {
+	tm.Mutex.Lock()
+	defer tm.Mutex.Unlock()
+	return tm.StartTime
+}
+
+// GetElapsedTime은 현재까지의 경과 시간을 반환합니다
+func (tm *TimerManager) GetElapsedTime() time.Duration {
+	tm.Mutex.Lock()
+	defer tm.Mutex.Unlock()
+	if tm.Running {
+		return tm.ElapsedTime + time.Since(tm.StartTime)
+	}
+	return tm.ElapsedTime
+}
