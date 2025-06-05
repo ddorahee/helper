@@ -163,7 +163,7 @@ func NewApplication() *Application {
 	return &Application{
 		Config:           config.NewAppConfig(),
 		ActiveMode:       ModeDaeyaEnter,  // 기본값: 대야 (입장)
-		TimeOption:       TimeOption3Hour, // 기본값: 3시간
+		TimeOption:       TimeOption3Hour, // 기본값: 3시간 10분
 		WindowWidth:      1024,
 		WindowHeight:     768,
 		RunningOperation: false,
@@ -226,7 +226,7 @@ func startServer(app *Application, timerManager *utils.TimerManager, keyboardMan
 
 // API 핸들러 설정
 func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *utils.TimerManager) {
-	// 시작 API
+	// 시작 API - 수정된 버전
 	http.HandleFunc("/api/start", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -240,12 +240,15 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			return
 		}
 
-		// 자동 종료 시간 파라미터 가져오기 (옵션)
+		// 자동 종료 시간 파라미터 가져오기 (옵션) - float64로 수정
 		autoStopStr := r.FormValue("auto_stop")
-		var autoStopHours int = 0
+		var autoStopHours float64 = 0
 		if autoStopStr != "" {
-			fmt.Sscanf(autoStopStr, "%d", &autoStopHours)
+			fmt.Sscanf(autoStopStr, "%f", &autoStopHours)
 		}
+
+		// 재시작 여부 확인 (추가)
+		isResume := r.FormValue("resume") == "true"
 
 		// 현재 실행 중인지 확인
 		if tm.IsRunning() {
@@ -297,16 +300,19 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			}
 		}()
 
-		// 텔레그램 시작 알림 전송
-		if app.Config.TelegramEnabled && app.Config.TelegramBot != nil {
+		// 텔레그램 알림 전송 - 재시작이 아닐 때만 시작 알림 전송
+		if app.Config.TelegramEnabled && app.Config.TelegramBot != nil && !isResume {
 			modeName := getModeName(internalMode)
-			duration := time.Duration(autoStopHours) * time.Hour
+			duration := time.Duration(autoStopHours * float64(time.Hour))
 			go func() {
 				err := app.Config.TelegramBot.SendStartNotification(modeName, duration)
 				if err != nil {
 					log.Printf("텔레그램 시작 알림 전송 실패: %v", err)
 				}
 			}()
+		} else if isResume {
+			// 재시작 로그만 기록
+			log.Printf("작업 재개: %s 모드", getModeName(internalMode))
 		}
 
 		// 응답 전송
@@ -347,6 +353,8 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "Stopped")
 	})
+
+	// 설정 API
 	http.HandleFunc("/api/settings", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -377,18 +385,18 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				app.ActiveMode = ModeKanchenParty
 			}
 		case "time":
-			// 시간 설정
-			var hours int
-			fmt.Sscanf(settingValue, "%d", &hours)
-			switch hours {
-			case 1:
-				app.TimeOption = TimeOption1Hour
-			case 2:
-				app.TimeOption = TimeOption2Hour
-			case 3:
-				app.TimeOption = TimeOption3Hour
-			case 4:
-				app.TimeOption = TimeOption4Hour
+			// 시간 설정 - float64로 처리하도록 수정
+			var hours float64
+			fmt.Sscanf(settingValue, "%f", &hours)
+			// 10분 추가된 시간으로 시간 옵션 결정
+			if hours >= 1.0 && hours < 1.5 {
+				app.TimeOption = TimeOption1Hour // 1시간 10분
+			} else if hours >= 2.0 && hours < 2.5 {
+				app.TimeOption = TimeOption2Hour // 2시간 10분
+			} else if hours >= 3.0 && hours < 3.5 {
+				app.TimeOption = TimeOption3Hour // 3시간 10분
+			} else if hours >= 4.0 && hours < 4.5 {
+				app.TimeOption = TimeOption4Hour // 4시간 10분
 			}
 		case "dark_mode":
 			var enabled int
@@ -429,6 +437,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(settings)
 	})
+
 	// 상태 API
 	http.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		// 상태 정보 구성
@@ -513,6 +522,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		fmt.Fprint(w, `{"success": true}`)
 	})
 
+	// 텔레그램 설정 API
 	http.HandleFunc("/api/telegram/config", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			// 텔레그램 설정 저장
@@ -581,7 +591,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		app.ActiveMode = ModeDaeyaEnter
 		sendEvent(app, "resetMode", ModePayload{Mode: ModeDaeyaEnter})
 
-		// 시간 설정 초기화 - 3시간(기본값)으로 설정
+		// 시간 설정 초기화 - 3시간 10분(기본값)으로 설정
 		app.TimeOption = TimeOption3Hour
 		sendEvent(app, "resetTimeOption", map[string]int{"option": TimeOption3Hour})
 
@@ -678,7 +688,7 @@ func sendEvent(app *Application, eventType string, payload interface{}) {
 	})
 }
 
-// 시작 버튼 클릭 처리
+// 시작 버튼 클릭 처리 - 수정된 버전
 func startOperation(app *Application) {
 	if app.TimerManager == nil || app.TimerManager.IsRunning() {
 		return
@@ -689,19 +699,19 @@ func startOperation(app *Application) {
 		return
 	}
 
-	// 실행 시간 설정 확인
-	var hours int
+	// 실행 시간 설정 확인 - 10분 추가된 시간 계산
+	var hours float64
 	switch app.TimeOption {
 	case TimeOption1Hour:
-		hours = 1
+		hours = 1 + (10.0 / 60.0) // 1시간 10분
 	case TimeOption2Hour:
-		hours = 2
+		hours = 2 + (10.0 / 60.0) // 2시간 10분
 	case TimeOption3Hour:
-		hours = 3
+		hours = 3 + (10.0 / 60.0) // 3시간 10분
 	case TimeOption4Hour:
-		hours = 4
+		hours = 4 + (10.0 / 60.0) // 4시간 10분
 	default:
-		hours = 3
+		hours = 3 + (10.0 / 60.0) // 기본값: 3시간 10분
 	}
 
 	// 상태 업데이트
@@ -734,7 +744,7 @@ func startOperation(app *Application) {
 	// 텔레그램 시작 알림 전송
 	if app.Config.TelegramEnabled && app.Config.TelegramBot != nil {
 		modeName := getModeName(app.ActiveMode)
-		duration := time.Duration(hours) * time.Hour
+		duration := time.Duration(hours * float64(time.Hour))
 		go func() {
 			err := app.Config.TelegramBot.SendStartNotification(modeName, duration)
 			if err != nil {
@@ -782,7 +792,7 @@ func resetSettings(app *Application) {
 	app.ActiveMode = ModeDaeyaEnter
 	sendEvent(app, "resetMode", ModePayload{Mode: ModeDaeyaEnter})
 
-	// 시간 설정 초기화 - 3시간(기본값)으로 설정
+	// 시간 설정 초기화 - 3시간 10분(기본값)으로 설정
 	app.TimeOption = TimeOption3Hour
 	sendEvent(app, "resetTimeOption", map[string]int{"option": TimeOption3Hour})
 
@@ -790,8 +800,8 @@ func resetSettings(app *Application) {
 	sendEvent(app, "resetTimer", nil)
 }
 
-// 시간이 지난 후 자동 중지 처리
-func setupAutoStop(app *Application, hours int) {
+// 시간이 지난 후 자동 중지 처리 - float64로 수정
+func setupAutoStop(app *Application, hours float64) {
 	// 이전 타이머가 있다면 중지
 	if app.AutoStopTimer != nil {
 		app.AutoStopTimer.Stop()
@@ -802,8 +812,8 @@ func setupAutoStop(app *Application, hours int) {
 		return
 	}
 
-	// 새 타이머 설정
-	duration := time.Duration(hours) * time.Hour
+	// 새 타이머 설정 - float64를 time.Duration으로 변환
+	duration := time.Duration(hours * float64(time.Hour))
 	app.AutoStopTimer = time.AfterFunc(duration, func() {
 		if app.TimerManager != nil && app.TimerManager.IsRunning() {
 			// 현재 모드 이름 가져오기

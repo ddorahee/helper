@@ -82,12 +82,12 @@ if [ "$PLATFORM" == "windows" ]; then
   OUTPUT_FILE="build/${APP_NAME}.exe"
   # Windows 리소스 파일 생성 (아이콘 등 포함)
   echo "[5/7] Windows 리소스 준비 중..."
-  
+
   # 아이콘 파일 확인 및 처리
   ICON_FILE="resources/app.ico"
   if [ -f "$ICON_FILE" ]; then
     echo "아이콘 파일을 찾았습니다: $ICON_FILE"
-    
+
     # 임시 .syso 파일 생성 (rsrc 도구가 있는 경우)
     if command -v rsrc &> /dev/null; then
       echo "rsrc 도구를 사용하여 Windows 리소스 생성..."
@@ -118,16 +118,16 @@ fi
 echo "[6/7] 빌드 중..."
 echo "빌드 중: $OUTPUT_FILE"
 
-LDFLAGS="$BUILD_LDFLAGS -X 'example.com/m/config.Version=$VERSION' -X 'example.com/m/config.BuildDate=$BUILD_DATE'"
+LDFLAGS="$BUILD_LDFLAGS -X 'example.com/m/config.Version=$VERSION' -X 'example.com/m/config.BuildDate=$BUILD_DATE' -H=windowsgui"
 
 if go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "$OUTPUT_FILE"; then
   echo "[7/7] 빌드 완료!"
-  
+
   # 파일 권한 설정 (macOS/Linux)
   if [ "$PLATFORM" != "windows" ]; then
     chmod +x "$OUTPUT_FILE"
   fi
-  
+
   # 빌드 정보 출력
   echo ""
   echo "=== 빌드 정보 ==="
@@ -135,7 +135,7 @@ if go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "$OUTPUT_FILE"; then
   echo "버전: $VERSION ($BUILD_DATE)"
   echo "모드: $BUILD_MODE"
   echo "출력 파일: $OUTPUT_FILE"
-  
+
   # 실행 방법 안내
   echo ""
   echo "=== 실행 방법 ==="

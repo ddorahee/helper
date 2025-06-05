@@ -19,7 +19,7 @@ var (
 		Name:       "대야 (입장)",
 		StartKey:   "o",
 		KeyPresses: []string{"o", "enter", "enter", "esc", "d", "x", "5"},
-		Delays:     []time.Duration{3 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second, 0 * time.Second, 0 * time.Second},
+		Delays:     []time.Duration{0 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second, 0 * time.Second, 0 * time.Second},
 	}
 
 	// 대야 모드 - 파티
@@ -35,7 +35,7 @@ var (
 		Name:       "칸첸 (입장)",
 		StartKey:   "o",
 		KeyPresses: []string{"o", "enter", "enter", "esc", "d"},
-		Delays:     []time.Duration{3 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second},
+		Delays:     []time.Duration{0 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second},
 	}
 
 	// 칸첸 모드 - 파티

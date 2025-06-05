@@ -852,23 +852,39 @@ function getApiModeName(mode) {
 function getHoursFromOption(option) {
     switch (option) {
         case TimeOption1Hour:
-            return 1;
+            return 1 + (10/60); // 1시간 10분
         case TimeOption2Hour:
-            return 2;
+            return 2 + (10/60); // 2시간 10분
         case TimeOption3Hour:
-            return 3;
+            return 3 + (10/60); // 3시간 10분
         case TimeOption4Hour:
-            return 4;
+            return 4 + (10/60); // 4시간 10분
         default:
-            return 3;
+            return 3 + (10/60); // 기본값: 3시간 10분
     }
 }
+
+function formatTimeOption(option) {
+    switch (option) {
+        case TimeOption1Hour:
+            return '1시간 10분';
+        case TimeOption2Hour:
+            return '2시간 10분';
+        case TimeOption3Hour:
+            return '3시간 10분';
+        case TimeOption4Hour:
+            return '4시간 10분';
+        default:
+            return '3시간 10분';
+    }
+}
+
 
 // 카운트다운 표시 업데이트
 function updateCountdownDisplay(seconds) {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
 
     timerDisplay.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
@@ -1053,13 +1069,15 @@ function startOperation(wasTimerPaused) {
     // 실행 시간 설정 확인
     const hours = getHoursFromOption(currentTimeOption);
 
-    // 서버에 시작 요청
+    // 서버에 시작 요청 - 재시작 여부를 파라미터로 전달
+    const requestBody = `mode=${apiMode}&auto_stop=${hours}${wasTimerPaused ? '&resume=true' : ''}`;
+
     fetch('/api/start', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: `mode=${apiMode}&auto_stop=${hours}`
+        body: requestBody
     })
     .then(response => {
         if (response.ok) {
@@ -1076,8 +1094,12 @@ function startOperation(wasTimerPaused) {
                 }
             }
 
-            // 로그 메시지
-            addLogMessage(`${getModeName(currentMode)} 모드로 작업을 시작합니다...`);
+            // 로그 메시지 - 재시작 여부에 따라 다른 메시지
+            if (wasTimerPaused) {
+                addLogMessage(`${getModeName(currentMode)} 모드 작업을 재개합니다...`);
+            } else {
+                addLogMessage(`${getModeName(currentMode)} 모드로 작업을 시작합니다... (${formatTimeOption(currentTimeOption)})`);
+            }
         } else {
             throw new Error('작업 시작 실패');
         }
@@ -1099,6 +1121,22 @@ function startOperation(wasTimerPaused) {
     });
 }
 
+// 시간 옵션 변경시 로그 메시지도 수정
+timeOptions.forEach(option => {
+    option.addEventListener('change', (e) => {
+        currentTimeOption = parseInt(e.target.value);
+        setTimeOptionApi(currentTimeOption);
+
+        // 타이머가 실행 중이 아니라면 새 시간으로 표시 업데이트
+        if (!isRunning && !timerPaused) {
+            let hours = getHoursFromOption(currentTimeOption);
+            countdownTime = hours * 60 * 60;
+            updateCountdownDisplay(countdownTime);
+        }
+
+        addLogMessage(`${formatTimeOption(currentTimeOption)} 실행 설정됨`);
+    });
+});
 // 작업 중지 함수
 function stopOperation() {
     fetch('/api/stop', {
