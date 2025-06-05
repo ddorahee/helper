@@ -1,0 +1,35 @@
+.controlsContainer {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-md);
+    margin: var(--spacing-md) 0;
+}
+
+.startButton,
+.stopButton,
+.resetButton {
+    min-height: 60px;
+    font-weight: 600;
+    transition: all var(--transition-speed);
+}
+
+.startButton:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.stopButton:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.resetButton:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+@media (max-width: 768px) {
+    .controlsContainer {
+        grid-template-columns: 1fr;
+    }
+}

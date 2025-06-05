@@ -19,7 +19,7 @@ var (
 		Name:       "대야 (입장)",
 		StartKey:   "o",
 		KeyPresses: []string{"o", "enter", "enter", "esc", "d", "x", "5"},
-		Delays:     []time.Duration{0 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second, 0 * time.Second, 0 * time.Second},
+		Delays:     []time.Duration{0 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second, 0 * time.Second, 0 * time.Second, 0 * time.Second},
 	}
 
 	// 대야 모드 - 파티
@@ -35,7 +35,7 @@ var (
 		Name:       "칸첸 (입장)",
 		StartKey:   "o",
 		KeyPresses: []string{"o", "enter", "enter", "esc", "d"},
-		Delays:     []time.Duration{0 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second},
+		Delays:     []time.Duration{0 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second, 0 * time.Second},
 	}
 
 	// 칸첸 모드 - 파티
@@ -83,6 +83,7 @@ func (km *KeyboardManager) RunKeySequence(sequence KeySequence) {
 		for i, key := range sequence.KeyPresses {
 			err := km.SendKeyPress(key)
 			if err != nil {
+				km.StopOperation("키 입력 오류 발생")
 				return
 			}
 
@@ -95,10 +96,6 @@ func (km *KeyboardManager) RunKeySequence(sequence KeySequence) {
 					if !km.IsRunning() {
 						return
 					}
-
-					if j < seconds { // 첫 번째 메시지는 이미 출력했으므로 건너뜀
-					}
-
 					time.Sleep(1 * time.Second)
 				}
 			} else if i < len(sequence.Delays) {
@@ -119,16 +116,4 @@ func (km *KeyboardManager) RunKeySequence(sequence KeySequence) {
 			break
 		}
 	}
-}
-
-// formatKeySequence는 키 시퀀스를 포맷팅합니다
-func formatKeySequence(keys []string) string {
-	result := ""
-	for i, key := range keys {
-		if i > 0 {
-			result += ", "
-		}
-		result += key
-	}
-	return result
 }

@@ -1,0 +1,110 @@
+.questModal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-lg);
+}
+
+.questModalContent {
+    background: var(--quest-bg-card);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-xl);
+    max-width: 500px;
+    width: 100%;
+    border: 2px solid var(--quest-border);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.questModalHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+}
+
+.questModalHeader h2 {
+    font-size: var(--font-lg);
+    font-weight: bold;
+    color: var(--quest-text-primary);
+    margin: 0;
+}
+
+.closeButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    transition: all var(--transition-speed);
+}
+
+.closeButton:hover {
+    background-color: var(--highlight);
+    color: var(--text-primary);
+}
+
+.formGroup {
+    margin-bottom: var(--spacing-md);
+}
+
+.formLabel {
+    display: block;
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-primary);
+    font-weight: 500;
+    font-size: var(--font-sm);
+}
+
+.formInput,
+.formSelect {
+    width: 100%;
+    padding: var(--spacing-md);
+    background: var(--quest-bg-item);
+    border: 2px solid var(--quest-border);
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    font-size: var(--font-sm);
+    transition: all var(--transition-speed);
+}
+
+.formInput:focus,
+.formSelect:focus {
+    outline: none;
+    border-color: var(--quest-text-primary);
+}
+
+.questModalActions {
+    display: flex;
+    gap: var(--spacing-md);
+    justify-content: flex-end;
+    margin-top: var(--spacing-lg);
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--quest-border);
+}
+
+@media (max-width: 768px) {
+    .questModal {
+        padding: var(--spacing-md);
+    }
+
+    .questModalContent {
+        padding: var(--spacing-lg);
+        width: 95%;
+    }
+
+    .questModalActions {
+        flex-direction: column;
+    }
+}

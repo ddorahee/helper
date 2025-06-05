@@ -1,0 +1,102 @@
+.categoriesGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.categoryCard {
+    background: var(--quest-bg-item);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-md);
+    border: 2px solid var(--quest-border);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.categoryCard:hover {
+    border-color: var(--quest-text-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(233, 69, 96, 0.2);
+}
+
+.categoryCard.active {
+    border-color: var(--quest-text-primary);
+    background: linear-gradient(135deg, var(--quest-bg-item) 0%, rgba(233, 69, 96, 0.1) 100%);
+}
+
+.categoryHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-md);
+}
+
+.categoryIcon {
+    width: 30px;
+    height: 30px;
+    background: var(--quest-text-primary);
+    border-radius: var(--border-radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-base);
+    color: white;
+}
+
+.categoryCount {
+    background: var(--quest-accent);
+    color: var(--text-primary);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-lg);
+    font-size: var(--font-xs);
+    font-weight: bold;
+}
+
+.categoryName {
+    font-size: var(--font-base);
+    font-weight: bold;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.categoryProgress {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.progressBar {
+    flex: 1;
+    height: 6px;
+    background: var(--quest-border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progressFill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--success-color), var(--warning-color));
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.progressText {
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    .categoriesGrid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-sm);
+    }
+}
+
+@media (max-width: 480px) {
+    .categoriesGrid {
+        grid-template-columns: 1fr;
+    }
+}

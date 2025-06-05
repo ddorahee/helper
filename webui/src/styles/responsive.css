@@ -1,0 +1,345 @@
+/* 반응형 디자인 */
+
+/* 태블릿 */
+@media (max-width: 992px) {
+    :root {
+        --spacing-xs: 0.2rem;
+        --spacing-sm: 0.4rem;
+        --spacing-md: 0.8rem;
+        --spacing-lg: 1.2rem;
+        --spacing-xl: 1.6rem;
+    }
+
+    /* 사이드바 축소 */
+    .sidebar {
+        width: 70px;
+    }
+
+    .content {
+        margin-left: 70px;
+    }
+
+    /* 그리드 조정 */
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* 버튼 크기 조정 */
+    .control-button {
+        padding: var(--spacing-sm) var(--spacing-md);
+        font-size: var(--font-sm);
+    }
+
+    /* 카드 패딩 조정 */
+    .card {
+        padding: var(--spacing-md);
+    }
+}
+
+/* 모바일 */
+@media (max-width: 768px) {
+    :root {
+        --font-xs: 0.7rem;
+        --font-sm: 0.8rem;
+        --font-base: 0.9rem;
+        --font-lg: 1rem;
+        --font-xl: 1.1rem;
+        --font-2xl: 1.3rem;
+        --font-3xl: 1.6rem;
+    }
+
+    /* 전체 레이아웃 */
+    .app-container {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        top: auto;
+        width: 100%;
+        height: 70px;
+        flex-direction: row;
+        border-right: none;
+        border-top: 1px solid var(--border-color);
+        z-index: 1000;
+    }
+
+    .sidebar-header,
+    .sidebar-status,
+    .sidebar-footer {
+        display: none;
+    }
+
+    .sidebar-nav {
+        flex: 1;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-around;
+        align-items: center;
+        padding: 0;
+    }
+
+    .nav-button {
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        padding: var(--spacing-sm);
+        font-size: var(--font-xs);
+    }
+
+    .nav-button.active {
+        border-left: none;
+        border-top: 2px solid var(--primary-color);
+    }
+
+    .content {
+        margin-left: 0;
+        margin-bottom: 70px;
+        padding: var(--spacing-md);
+    }
+
+    /* 컨트롤 버튼 */
+    .controls-container {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-sm);
+    }
+
+    /* 타이머 */
+    .timer-display {
+        font-size: var(--font-2xl);
+    }
+
+    /* 모드/시간 선택 */
+    .mode-options {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-sm);
+    }
+
+    .time-options {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-sm);
+    }
+
+    /* 퀘스트 페이지 */
+    .quest-header {
+        flex-direction: column;
+        gap: var(--spacing-md);
+        text-align: center;
+    }
+
+    .categories-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-sm);
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: var(--spacing-sm);
+    }
+
+    /* 로그 페이지 */
+    .logs-actions {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .logs-card {
+        height: 300px;
+    }
+
+    /* 설정 페이지 */
+    .telegram-actions {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    /* 모달 */
+    .quest-modal {
+        padding: var(--spacing-md);
+    }
+
+    .quest-modal-content {
+        padding: var(--spacing-lg);
+        width: 95%;
+    }
+
+    .quest-modal-actions {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+}
+
+/* 작은 모바일 */
+@media (max-width: 480px) {
+    :root {
+        --spacing-xs: 0.15rem;
+        --spacing-sm: 0.3rem;
+        --spacing-md: 0.6rem;
+        --spacing-lg: 1rem;
+        --spacing-xl: 1.4rem;
+    }
+
+    .content {
+        padding: var(--spacing-sm);
+    }
+
+    .card {
+        padding: var(--spacing-sm);
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .timer-display {
+        font-size: var(--font-xl);
+        margin: var(--spacing-sm) 0;
+    }
+
+    .time-options {
+        grid-template-columns: 1fr;
+    }
+
+    .categories-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* 폰트 크기 더 작게 */
+    .nav-button {
+        font-size: 0.65rem;
+    }
+
+    .quest-title h1 {
+        font-size: var(--font-lg);
+    }
+
+    /* 버튼 패딩 조정 */
+    .control-button {
+        padding: var(--spacing-sm);
+        min-height: 50px;
+    }
+
+    /* 입력 필드 */
+    .form-input,
+    .form-select {
+        padding: var(--spacing-sm);
+        font-size: var(--font-sm);
+    }
+}
+
+/* 세로 화면 (높이가 작은 경우) */
+@media (max-height: 600px) {
+    .timer-display {
+        font-size: var(--font-xl);
+        margin: var(--spacing-xs) 0;
+    }
+
+    .card {
+        padding: var(--spacing-sm);
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .card h2 {
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .controls-container {
+        margin: var(--spacing-sm) 0;
+    }
+
+    .control-button {
+        min-height: 50px;
+        padding: var(--spacing-sm);
+    }
+
+    .quest-page {
+        padding: var(--spacing-md);
+        gap: var(--spacing-md);
+    }
+
+    .logs-card {
+        height: 250px;
+    }
+}
+
+/* 다크 모드에서 작은 화면 최적화 */
+@media (max-width: 768px) {
+    [data-theme="dark"] {
+        --bg-color: #000000;
+        --content-bg: #111111;
+        --card-bg: #1a1a1a;
+    }
+}
+
+/* 고해상도 디스플레이 */
+@media (-webkit-min-device-pixel-ratio: 2),
+(min-resolution: 2dppx) {
+
+    .app-logo,
+    .character-avatar,
+    .status-indicator {
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+    }
+}
+
+/* 터치 디바이스 최적화 */
+@media (hover: none) and (pointer: coarse) {
+
+    /* 터치 타겟 크기 증가 */
+    .nav-button,
+    .control-button,
+    .mode-card,
+    .time-card,
+    .task-button {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* 호버 효과 제거 */
+    .hover-lift:hover,
+    .hover-scale:hover,
+    .hover-rotate:hover {
+        transform: none;
+    }
+
+    /* 터치 피드백 추가 */
+    .nav-button:active,
+    .control-button:active,
+    .mode-card:active,
+    .time-card:active {
+        transform: scale(0.95);
+        transition: transform 0.1s ease;
+    }
+}
+
+/* 프린트 스타일 */
+@media print {
+
+    .sidebar,
+    .controls-container,
+    .add-task-btn,
+    .task-actions,
+    .notification-container {
+        display: none !important;
+    }
+
+    .content {
+        margin-left: 0;
+        margin-bottom: 0;
+    }
+
+    .card {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #ccc;
+    }
+
+    body {
+        background: white !important;
+        color: black !important;
+    }
+}

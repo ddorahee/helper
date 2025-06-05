@@ -1,0 +1,32 @@
+.card {
+    background-color: var(--card-bg);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-md);
+    box-shadow: var(--shadow);
+    margin-bottom: var(--spacing-md);
+    transition: all var(--transition-speed);
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+}
+
+.cardTitle {
+    font-size: var(--font-base);
+    color: var(--text-primary);
+    margin: 0;
+    font-weight: 600;
+}
+
+.cardHeaderContent {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.cardContent {
+    /* 카드 내용 스타일 */
+}

@@ -1,0 +1,94 @@
+.questPage {
+    background: linear-gradient(135deg, var(--quest-bg-dark) 0%, var(--quest-bg-card) 100%);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-lg);
+    gap: var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.questHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 2px solid var(--quest-border);
+}
+
+.questTitle h1 {
+    font-size: var(--font-2xl);
+    font-weight: bold;
+    color: var(--quest-text-primary);
+    text-shadow: 0 0 10px rgba(233, 69, 96, 0.3);
+    margin: 0;
+}
+
+.characterInfo {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.characterAvatar {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(45deg, var(--quest-text-primary), var(--warning-color));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+}
+
+.characterStats {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.characterName {
+    font-size: var(--font-base);
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+.characterLevel {
+    font-size: var(--font-sm);
+    color: var(--text-muted);
+}
+
+.categoriesCard {
+    background: var(--quest-bg-item);
+    border: 2px solid var(--quest-border);
+}
+
+.questsCard {
+    background: var(--quest-bg-item);
+    border: 2px solid var(--quest-border);
+    flex: 1;
+    min-height: 0;
+}
+
+.addButton {
+    background: linear-gradient(45deg, var(--quest-text-primary), var(--warning-color));
+    color: white;
+    border: none;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.addButton:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(233, 69, 96, 0.3);
+}
+
+@media (max-width: 768px) {
+    .questHeader {
+        flex-direction: column;
+        gap: var(--spacing-md);
+        text-align: center;
+    }
+}

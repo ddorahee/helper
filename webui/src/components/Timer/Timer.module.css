@@ -1,0 +1,31 @@
+.timerCard {
+    text-align: center;
+}
+
+.timerDisplay {
+    font-size: var(--font-3xl);
+    font-weight: 700;
+    font-family: 'Courier New', monospace;
+    color: var(--text-primary);
+    margin: var(--spacing-md) 0;
+    transition: all var(--transition-speed);
+}
+
+.timerDisplay.running {
+    color: var(--primary-color);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}

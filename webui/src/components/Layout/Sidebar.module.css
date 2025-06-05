@@ -1,0 +1,155 @@
+.sidebar {
+    width: 250px;
+    background-color: var(--sidebar-bg);
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+    transition: all var(--transition-speed);
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    overflow-y: auto;
+}
+
+.sidebarHeader {
+    padding: var(--spacing-lg);
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.appLogo {
+    width: 36px;
+    height: 36px;
+    margin-right: var(--spacing-md);
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebarHeader h1 {
+    font-size: var(--font-lg);
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.sidebarStatus {
+    display: flex;
+    align-items: center;
+    padding: var(--spacing-md) var(--spacing-lg);
+    gap: var(--spacing-sm);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.sidebarNav {
+    flex: 1;
+    padding: var(--spacing-md) 0;
+}
+
+.navButton {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: none;
+    border: none;
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    text-align: left;
+    cursor: pointer;
+    transition: all var(--transition-speed);
+    gap: var(--spacing-md);
+}
+
+.navButton:hover {
+    background-color: var(--highlight);
+    color: var(--text-primary);
+}
+
+.navButton.active {
+    background-color: var(--highlight);
+    color: var(--primary-color);
+    font-weight: 500;
+    border-left: 3px solid var(--primary-color);
+}
+
+.sidebarFooter {
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.exitButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    background-color: var(--highlight);
+    color: var(--danger-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: var(--font-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-speed);
+}
+
+.exitButton:hover {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.versionInfo {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: var(--font-xs);
+}
+
+@media (max-width: 992px) {
+    .sidebar {
+        width: 70px;
+    }
+
+    .sidebarHeader h1,
+    .sidebarStatus span,
+    .navButton span,
+    .exitButton span,
+    .versionInfo {
+        display: none;
+    }
+
+    .sidebarHeader {
+        justify-content: center;
+        padding: var(--spacing-md);
+    }
+
+    .appLogo {
+        margin-right: 0;
+    }
+
+    .sidebarStatus {
+        justify-content: center;
+        padding: var(--spacing-md);
+    }
+
+    .navButton {
+        justify-content: center;
+        padding: var(--spacing-md);
+    }
+
+    .navButton.active {
+        border-left: none;
+        border-bottom: 3px solid var(--primary-color);
+    }
+
+    .exitButton {
+        padding: var(--spacing-md);
+        justify-content: center;
+    }
+}

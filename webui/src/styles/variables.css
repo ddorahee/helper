@@ -1,0 +1,84 @@
+:root {
+    /* 주요 색상 - 다크 모드 기본값 */
+    --primary-color: #7c3aed;
+    --primary-light: #9468ed;
+    --primary-dark: #6025c2;
+
+    --success-color: #10b981;
+    --danger-color: #ef4444;
+    --warning-color: #f59e0b;
+
+    --bg-color: #111827;
+    --content-bg: #1f2937;
+    --card-bg: #374151;
+    --sidebar-bg: #111827;
+
+    --text-primary: #f3f4f6;
+    --text-secondary: #d1d5db;
+    --text-muted: #9ca3af;
+
+    --border-color: #4b5563;
+    --highlight: rgba(255, 255, 255, 0.05);
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+    /* 게임 스타일 색상 */
+    --quest-bg-dark: #0f0f23;
+    --quest-bg-card: #1a1a2e;
+    --quest-bg-item: #16213e;
+    --quest-text-primary: #e94560;
+    --quest-accent: #0f3460;
+    --quest-border: #2a2a3e;
+
+    /* 애니메이션 */
+    --transition-speed: 0.3s;
+    --border-radius: 8px;
+    --border-radius-lg: 12px;
+
+    /* 간격 */
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+
+    /* 폰트 크기 */
+    --font-xs: 0.75rem;
+    --font-sm: 0.875rem;
+    --font-base: 1rem;
+    --font-lg: 1.125rem;
+    --font-xl: 1.25rem;
+    --font-2xl: 1.5rem;
+    --font-3xl: 2rem;
+}
+
+/* 라이트 모드 */
+[data-theme="light"] {
+    --primary-color: #6d28d9;
+    --primary-light: #8b5cf6;
+    --primary-dark: #5b21b6;
+
+    --success-color: #059669;
+    --danger-color: #dc2626;
+    --warning-color: #d97706;
+
+    --bg-color: #f9fafb;
+    --content-bg: #f3f4f6;
+    --card-bg: #ffffff;
+    --sidebar-bg: #f3f4f6;
+
+    --text-primary: #111827;
+    --text-secondary: #374151;
+    --text-muted: #6b7280;
+
+    --border-color: #e5e7eb;
+    --highlight: rgba(0, 0, 0, 0.05);
+    --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+    /* 게임 스타일 라이트 모드 */
+    --quest-bg-dark: #f8fafc;
+    --quest-bg-card: #ffffff;
+    --quest-bg-item: #f1f5f9;
+    --quest-text-primary: #dc2626;
+    --quest-accent: #3b82f6;
+    --quest-border: #e2e8f0;
+}

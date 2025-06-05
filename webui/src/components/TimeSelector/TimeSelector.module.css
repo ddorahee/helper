@@ -1,0 +1,59 @@
+.timeOptions {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--spacing-md);
+}
+
+.timeOption {
+    cursor: pointer;
+}
+
+.timeOption input[type="radio"] {
+    display: none;
+}
+
+.timeCard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--highlight);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md) var(--spacing-sm);
+    cursor: pointer;
+    transition: all var(--transition-speed);
+    height: 100%;
+    text-align: center;
+    min-height: 80px;
+}
+
+.timeOption input[type="radio"]:checked+.timeCard {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-light);
+    transform: translateY(-2px);
+    box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1);
+}
+
+.timeCard:hover {
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+}
+
+.timeValue {
+    font-size: var(--font-xl);
+    font-weight: 700;
+    line-height: 1;
+}
+
+.timeUnit {
+    font-size: var(--font-sm);
+    margin-top: var(--spacing-xs);
+}
+
+@media (max-width: 768px) {
+    .timeOptions {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

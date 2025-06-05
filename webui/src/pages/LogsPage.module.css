@@ -1,0 +1,123 @@
+.logsPage {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    height: 100%;
+}
+
+.logsCard {
+    display: flex;
+    flex-direction: column;
+    height: 450px;
+    flex: 1;
+}
+
+.logsActions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.dangerButton:hover {
+    background-color: var(--danger-color);
+    color: white;
+    border-color: var(--danger-color);
+}
+
+.logsContent {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.logsContainer {
+    height: 100%;
+    overflow-y: auto;
+    padding: var(--spacing-sm);
+    background-color: var(--bg-color);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+    font-family: 'Courier New', monospace;
+    font-size: var(--font-sm);
+    line-height: 1.5;
+}
+
+.logEntry {
+    margin: 0;
+    padding: var(--spacing-xs) 0;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary);
+}
+
+.logEntry:last-child {
+    border-bottom: none;
+}
+
+.logEntry.debug {
+    color: var(--text-muted);
+}
+
+.logEntry.info {
+    color: var(--text-secondary);
+}
+
+.logEntry.warning {
+    color: var(--warning-color);
+}
+
+.logEntry.error {
+    color: var(--danger-color);
+}
+
+.logPlaceholder {
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    margin-top: var(--spacing-xl);
+}
+
+.settingsCard {
+    flex-shrink: 0;
+}
+
+.settingsGrid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.settingItem {
+    display: flex;
+    align-items: center;
+}
+
+.filterGroup {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.filterLabel {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    color: var(--text-secondary);
+    font-size: var(--font-sm);
+    white-space: nowrap;
+}
+
+.filterInput {
+    flex: 1;
+    padding: var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    font-size: var(--font-sm);
+}
+
+.filterInput:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}

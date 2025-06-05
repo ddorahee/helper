@@ -41,7 +41,6 @@ type AppConfig struct {
 
 // NewAppConfig는 새로운 앱 설정을 생성합니다
 func NewAppConfig() *AppConfig {
-	// 빌드 플래그로 대체될 수 있는 값 (기본적으로 프로덕션 모드)
 	cfg := &AppConfig{
 		DevelopmentMode: false,
 		Version:         Version,
@@ -56,7 +55,7 @@ func NewAppConfig() *AppConfig {
 	cfg.configFilePath = getConfigFilePath()
 	cfg.logFilePath = getLogFilePath()
 
-	// 개발 모드 확인 (dev 태그로 빌드된 경우)
+	// 개발 모드 확인
 	if Version == "dev" {
 		cfg.DevelopmentMode = true
 	}
@@ -78,23 +77,18 @@ func getAppDataDir() string {
 
 	switch runtime.GOOS {
 	case "windows":
-		// Windows: %APPDATA%\DoumiBrowser Helper
 		appDataDir = os.Getenv("APPDATA")
 		if appDataDir == "" {
-			// APPDATA가 없으면 현재 디렉토리 사용
 			appDataDir = "."
 		}
 		appDataDir = filepath.Join(appDataDir, "DoumiBrowser Helper")
 	case "darwin":
-		// macOS: ~/Library/Application Support/DoumiBrowser Helper
 		homeDir, _ := os.UserHomeDir()
 		appDataDir = filepath.Join(homeDir, "Library", "Application Support", "DoumiBrowser Helper")
 	case "linux":
-		// Linux: ~/.config/doumibrowser-helper
 		homeDir, _ := os.UserHomeDir()
 		appDataDir = filepath.Join(homeDir, ".config", "doumibrowser-helper")
 	default:
-		// 기타 OS: 현재 디렉토리에 data 폴더
 		appDataDir = "data"
 	}
 
@@ -134,18 +128,15 @@ func dirExists(dirPath string) bool {
 
 // LoadSettings는 파일에서 설정을 로드합니다
 func (cfg *AppConfig) LoadSettings() error {
-	// 파일이 존재하지 않으면 기본값 사용
 	if _, err := os.Stat(cfg.configFilePath); os.IsNotExist(err) {
 		return nil
 	}
 
-	// 파일 읽기
 	data, err := os.ReadFile(cfg.configFilePath)
 	if err != nil {
 		return err
 	}
 
-	// JSON 파싱
 	var configData ConfigData
 	if err := json.Unmarshal(data, &configData); err != nil {
 		return err
@@ -168,7 +159,6 @@ func (cfg *AppConfig) LoadSettings() error {
 
 // SaveSettings는 설정을 파일에 저장합니다
 func (cfg *AppConfig) SaveSettings() error {
-	// 설정 데이터 구성
 	configData := ConfigData{
 		TelegramEnabled: cfg.TelegramEnabled,
 		DarkMode:        cfg.DarkMode,
@@ -182,13 +172,11 @@ func (cfg *AppConfig) SaveSettings() error {
 		configData.TelegramChatID = cfg.TelegramBot.ChatID
 	}
 
-	// JSON 직렬화
 	jsonData, err := json.MarshalIndent(configData, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	// 파일에 쓰기
 	return os.WriteFile(cfg.configFilePath, jsonData, 0644)
 }
 
@@ -202,7 +190,6 @@ func (cfg *AppConfig) SetTelegramConfig(token, chatID string) error {
 		cfg.TelegramBot = nil
 	}
 
-	// 설정 저장
 	return cfg.SaveSettings()
 }
 
