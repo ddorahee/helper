@@ -46,6 +46,23 @@ const chatIdInput = document.getElementById('chat-id');
 const saveTelegramBtn = document.getElementById('save-telegram-btn');
 const testTelegramBtn = document.getElementById('test-telegram-btn');
 
+// 퀘스트 관련 DOM 요소
+const addQuestBtn = document.getElementById('addQuestBtn');
+const questList = document.getElementById('questList');
+const addQuestModal = document.getElementById('addQuestModal');
+const addQuestForm = document.getElementById('addQuestForm');
+const questTitle = document.getElementById('questTitle');
+const questCategory = document.getElementById('questCategory');
+const questPriority = document.getElementById('questPriority');
+const questDifficulty = document.getElementById('questDifficulty');
+
+// 통계 관련 DOM 요소
+const totalQuests = document.getElementById('total-quests');
+const completedQuests = document.getElementById('completed-quests');
+const activeQuests = document.getElementById('active-quests');
+const completionRate = document.getElementById('completion-rate');
+const experiencePoints = document.getElementById('experience-points');
+
 // 상태 변수
 let isRunning = false;            // 매크로 실행 중 여부
 let currentMode = ModeDaeyaEnter; // 현재 선택된 모드
@@ -67,6 +84,11 @@ let showDebugLogs = false;
 let logFilterText = '';
 let logRefreshInterval = null;
 let lastLogLength = 0;
+
+// 퀘스트 관련 변수
+let quests = [];
+let currentQuestFilter = 'all';
+let questIdCounter = 1;
 
 // 초기화
 document.addEventListener('DOMContentLoaded', () => {
@@ -91,6 +113,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 텔레그램 관련 리스너 설정
     setupTelegramListeners();
 
+    // 퀘스트 관련 리스너 설정
+    setupQuestListeners();
+
     // 저장된 설정 로드 - 추가된 부분
     loadSavedSettings();
 
@@ -110,6 +135,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (logsContainer && currentContentSection === 'logs') {
         refreshLogs();
     }
+
+    // 퀘스트 초기화
+    initializeQuests();
 });
 
 function loadSavedSettings() {
@@ -221,9 +249,10 @@ function setupNavigation() {
                 refreshLogs();
             }
 
-            // TODO: 중요 - 할 일 목록 섹션으로 이동할 때만 할 일 목록 초기화
+            // 퀘스트 섹션으로 이동할 때 퀘스트 렌더링
             if (section === 'todo') {
-                initTodoElements();
+                renderQuests();
+                updateQuestStats();
             }
         });
     });
@@ -285,7 +314,7 @@ function setupInitialSelections() {
                 updateCountdownDisplay(countdownTime);
             }
 
-            addLogMessage(`${getHoursFromOption(currentTimeOption)}시간 실행 설정됨`);
+            addLogMessage(`${formatTimeOption(currentTimeOption)} 실행 설정됨`);
         });
     });
 }
@@ -521,31 +550,31 @@ function saveTelegramSettings() {
         },
         body: `token=${encodeURIComponent(token)}&chat_id=${encodeURIComponent(chatId)}`
     })
-    .then(response => {
-        if (response.ok) {
-            showNotification('텔레그램 설정이 저장되었습니다! 🎉', 'success');
-            addLogMessage('텔레그램 설정이 저장되었습니다.');
+        .then(response => {
+            if (response.ok) {
+                showNotification('텔레그램 설정이 저장되었습니다! 🎉', 'success');
+                addLogMessage('텔레그램 설정이 저장되었습니다.');
 
-            // 테스트 버튼 활성화
-            testTelegramBtn.disabled = false;
-        } else {
-            throw new Error('설정 저장 실패');
-        }
-    })
-    .catch(error => {
-        showNotification('설정 저장에 실패했습니다. 다시 시도해주세요.', 'error');
-        addLogMessage('텔레그램 설정 저장 실패');
-    })
-    .finally(() => {
-        // 버튼 복원
-        saveTelegramBtn.disabled = false;
-        saveTelegramBtn.innerHTML = `
+                // 테스트 버튼 활성화
+                testTelegramBtn.disabled = false;
+            } else {
+                throw new Error('설정 저장 실패');
+            }
+        })
+        .catch(error => {
+            showNotification('설정 저장에 실패했습니다. 다시 시도해주세요.', 'error');
+            addLogMessage('텔레그램 설정 저장 실패');
+        })
+        .finally(() => {
+            // 버튼 복원
+            saveTelegramBtn.disabled = false;
+            saveTelegramBtn.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
             </svg>
             저장
         `;
-    });
+        });
 }
 
 // 텔레그램 연결 테스트
@@ -557,29 +586,29 @@ function testTelegramConnection() {
     fetch('/api/telegram/test', {
         method: 'POST'
     })
-    .then(response => {
-        if (response.ok) {
-            showNotification('테스트 메시지가 전송되었습니다! 📱', 'success');
-            addLogMessage('텔레그램 테스트 메시지 전송 완료');
-        } else {
-            throw new Error('테스트 실패');
-        }
-    })
-    .catch(error => {
-        showNotification('테스트에 실패했습니다. 설정을 확인해주세요.', 'error');
-        addLogMessage('텔레그램 테스트 실패');
-    })
-    .finally(() => {
-        // 버튼 복원
-        testTelegramBtn.disabled = false;
-        testTelegramBtn.innerHTML = `
+        .then(response => {
+            if (response.ok) {
+                showNotification('테스트 메시지가 전송되었습니다! 📱', 'success');
+                addLogMessage('텔레그램 테스트 메시지 전송 완료');
+            } else {
+                throw new Error('테스트 실패');
+            }
+        })
+        .catch(error => {
+            showNotification('테스트에 실패했습니다. 설정을 확인해주세요.', 'error');
+            addLogMessage('텔레그램 테스트 실패');
+        })
+        .finally(() => {
+            // 버튼 복원
+            testTelegramBtn.disabled = false;
+            testTelegramBtn.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 2L11 13"></path>
                 <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
             </svg>
             테스트
         `;
-    });
+        });
 }
 
 // 텔레그램 설정 로드
@@ -607,7 +636,7 @@ function setTelegramEnabledApi(enabled) {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: `type=telegram_enabled&value=${enabled ? 1 : 0}`
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 // 알림 메시지 표시
@@ -783,7 +812,7 @@ function getLogLevel(log) {
 function isDebugLog(log) {
     const lowerLog = log.toLowerCase();
     return lowerLog.includes('debug') || lowerLog.includes('초기화') ||
-           lowerLog.includes('설정') || lowerLog.includes('디버그');
+        lowerLog.includes('설정') || lowerLog.includes('디버그');
 }
 
 // 테마 설정
@@ -810,7 +839,7 @@ function addLogMessage(message) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ message: message })
-        }).catch(() => {});
+        }).catch(() => { });
     } catch (e) {
         // 오류는 무시
     }
@@ -852,15 +881,15 @@ function getApiModeName(mode) {
 function getHoursFromOption(option) {
     switch (option) {
         case TimeOption1Hour:
-            return 1 + (10/60); // 1시간 10분
+            return 1 + (10 / 60); // 1시간 10분
         case TimeOption2Hour:
-            return 2 + (10/60); // 2시간 10분
+            return 2 + (10 / 60); // 2시간 10분
         case TimeOption3Hour:
-            return 3 + (10/60); // 3시간 10분
+            return 3 + (10 / 60); // 3시간 10분
         case TimeOption4Hour:
-            return 4 + (10/60); // 4시간 10분
+            return 4 + (10 / 60); // 4시간 10분
         default:
-            return 3 + (10/60); // 기본값: 3시간 10분
+            return 3 + (10 / 60); // 기본값: 3시간 10분
     }
 }
 
@@ -878,7 +907,6 @@ function formatTimeOption(option) {
             return '3시간 10분';
     }
 }
-
 
 // 카운트다운 표시 업데이트
 function updateCountdownDisplay(seconds) {
@@ -956,7 +984,7 @@ function resetCountdown() {
 }
 
 // 이벤트 수신 함수
-window.dispatchAppEvent = function(event) {
+window.dispatchAppEvent = function (event) {
     const { type, payload } = event;
 
     switch (type) {
@@ -1079,46 +1107,46 @@ function startOperation(wasTimerPaused) {
         },
         body: requestBody
     })
-    .then(response => {
-        if (response.ok) {
-            // 서버 시작 성공
-            serverTimerStarted = true;
+        .then(response => {
+            if (response.ok) {
+                // 서버 시작 성공
+                serverTimerStarted = true;
 
-            // 클라이언트 타이머 시작
-            if (!countdownInterval) {
-                // 일시정지 상태였다면 그 값 유지, 아니면 새로 시작
-                if (wasTimerPaused) {
-                    startCountdown(countdownTime);
-                } else {
-                    startCountdown(hours * 60 * 60);
+                // 클라이언트 타이머 시작
+                if (!countdownInterval) {
+                    // 일시정지 상태였다면 그 값 유지, 아니면 새로 시작
+                    if (wasTimerPaused) {
+                        startCountdown(countdownTime);
+                    } else {
+                        startCountdown(hours * 60 * 60);
+                    }
                 }
-            }
 
-            // 로그 메시지 - 재시작 여부에 따라 다른 메시지
-            if (wasTimerPaused) {
-                addLogMessage(`${getModeName(currentMode)} 모드 작업을 재개합니다...`);
+                // 로그 메시지 - 재시작 여부에 따라 다른 메시지
+                if (wasTimerPaused) {
+                    addLogMessage(`${getModeName(currentMode)} 모드 작업을 재개합니다...`);
+                } else {
+                    addLogMessage(`${getModeName(currentMode)} 모드로 작업을 시작합니다... (${formatTimeOption(currentTimeOption)})`);
+                }
             } else {
-                addLogMessage(`${getModeName(currentMode)} 모드로 작업을 시작합니다... (${formatTimeOption(currentTimeOption)})`);
+                throw new Error('작업 시작 실패');
             }
-        } else {
-            throw new Error('작업 시작 실패');
-        }
-    })
-    .catch(error => {
-        addLogMessage("오류: 작업을 시작할 수 없습니다.");
-        startBtn.classList.remove('active');
+        })
+        .catch(error => {
+            addLogMessage("오류: 작업을 시작할 수 없습니다.");
+            startBtn.classList.remove('active');
 
-        // 상태 복원
-        isRunning = false;
-        statusText.textContent = '준비됨';
-        statusIndicator.classList.remove('running');
+            // 상태 복원
+            isRunning = false;
+            statusText.textContent = '준비됨';
+            statusIndicator.classList.remove('running');
 
-        // 일시정지 상태였다면 복원
-        if (wasTimerPaused) {
-            timerPaused = true;
-            stopBtn.classList.add('active');
-        }
-    });
+            // 일시정지 상태였다면 복원
+            if (wasTimerPaused) {
+                timerPaused = true;
+                stopBtn.classList.add('active');
+            }
+        });
 }
 
 // 시간 옵션 변경시 로그 메시지도 수정
@@ -1137,19 +1165,20 @@ timeOptions.forEach(option => {
         addLogMessage(`${formatTimeOption(currentTimeOption)} 실행 설정됨`);
     });
 });
+
 // 작업 중지 함수
 function stopOperation() {
     fetch('/api/stop', {
         method: 'POST'
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('작업 중지 실패');
-        }
-    })
-    .catch(error => {
-        addLogMessage("오류: 작업을 중지할 수 없습니다.");
-    });
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('작업 중지 실패');
+            }
+        })
+        .catch(error => {
+            addLogMessage("오류: 작업을 중지할 수 없습니다.");
+        });
 }
 
 // 설정 재설정 함수
@@ -1172,7 +1201,7 @@ function resetSettingsApi() {
     // API를 사용한 설정 저장
     fetch('/api/reset', {
         method: 'POST'
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 // 종료 함수
@@ -1196,7 +1225,7 @@ function setModeApi(mode) {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: `type=mode&value=${apiMode}`
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 // 시간 옵션 설정 API
@@ -1210,7 +1239,7 @@ function setTimeOptionApi(option) {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: `type=time&value=${hours}`
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 // 자동 시작 설정 API
@@ -1222,383 +1251,343 @@ function setAutoStartupApi(enabled) {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: `type=auto_startup&value=${enabled ? 1 : 0}`
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
-// ====== 할 일 관련 기능 ======
+// ====== 퀘스트 관련 기능 ======
 
-let todos = []; // 할 일 목록 배열
-let currentFilter = 'all'; // 현재 필터 (all, active, completed, priority)
-let currentCategory = 'all'; // 현재 카테고리 필터
+// 퀘스트 관련 상수
+const categoryIcons = {
+    game: "🎮",
+    daily: "📅",
+    shopping: "🛒",
+    special: "⭐"
+};
 
-// DOM 요소 참조
-let todoInput;
-let todoForm;
-let todoList;
-let todoStats;
-let categoryFilters;
-let filterOptions;
+const categoryNames = {
+    game: "게임 퀘스트",
+    daily: "일상 업무",
+    shopping: "쇼핑 목록",
+    special: "특별 임무"
+};
 
-// 할 일 요소 초기화 - 오직 할 일 목록 탭에서만 실행
-function initTodoElements() {
-    // 이미 초기화 됐거나 요소가 없으면 리턴
-    if (todoInput || !document.getElementById('todo-input')) return;
+const priorityLabels = {
+    low: "낮음",
+    medium: "보통",
+    high: "높음"
+};
 
-    // DOM 요소 참조 가져오기
-    todoInput = document.getElementById('todo-input');
-    todoForm = document.getElementById('todo-form');
-    todoList = document.getElementById('todo-list');
-    todoStats = document.getElementById('todo-stats');
-    categoryFilters = document.querySelectorAll('.category-filter');
-    filterOptions = document.querySelectorAll('.filter-option');
+// 퀘스트 관련 이벤트 리스너 설정
+function setupQuestListeners() {
+    // 요소가 없으면 건너뛰기
+    if (!addQuestBtn || !addQuestModal || !addQuestForm) {
+        return;
+    }
 
-    // 이벤트 리스너 설정
-    setupTodoEventListeners();
+    // 새 퀘스트 추가 버튼
+    addQuestBtn.addEventListener('click', () => {
+        openQuestModal();
+    });
 
-    // 초기 데이터 로드
-    loadTodos();
-}
-
-// 할 일 관련 이벤트 리스너 설정
-function setupTodoEventListeners() {
-    // 폼 제출 이벤트 (새 할 일 추가)
-    todoForm.addEventListener('submit', function(e) {
+    // 퀘스트 폼 제출
+    addQuestForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        addTodo();
+        addQuest();
     });
 
-    // 카테고리 필터 클릭 이벤트
-    categoryFilters.forEach(filter => {
-        filter.addEventListener('click', function() {
-            categoryFilters.forEach(f => f.classList.remove('active'));
+    // 모달 외부 클릭 시 닫기
+    addQuestModal.addEventListener('click', (e) => {
+        if (e.target === addQuestModal) {
+            closeQuestModal();
+        }
+    });
+
+    // 카테고리 필터링
+    document.querySelectorAll('.category-card').forEach(card => {
+        card.addEventListener('click', function () {
+            // 모든 카테고리 카드에서 active 클래스 제거
+            document.querySelectorAll('.category-card').forEach(c => c.classList.remove('active'));
+            // 클릭된 카드에 active 클래스 추가
             this.classList.add('active');
 
-            // 카테고리 필터 변경
-            currentCategory = this.dataset.category || 'all';
-            filterTodos();
+            const category = this.dataset.category;
+            currentQuestFilter = category;
+            filterQuests(category);
         });
     });
+}
 
-    // 필터 옵션 클릭 이벤트
-    filterOptions.forEach(option => {
-        option.addEventListener('click', function() {
-            filterOptions.forEach(o => o.classList.remove('active'));
-            this.classList.add('active');
-
-            // 할 일 필터 변경
-            currentFilter = this.dataset.filter || 'all';
-            filterTodos();
-
-            // 필터 메뉴 닫기
-            document.querySelector('.filter-menu').classList.remove('show');
-        });
-    });
-
-    // 필터 드롭다운 토글
-    document.querySelector('.filter-button').addEventListener('click', function() {
-        document.querySelector('.filter-menu').classList.toggle('show');
-    });
-
-    // 필터 메뉴 외부 클릭 시 닫기
-    document.addEventListener('click', function(event) {
-        if (!event.target.closest('.filter-dropdown')) {
-            const filterMenu = document.querySelector('.filter-menu');
-            if (filterMenu && filterMenu.classList.contains('show')) {
-                filterMenu.classList.remove('show');
+// 퀘스트 초기화
+function initializeQuests() {
+    // 기본 퀘스트들 추가
+    if (quests.length === 0) {
+        quests = [
+            {
+                id: questIdCounter++,
+                title: "매크로 자동화 스크립트 개선",
+                category: "game",
+                priority: "high",
+                difficulty: 3,
+                completed: false
+            },
+            {
+                id: questIdCounter++,
+                title: "장비 강화 재료 정리",
+                category: "game",
+                priority: "medium",
+                difficulty: 2,
+                completed: true
+            },
+            {
+                id: questIdCounter++,
+                title: "길드 활동 참여",
+                category: "daily",
+                priority: "low",
+                difficulty: 1,
+                completed: false
+            },
+            {
+                id: questIdCounter++,
+                title: "생활 용품 쇼핑",
+                category: "shopping",
+                priority: "medium",
+                difficulty: 1,
+                completed: false
             }
-        }
-    });
+        ];
+
+        saveQuestsToStorage();
+    }
+
+    renderQuests();
+    updateCategoryStats();
+    updateQuestStats();
 }
 
-// 로컬 스토리지에서 할 일 목록 로드
-function loadTodos() {
-    try {
-        const savedTodos = localStorage.getItem('todos');
-        if (savedTodos) {
-            todos = JSON.parse(savedTodos);
-        } else {
-            // 초기 데이터 설정 (예시)
-            todos = [
-                { id: 1, text: '매크로 자동화 기능 개선하기', completed: false, category: 'game', priority: 'high' },
-                { id: 2, text: '아이템 수집 루트 최적화', completed: false, category: 'game', priority: 'medium' },
-                { id: 3, text: '식료품 구매하기', completed: false, category: 'shopping', priority: 'low' },
-                { id: 4, text: '매크로 스크립트 업데이트', completed: true, category: 'game', priority: 'medium' },
-                { id: 5, text: '방 청소하기', completed: false, category: 'daily', priority: 'low' }
-            ];
-            saveTodos();
-        }
-
-        // 할 일 목록 렌더링
-        renderTodos();
-        updateStats();
-    } catch (e) {
-        console.error('할 일 목록을 로드하는 데 실패했습니다:', e);
-        todos = [];
+// 퀘스트 모달 열기
+function openQuestModal() {
+    if (addQuestModal) {
+        addQuestModal.classList.add('show');
     }
 }
 
-// 로컬 스토리지에 할 일 목록 저장
-function saveTodos() {
-    try {
-        localStorage.setItem('todos', JSON.stringify(todos));
-    } catch (e) {
-        console.error('할 일 목록을 저장하는 데 실패했습니다:', e);
+// 퀘스트 모달 닫기
+function closeQuestModal() {
+    if (addQuestModal) {
+        addQuestModal.classList.remove('show');
+        if (addQuestForm) {
+            addQuestForm.reset();
+        }
     }
 }
 
-// 새 할 일 추가
-function addTodo() {
-    const text = todoInput.value.trim();
-    if (!text) return;
+// 새 퀘스트 추가
+function addQuest() {
+    const title = questTitle.value.trim();
+    const category = questCategory.value;
+    const priority = questPriority.value;
+    const difficulty = parseInt(questDifficulty.value);
 
-    // 새 할 일 객체 생성
-    const newTodo = {
-        id: Date.now(),
-        text: text,
-        completed: false,
-        category: 'game', // 기본 카테고리
-        priority: 'medium' // 기본 우선순위
+    if (!title) {
+        showNotification('퀘스트 이름을 입력해주세요.', 'error');
+        return;
+    }
+
+    const newQuest = {
+        id: questIdCounter++,
+        title: title,
+        category: category,
+        priority: priority,
+        difficulty: difficulty,
+        completed: false
     };
 
-    // 할 일 목록에 추가
-    todos.unshift(newTodo);
+    quests.push(newQuest);
+    saveQuestsToStorage();
+    renderQuests();
+    updateCategoryStats();
+    updateQuestStats();
+    closeQuestModal();
 
-    // 입력창 초기화
-    todoInput.value = '';
-
-    // 저장 및 렌더링
-    saveTodos();
-    renderTodos();
-    updateStats();
-
-    // 로그 메시지
-    addLogMessage(`새 할 일이 추가되었습니다: ${text}`);
+    addLogMessage(`새 퀘스트가 추가되었습니다: ${title}`);
+    showNotification('새 퀘스트가 추가되었습니다! ⚔️', 'success');
 }
 
-// 할 일 삭제
-function deleteTodo(id) {
-    const todoIndex = todos.findIndex(todo => todo.id === id);
-    if (todoIndex === -1) return;
+// 퀘스트 완료 상태 토글
+function toggleQuest(questId) {
+    const quest = quests.find(q => q.id === questId);
+    if (quest) {
+        quest.completed = !quest.completed;
+        saveQuestsToStorage();
+        renderQuests();
+        updateCategoryStats();
+        updateQuestStats();
 
-    const todoText = todos[todoIndex].text;
+        const statusText = quest.completed ? '완료됨' : '진행 중';
+        addLogMessage(`퀘스트 상태 변경: "${quest.title}" - ${statusText}`);
 
-    // 할 일 목록에서 제거
-    todos.splice(todoIndex, 1);
-
-    // 저장 및 렌더링
-    saveTodos();
-    renderTodos();
-    updateStats();
-
-    // 로그 메시지
-    addLogMessage(`할 일이 삭제되었습니다: ${todoText}`);
-}
-
-// 할 일 완료 상태 토글
-function toggleTodoCompleted(id) {
-    const todo = todos.find(todo => todo.id === id);
-    if (!todo) return;
-
-    // 완료 상태 토글
-    todo.completed = !todo.completed;
-
-    // 저장 및 렌더링
-    saveTodos();
-    renderTodos();
-    updateStats();
-
-    // 로그 메시지
-    const statusText = todo.completed ? '완료됨' : '진행 중';
-    addLogMessage(`할 일 상태 변경: "${todo.text}" - ${statusText}`);
-}
-
-// 할 일 편집
-function editTodo(id, newText) {
-    const todo = todos.find(todo => todo.id === id);
-    if (!todo || !newText.trim()) return;
-
-    const oldText = todo.text;
-
-    // 텍스트 업데이트
-    todo.text = newText.trim();
-
-    // 저장 및 렌더링
-    saveTodos();
-    renderTodos();
-
-    // 로그 메시지
-    addLogMessage(`할 일이 수정되었습니다: "${oldText}" → "${newText}"`);
-}
-
-// 할 일 목록 필터링
-function filterTodos() {
-    const filteredTodos = todos.filter(todo => {
-        // 카테고리 필터링
-        if (currentCategory !== 'all' && todo.category !== currentCategory) {
-            return false;
+        if (quest.completed) {
+            showNotification('퀘스트 완료! 🎉', 'success');
         }
-
-        // 상태 필터링
-        switch (currentFilter) {
-            case 'active':
-                return !todo.completed;
-            case 'completed':
-                return todo.completed;
-            case 'priority':
-                return todo.priority === 'high';
-            default:
-                return true;
-        }
-    });
-
-    // 필터링된 할 일 목록 렌더링
-    renderFilteredTodos(filteredTodos);
+    }
 }
 
-// 필터링된 할 일 목록 렌더링
-function renderFilteredTodos(filteredTodos) {
-    if (!todoList) return;
+// 퀘스트 삭제
+function deleteQuest(questId) {
+    const questIndex = quests.findIndex(q => q.id === questId);
+    if (questIndex === -1) return;
 
-    todoList.innerHTML = '';
+    const questTitle = quests[questIndex].title;
 
-    if (filteredTodos.length === 0) {
-        // 빈 상태 표시
-        todoList.innerHTML = `
+    if (confirm(`"${questTitle}" 퀘스트를 삭제하시겠습니까?`)) {
+        quests.splice(questIndex, 1);
+        saveQuestsToStorage();
+        renderQuests();
+        updateCategoryStats();
+        updateQuestStats();
+
+        addLogMessage(`퀘스트가 삭제되었습니다: ${questTitle}`);
+        showNotification('퀘스트가 삭제되었습니다.', 'info');
+    }
+}
+
+// 퀘스트 렌더링
+function renderQuests() {
+    if (!questList) return;
+
+    questList.innerHTML = '';
+
+    // 현재 필터에 맞는 퀘스트들 가져오기
+    let filteredQuests = quests;
+    if (currentQuestFilter !== 'all') {
+        filteredQuests = quests.filter(quest => quest.category === currentQuestFilter);
+    }
+
+    if (filteredQuests.length === 0) {
+        questList.innerHTML = `
             <div class="empty-state">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <polyline points="10 9 9 9 8 9"></polyline>
-                </svg>
-                <p>표시할 할 일이 없습니다</p>
+                <p>표시할 퀘스트가 없습니다</p>
             </div>
         `;
         return;
     }
 
-    // 할 일 항목 생성 및 추가
-    filteredTodos.forEach(todo => {
-        const todoItem = createTodoElement(todo);
-        todoList.appendChild(todoItem);
-    });
-
-    // 체크박스 이벤트 리스너 추가
-    todoList.querySelectorAll('.todo-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
-            const todoId = parseInt(this.closest('.todo-item').dataset.id);
-            toggleTodoCompleted(todoId);
-        });
-    });
-
-    // 삭제 버튼 이벤트 리스너 추가
-    todoList.querySelectorAll('.todo-button.delete').forEach(button => {
-        button.addEventListener('click', function() {
-            const todoId = parseInt(this.closest('.todo-item').dataset.id);
-            deleteTodo(todoId);
-        });
-    });
-
-    // 편집 버튼 이벤트 리스너 추가
-    todoList.querySelectorAll('.todo-button.edit').forEach(button => {
-        button.addEventListener('click', function() {
-            const todoItem = this.closest('.todo-item');
-            const todoId = parseInt(todoItem.dataset.id);
-            const todoText = todoItem.querySelector('.todo-text').textContent;
-
-            const newText = prompt('할 일 수정', todoText);
-            if (newText !== null) {
-                editTodo(todoId, newText);
-            }
-        });
+    filteredQuests.forEach(quest => {
+        const questElement = createQuestElement(quest);
+        questList.appendChild(questElement);
     });
 }
 
-// 할 일 HTML 요소 생성
-function createTodoElement(todo) {
-    const li = document.createElement('li');
-    li.className = `todo-item ${todo.completed ? 'completed' : ''}`;
-    li.dataset.id = todo.id;
+// 퀘스트 HTML 요소 생성
+function createQuestElement(quest) {
+    const questItem = document.createElement('div');
+    questItem.className = `task-item ${quest.completed ? 'completed' : ''}`;
+    questItem.dataset.id = quest.id;
 
-    // 카테고리 클래스 매핑
-    const categoryClass = todo.category || 'game';
+    const difficultyStars = Array.from({ length: 5 }, (_, i) =>
+        `<div class="difficulty-star ${i < quest.difficulty ? 'filled' : ''}"></div>`
+    ).join('');
 
-    // 우선순위 클래스 매핑
-    const priorityClass = todo.priority || 'medium';
-
-    // 할 일 항목 HTML
-    li.innerHTML = `
-        <div class="priority-indicator priority-${priorityClass}"></div>
-        <input type="checkbox" class="todo-checkbox" ${todo.completed ? 'checked' : ''}>
-        <span class="todo-text">${todo.text}</span>
-        <span class="todo-category category-${categoryClass}">${getCategoryLabel(todo.category)}</span>
-        <div class="todo-actions">
-            <button class="todo-button edit">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                </svg>
-            </button>
-            <button class="todo-button delete">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-            </button>
+    questItem.innerHTML = `
+        <div class="task-header">
+            <div class="task-checkbox ${quest.completed ? 'checked' : ''}" onclick="toggleQuest(${quest.id})"></div>
+            <div class="task-title">${quest.title}</div>
+            <div class="task-priority priority-${quest.priority}">${priorityLabels[quest.priority]}</div>
+        </div>
+        <div class="task-meta">
+            <div class="task-category">
+                <span>${categoryIcons[quest.category]}</span>
+                <span>${categoryNames[quest.category]}</span>
+            </div>
+            <div class="task-difficulty">
+                ${difficultyStars}
+            </div>
+            <div class="task-actions">
+                <button class="task-button delete" onclick="deleteQuest(${quest.id})">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+            </div>
         </div>
     `;
 
-    return li;
+    return questItem;
 }
 
-// 카테고리 레이블 가져오기
-function getCategoryLabel(category) {
-    switch (category) {
-        case 'game':
-            return '게임';
-        case 'daily':
-            return '일상';
-        case 'shopping':
-            return '쇼핑';
-        default:
-            return '기타';
-    }
+// 카테고리 통계 업데이트
+function updateCategoryStats() {
+    const categoryCards = document.querySelectorAll('.category-card');
+
+    categoryCards.forEach(card => {
+        const category = card.dataset.category;
+        const categoryQuests = quests.filter(q => q.category === category);
+        const completedQuests = categoryQuests.filter(q => q.completed);
+        const progress = categoryQuests.length > 0 ? (completedQuests.length / categoryQuests.length) * 100 : 0;
+
+        const countElement = card.querySelector('.category-count');
+        const progressFill = card.querySelector('.progress-fill');
+        const progressText = card.querySelector('.progress-text');
+
+        if (countElement) countElement.textContent = categoryQuests.length;
+        if (progressFill) progressFill.style.width = `${progress}%`;
+        if (progressText) progressText.textContent = `${completedQuests.length}/${categoryQuests.length}`;
+    });
 }
 
-// 할 일 목록 렌더링
-function renderTodos() {
-    // 오직 할 일 목록 탭이 활성화되어 있을 때만 렌더링
-    if (currentContentSection === 'todo') {
-        filterTodos();
-    }
-}
-
-// 통계 업데이트
-function updateStats() {
-    if (!todoStats) return;
-
-    const total = todos.length;
-    const completed = todos.filter(todo => todo.completed).length;
+// 퀘스트 통계 업데이트
+function updateQuestStats() {
+    const total = quests.length;
+    const completed = quests.filter(q => q.completed).length;
     const active = total - completed;
-    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const completionRateValue = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const experience = completed * 125 + active * 25; // 완료된 퀘스트당 125xp, 진행중 25xp
 
-    todoStats.innerHTML = `
-        <div class="stat-item">
-            <span class="stat-value">${total}</span>
-            <span class="stat-label">전체</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-value">${active}</span>
-            <span class="stat-label">남은 작업</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-value">${completed}</span>
-            <span class="stat-label">완료됨</span>
-        </div>
-        <div class="stat-item">
-            <span class="stat-value">${progress}%</span>
-            <span class="stat-label">진행률</span>
-        </div>
-    `;
+    if (totalQuests) totalQuests.textContent = total;
+    if (completedQuests) completedQuests.textContent = completed;
+    if (activeQuests) activeQuests.textContent = active;
+    if (completionRate) completionRate.textContent = `${completionRateValue}%`;
+    if (experiencePoints) experiencePoints.textContent = experience.toLocaleString();
 }
+
+// 퀘스트 필터링
+function filterQuests(category) {
+    currentQuestFilter = category;
+    renderQuests();
+}
+
+// 퀘스트를 로컬 스토리지에 저장
+function saveQuestsToStorage() {
+    try {
+        localStorage.setItem('quests', JSON.stringify(quests));
+        localStorage.setItem('questIdCounter', questIdCounter.toString());
+    } catch (e) {
+        console.error('퀘스트 저장 실패:', e);
+    }
+}
+
+// 로컬 스토리지에서 퀘스트 로드
+function loadQuestsFromStorage() {
+    try {
+        const savedQuests = localStorage.getItem('quests');
+        const savedCounter = localStorage.getItem('questIdCounter');
+
+        if (savedQuests) {
+            quests = JSON.parse(savedQuests);
+        }
+
+        if (savedCounter) {
+            questIdCounter = parseInt(savedCounter);
+        }
+    } catch (e) {
+        console.error('퀘스트 로드 실패:', e);
+        quests = [];
+        questIdCounter = 1;
+    }
+}
+
+// 전역 함수들 (HTML에서 호출되는 함수들)
+window.toggleQuest = toggleQuest;
+window.deleteQuest = deleteQuest;
+window.closeQuestModal = closeQuestModal;

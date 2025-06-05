@@ -1,30 +1,28 @@
 <!DOCTYPE html>
 <html lang="ko">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>도우미</title>
-        <link rel="stylesheet" href="./styles.css">
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap">
-        <style>
-            /* 중요: 할 일 목록 섹션 강제로 숨김 처리 */
-            #todo-section {
-                display: none !important;
-            }
-            #todo-section.active {
-                display: flex !important;
-            }
-        </style>
-    </head>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>도우미</title>
+    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap">
+</head>
+
 <body>
     <div class="app-container">
         <div class="sidebar">
             <div class="sidebar-header">
                 <div class="app-logo">
                     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M21 16V8.00002C20.9996 7.6493 20.9071 7.30483 20.7315 7.00119C20.556 6.69754 20.3037 6.44539 20 6.27002L13 2.27002C12.696 2.09449 12.3511 2.00208 12 2.00208C11.6489 2.00208 11.304 2.09449 11 2.27002L4 6.27002C3.69626 6.44539 3.44398 6.69754 3.26846 7.00119C3.09294 7.30483 3.00036 7.6493 3 8.00002V16C3.00036 16.3508 3.09294 16.6952 3.26846 16.9989C3.44398 17.3025 3.69626 17.5547 4 17.73L11 21.73C11.304 21.9056 11.6489 21.998 12 21.998C12.3511 21.998 12.696 21.9056 13 21.73L20 17.73C20.3037 17.5547 20.556 17.3025 20.7315 16.9989C20.9071 16.6952 20.9996 16.3508 21 16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M3.27002 7.00002L12 12L20.73 7.00002" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M12 22V12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path
+                            d="M21 16V8.00002C20.9996 7.6493 20.9071 7.30483 20.7315 7.00119C20.556 6.69754 20.3037 6.44539 20 6.27002L13 2.27002C12.696 2.09449 12.3511 2.00208 12 2.00208C11.6489 2.00208 11.304 2.09449 11 2.27002L4 6.27002C3.69626 6.44539 3.44398 6.69754 3.26846 7.00119C3.09294 7.30483 3.00036 7.6493 3 8.00002V16C3.00036 16.3508 3.09294 16.6952 3.26846 16.9989C3.44398 17.3025 3.69626 17.5547 4 17.73L11 21.73C11.304 21.9056 11.6489 21.998 12 21.998C12.3511 21.998 12.696 21.9056 13 21.73L20 17.73C20.3037 17.5547 20.556 17.3025 20.7315 16.9989C20.9071 16.6952 20.9996 16.3508 21 16Z"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        <path d="M3.27002 7.00002L12 12L20.73 7.00002" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round" />
+                        <path d="M12 22V12" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" />
                     </svg>
                 </div>
                 <h1>도우미</h1>
@@ -37,14 +35,16 @@
 
             <nav class="sidebar-nav">
                 <button class="nav-button active" data-section="main">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
                         <polyline points="9 22 9 12 15 12 15 22"></polyline>
                     </svg>
                     메인 화면
                 </button>
                 <button class="nav-button" data-section="logs">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                         <polyline points="14 2 14 8 20 8"></polyline>
                         <line x1="16" y1="13" x2="8" y2="13"></line>
@@ -54,19 +54,23 @@
                     로그
                 </button>
                 <button class="nav-button" data-section="todo">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                         <polyline points="14 2 14 8 20 8"></polyline>
                         <line x1="16" y1="13" x2="8" y2="13"></line>
                         <line x1="16" y1="17" x2="8" y2="17"></line>
                         <polyline points="10 9 9 9 8 9"></polyline>
                     </svg>
-                    할 일 목록
+                    퀘스트 로그
                 </button>
                 <button class="nav-button" data-section="settings">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3"></circle>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        <path
+                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                        </path>
                     </svg>
                     설정
                 </button>
@@ -74,7 +78,8 @@
 
             <div class="sidebar-footer">
                 <button id="exit-btn" class="exit-button">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                         <polyline points="16 17 21 12 16 7"></polyline>
                         <line x1="21" y1="12" x2="9" y2="12"></line>
@@ -104,10 +109,16 @@
                                     <label class="mode-option">
                                         <input type="radio" name="mode" value="1" checked>
                                         <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="mode-icon">
-                                                <path d="M15 3H21V9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M21 14V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M21 3L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                                                class="mode-icon">
+                                                <path d="M15 3H21V9" stroke="currentColor" stroke-width="2"
+                                                    stroke-linecap="round" stroke-linejoin="round" />
+                                                <path
+                                                    d="M21 14V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H10"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round" />
+                                                <path d="M21 3L12 12" stroke="currentColor" stroke-width="2"
+                                                    stroke-linecap="round" stroke-linejoin="round" />
                                             </svg>
                                             <span>입장</span>
                                         </span>
@@ -115,11 +126,24 @@
                                     <label class="mode-option">
                                         <input type="radio" name="mode" value="2">
                                         <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="mode-icon">
-                                                <path d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                                                class="mode-icon">
+                                                <path
+                                                    d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round" />
+                                                <path
+                                                    d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round" />
+                                                <path
+                                                    d="M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round" />
+                                                <path
+                                                    d="M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round" />
                                             </svg>
                                             <span>파티</span>
                                         </span>
@@ -132,10 +156,16 @@
                                     <label class="mode-option">
                                         <input type="radio" name="mode" value="3">
                                         <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="mode-icon">
-                                                <path d="M15 3H21V9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M21 14V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M21 3L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                                                class="mode-icon">
+                                                <path d="M15 3H21V9" stroke="currentColor" stroke-width="2"
+                                                    stroke-linecap="round" stroke-linejoin="round" />
+                                                <path
+                                                    d="M21 14V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H10"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round" />
+                                                <path d="M21 3L12 12" stroke="currentColor" stroke-width="2"
+                                                    stroke-linecap="round" stroke-linejoin="round" />
                                             </svg>
                                             <span>입장</span>
                                         </span>
@@ -143,11 +173,24 @@
                                     <label class="mode-option">
                                         <input type="radio" name="mode" value="4">
                                         <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="mode-icon">
-                                                <path d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
+                                                class="mode-icon">
+                                                <path
+                                                    d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round" />
+                                                <path
+                                                    d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round" />
+                                                <path
+                                                    d="M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round" />
+                                                <path
+                                                    d="M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88"
+                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                    stroke-linejoin="round" />
                                             </svg>
                                             <span>파티</span>
                                         </span>
@@ -196,19 +239,22 @@
                 <!-- 컨트롤 버튼 -->
                 <div class="controls-container">
                     <button id="start-btn" class="control-button start-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="5 3 19 12 5 21 5 3"></polygon>
                         </svg>
                         시작
                     </button>
                     <button id="stop-btn" class="control-button stop-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="6" y="4" width="12" height="16"></rect>
                         </svg>
                         중지
                     </button>
                     <button id="reset-btn" class="control-button reset-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="23 4 23 10 17 10"></polyline>
                             <polyline points="1 20 1 14 7 14"></polyline>
                             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
@@ -229,17 +275,24 @@
                         <h2>로그 기록</h2>
                         <div class="logs-actions">
                             <button id="refresh-logs-btn" class="refresh-button">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
                                     <polyline points="23 4 23 10 17 10"></polyline>
                                     <polyline points="1 20 1 14 7 14"></polyline>
-                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15">
+                                    </path>
                                 </svg>
                                 새로고침
                             </button>
                             <button id="clear-logs-btn" class="clear-button">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
                                     <polyline points="3 6 5 6 21 6"></polyline>
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    <path
+                                        d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+                                    </path>
                                 </svg>
                                 지우기
                             </button>
@@ -277,53 +330,124 @@
                 </div>
             </section>
 
-            <!-- TODO 섹션 -->
-            <section id="todo-section" class="content-section">
-                <div class="card">
-                    <h2>
-                        할 일 목록
-                        <div class="filter-dropdown">
-                            <button class="filter-button">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-                                </svg>
-                                필터
-                            </button>
-                            <div class="filter-menu">
-                                <div class="filter-option active" data-filter="all">모든 할 일</div>
-                                <div class="filter-option" data-filter="active">완료되지 않은 할 일</div>
-                                <div class="filter-option" data-filter="completed">완료된 할 일</div>
-                                <div class="filter-option" data-filter="priority">우선순위 높음</div>
-                            </div>
-                        </div>
-                    </h2>
-
-                    <!-- 카테고리 필터 -->
-                    <div class="category-filters">
-                        <span class="category-filter active" data-category="all">전체</span>
-                        <span class="category-filter" data-category="game">게임</span>
-                        <span class="category-filter" data-category="daily">일상</span>
-                        <span class="category-filter" data-category="shopping">쇼핑</span>
+            <!-- 게임 스타일 TODO 섹션 -->
+            <section id="todo-section" class="content-section quest-section">
+                <!-- 퀘스트 헤더 -->
+                <div class="quest-header">
+                    <div class="quest-title">
+                        <h1>⚔️ 퀘스트 로그</h1>
                     </div>
-
-                    <!-- 할 일 추가 폼 -->
-                    <form class="todo-form" id="todo-form">
-                        <input type="text" class="todo-input" id="todo-input" placeholder="할 일을 입력하세요">
-                        <button type="submit" class="add-button">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="12" y1="5" x2="12" y2="19"></line>
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg>
-                            추가
-                        </button>
-                    </form>
-
-                    <!-- 할 일 목록 -->
-                    <ul class="todo-list" id="todo-list"></ul>
+                    <div class="character-info">
+                        <div class="character-avatar">M</div>
+                        <div class="character-stats">
+                            <div class="character-name">밍기</div>
+                            <div class="character-level">레벨 42 • 아케나</div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- TODO 통계 카드 -->
-                <div class="card todo-stats-card" id="todo-stats"></div>
+                <!-- 카테고리 섹션 -->
+                <div class="categories-section">
+                    <h2 class="categories-title">🏆 카테고리</h2>
+                    <div class="categories-grid">
+                        <div class="category-card active" data-category="game">
+                            <div class="category-header">
+                                <div class="category-icon">🎮</div>
+                                <div class="category-count">0</div>
+                            </div>
+                            <div class="category-name">게임 퀘스트</div>
+                            <div class="category-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 0%;"></div>
+                                </div>
+                                <span class="progress-text">0/0</span>
+                            </div>
+                        </div>
+
+                        <div class="category-card" data-category="daily">
+                            <div class="category-header">
+                                <div class="category-icon">📅</div>
+                                <div class="category-count">0</div>
+                            </div>
+                            <div class="category-name">일상 업무</div>
+                            <div class="category-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 0%;"></div>
+                                </div>
+                                <span class="progress-text">0/0</span>
+                            </div>
+                        </div>
+
+                        <div class="category-card" data-category="shopping">
+                            <div class="category-header">
+                                <div class="category-icon">🛒</div>
+                                <div class="category-count">0</div>
+                            </div>
+                            <div class="category-name">쇼핑 목록</div>
+                            <div class="category-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 0%;"></div>
+                                </div>
+                                <span class="progress-text">0/0</span>
+                            </div>
+                        </div>
+
+                        <div class="category-card" data-category="special">
+                            <div class="category-header">
+                                <div class="category-icon">⭐</div>
+                                <div class="category-count">0</div>
+                            </div>
+                            <div class="category-name">특별 임무</div>
+                            <div class="category-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 0%;"></div>
+                                </div>
+                                <span class="progress-text">0/0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 퀘스트 섹션 -->
+                <div class="tasks-section">
+                    <div class="tasks-header">
+                        <h2 class="tasks-title">📋 현재 퀘스트</h2>
+                        <button class="add-task-btn" id="addQuestBtn">
+                            <span>+</span>
+                            새 퀘스트
+                        </button>
+                    </div>
+
+                    <div class="task-list" id="questList">
+                        <!-- 퀘스트들이 여기에 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+
+                <!-- 통계 패널 -->
+                <div class="stats-panel">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="total-quests">0</div>
+                            <div class="stat-label">총 퀘스트</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="completed-quests">0</div>
+                            <div class="stat-label">완료됨</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="active-quests">0</div>
+                            <div class="stat-label">진행 중</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="completion-rate">0%</div>
+                            <div class="stat-label">완료율</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="experience-points">0</div>
+                            <div class="stat-label">경험치</div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- 설정 섹션 -->
@@ -355,7 +479,7 @@
                     </div>
                 </div>
 
-                <!-- 텔레그램 설정 카드 - 올바른 위치 -->
+                <!-- 텔레그램 설정 카드 -->
                 <div class="card telegram-settings-card">
                     <h2>📱 텔레그램 알림 설정</h2>
                     <div class="telegram-form">
@@ -370,7 +494,8 @@
                         <div class="telegram-config" id="telegram-config" style="display: none;">
                             <div class="form-group">
                                 <label for="bot-token">봇 토큰:</label>
-                                <input type="password" id="bot-token" placeholder="7903573798:AAGTXj_rk2xMygTee06OVVYlQhxqm95H2CU">
+                                <input type="password" id="bot-token"
+                                    placeholder="7903573798:AAGTXj_rk2xMygTee06OVVYlQhxqm95H2CU">
                                 <small class="form-help">@BotFather에서 받은 봇 토큰을 입력하세요</small>
                             </div>
 
@@ -382,13 +507,17 @@
 
                             <div class="telegram-actions">
                                 <button id="save-telegram-btn" class="telegram-button save">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
                                         <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
                                     </svg>
                                     저장
                                 </button>
                                 <button id="test-telegram-btn" class="telegram-button test">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
                                         <path d="M22 2L11 13"></path>
                                         <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
                                     </svg>
@@ -426,6 +555,51 @@
         </main>
     </div>
 
+    <!-- 새 퀘스트 추가 모달 -->
+    <div class="quest-modal" id="addQuestModal">
+        <div class="quest-modal-content">
+            <div class="quest-modal-header">새 퀘스트 추가</div>
+            <form id="addQuestForm">
+                <div class="form-group">
+                    <label class="form-label">퀘스트 이름</label>
+                    <input type="text" class="form-input" id="questTitle" placeholder="퀘스트 제목을 입력하세요" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">카테고리</label>
+                    <select class="form-select" id="questCategory">
+                        <option value="game">게임 퀘스트</option>
+                        <option value="daily">일상 업무</option>
+                        <option value="shopping">쇼핑 목록</option>
+                        <option value="special">특별 임무</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">우선순위</label>
+                    <select class="form-select" id="questPriority">
+                        <option value="low">낮음</option>
+                        <option value="medium">보통</option>
+                        <option value="high">높음</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">난이도</label>
+                    <select class="form-select" id="questDifficulty">
+                        <option value="1">⭐ (매우 쉬움)</option>
+                        <option value="2">⭐⭐ (쉬움)</option>
+                        <option value="3">⭐⭐⭐ (보통)</option>
+                        <option value="4">⭐⭐⭐⭐ (어려움)</option>
+                        <option value="5">⭐⭐⭐⭐⭐ (매우 어려움)</option>
+                    </select>
+                </div>
+                <div class="quest-modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeQuestModal()">취소</button>
+                    <button type="submit" class="btn btn-primary">퀘스트 추가</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="./script.js"></script>
 </body>
+
 </html>

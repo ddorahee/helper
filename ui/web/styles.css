@@ -21,6 +21,14 @@
     --highlight: rgba(255, 255, 255, 0.05);
     --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
+    /* 게임 스타일 색상 */
+    --quest-bg-dark: #0f0f23;
+    --quest-bg-card: #1a1a2e;
+    --quest-bg-item: #16213e;
+    --quest-text-primary: #e94560;
+    --quest-accent: #0f3460;
+    --quest-border: #2a2a3e;
+
     /* 애니메이션 */
     --transition-speed: 0.3s;
 }
@@ -47,6 +55,14 @@
     --border-color: #e5e7eb;
     --highlight: rgba(0, 0, 0, 0.05);
     --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+    /* 게임 스타일 라이트 모드 */
+    --quest-bg-dark: #f8fafc;
+    --quest-bg-card: #ffffff;
+    --quest-bg-item: #f1f5f9;
+    --quest-text-primary: #dc2626;
+    --quest-accent: #3b82f6;
+    --quest-border: #e2e8f0;
 }
 
 * {
@@ -56,7 +72,7 @@
 }
 
 html {
-    overflow-y: hidden; /* 전체 스크롤 제거 */
+    overflow-y: hidden;
 }
 
 body {
@@ -67,7 +83,7 @@ body {
     transition: background-color var(--transition-speed), color var(--transition-speed);
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
-    overflow-y: hidden; /* 전체 스크롤 제거 */
+    overflow-y: hidden;
     height: 100vh;
 }
 
@@ -329,7 +345,7 @@ body {
     text-align: center;
 }
 
-.mode-option input[type="radio"]:checked + .mode-card {
+.mode-option input[type="radio"]:checked+.mode-card {
     background-color: var(--primary-color);
     color: white;
     border-color: var(--primary-light);
@@ -369,7 +385,7 @@ body {
     text-align: center;
 }
 
-.time-option input[type="radio"]:checked + .time-card {
+.time-option input[type="radio"]:checked+.time-card {
     background-color: var(--primary-color);
     color: white;
     border-color: var(--primary-light);
@@ -526,15 +542,15 @@ body {
     transition: .4s;
 }
 
-input:checked + .slider {
+input:checked+.slider {
     background-color: var(--primary-color);
 }
 
-input:focus + .slider {
+input:focus+.slider {
     box-shadow: 0 0 1px var(--primary-color);
 }
 
-input:checked + .slider:before {
+input:checked+.slider:before {
     transform: translateX(22px);
 }
 
@@ -576,7 +592,8 @@ input:checked + .slider:before {
     gap: 0.5rem;
 }
 
-.refresh-button, .clear-button {
+.refresh-button,
+.clear-button {
     display: flex;
     align-items: center;
     padding: 0.5rem 0.8rem;
@@ -589,7 +606,8 @@ input:checked + .slider:before {
     transition: all var(--transition-speed);
 }
 
-.refresh-button svg, .clear-button svg {
+.refresh-button svg,
+.clear-button svg {
     width: 16px;
     height: 16px;
     margin-right: 0.3rem;
@@ -717,128 +735,351 @@ input:checked + .slider:before {
     background-color: var(--text-muted);
 }
 
-#todo-section {
+/* ========== 게임 스타일 퀘스트 섹션 ========== */
+
+.quest-section {
+    background: linear-gradient(135deg, var(--quest-bg-dark) 0%, var(--quest-bg-card) 100%);
+    border-radius: 15px;
+    padding: 20px;
+    gap: 20px;
+}
+
+/* 퀘스트 헤더 */
+.quest-header {
     display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid var(--quest-border);
 }
 
-/* TODO 입력 폼 */
-.todo-form {
+.quest-title h1 {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--quest-text-primary);
+    text-shadow: 0 0 10px rgba(233, 69, 96, 0.3);
+    margin: 0;
+}
+
+.character-info {
     display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    align-items: center;
+    gap: 15px;
 }
 
-.todo-input {
-    flex: 1;
-    padding: 0.7rem;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background-color: var(--bg-color);
-    color: var(--text-primary);
-    font-size: 0.9rem;
-}
-
-.todo-input:focus {
-    outline: none;
-    border-color: var(--primary-color);
-}
-
-.add-button {
+.character-avatar {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(45deg, var(--quest-text-primary), var(--warning-color));
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.3rem;
-    padding: 0.7rem 1rem;
-    background-color: var(--primary-color);
+    font-size: 20px;
+    font-weight: bold;
     color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all var(--transition-speed);
+    text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
 }
 
-.add-button:hover {
-    background-color: var(--primary-light);
-}
-
-.add-button svg {
-    width: 16px;
-    height: 16px;
-}
-
-/* TODO 목록 */
-.todo-list {
-    list-style: none;
+.character-stats {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    max-height: 350px;
-    overflow-y: auto;
+    gap: 5px;
 }
 
-.todo-item {
-    display: flex;
-    align-items: center;
-    padding: 0.8rem;
-    background-color: var(--bg-color);
-    border-radius: 6px;
-    border-left: 3px solid var(--primary-color);
-    transition: all var(--transition-speed);
+.character-name {
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--text-primary);
 }
 
-.todo-item.completed {
-    border-left-color: var(--success-color);
-    opacity: 0.7;
-}
-
-.todo-item.completed .todo-text {
-    text-decoration: line-through;
+.character-level {
+    font-size: 14px;
     color: var(--text-muted);
 }
 
-.todo-checkbox {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 18px;
-    height: 18px;
-    border: 2px solid var(--border-color);
-    border-radius: 4px;
-    margin-right: 0.8rem;
-    cursor: pointer;
-    position: relative;
-    transition: all var(--transition-speed);
+/* 카테고리 섹션 */
+.categories-section {
+    margin-bottom: 25px;
 }
 
-.todo-checkbox:checked {
-    background-color: var(--success-color);
+.categories-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--quest-text-primary);
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.categories-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 15px;
+}
+
+.category-card {
+    background: var(--quest-bg-item);
+    border-radius: 10px;
+    padding: 15px;
+    border: 2px solid var(--quest-border);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.category-card:hover {
+    border-color: var(--quest-text-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(233, 69, 96, 0.2);
+}
+
+.category-card.active {
+    border-color: var(--quest-text-primary);
+    background: linear-gradient(135deg, var(--quest-bg-item) 0%, rgba(233, 69, 96, 0.1) 100%);
+}
+
+.category-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.category-icon {
+    width: 30px;
+    height: 30px;
+    background: var(--quest-text-primary);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: white;
+}
+
+.category-count {
+    background: var(--quest-accent);
+    color: var(--text-primary);
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.category-name {
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--text-primary);
+    margin-bottom: 5px;
+}
+
+.category-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--quest-border);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--success-color), var(--warning-color));
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* 퀘스트 섹션 */
+.tasks-section {
+    margin-top: 30px;
+}
+
+.tasks-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.tasks-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--quest-text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.add-task-btn {
+    background: linear-gradient(45deg, var(--quest-text-primary), var(--warning-color));
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.add-task-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(233, 69, 96, 0.3);
+}
+
+/* 퀘스트 목록 */
+.task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.task-item {
+    background: var(--quest-bg-item);
+    border-radius: 10px;
+    padding: 15px;
+    border: 2px solid var(--quest-border);
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.task-item:hover {
+    border-color: var(--quest-text-primary);
+    transform: translateX(5px);
+}
+
+.task-item.completed {
+    opacity: 0.6;
     border-color: var(--success-color);
 }
 
-.todo-checkbox:checked::after {
+.task-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.task-checkbox {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--quest-border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    background: transparent;
+}
+
+.task-checkbox.checked {
+    background: var(--success-color);
+    border-color: var(--success-color);
+}
+
+.task-checkbox.checked::after {
     content: "✓";
     position: absolute;
     color: white;
-    font-size: 0.7rem;
+    font-size: 12px;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
 }
 
-.todo-text {
+.task-title {
     flex: 1;
-    font-size: 0.95rem;
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--text-primary);
 }
 
-.todo-actions {
+.task-item.completed .task-title {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+.task-priority {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.priority-high {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--danger-color);
+    border: 1px solid var(--danger-color);
+}
+
+.priority-medium {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--warning-color);
+    border: 1px solid var(--warning-color);
+}
+
+.priority-low {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+}
+
+.task-meta {
     display: flex;
-    gap: 0.4rem;
+    align-items: center;
+    gap: 15px;
+    margin-left: 32px;
+    font-size: 14px;
+    color: var(--text-muted);
 }
 
-.todo-button {
+.task-category {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.task-difficulty {
+    display: flex;
+    gap: 2px;
+}
+
+.difficulty-star {
+    width: 12px;
+    height: 12px;
+    background: var(--text-muted);
+    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+
+.difficulty-star.filled {
+    background: var(--warning-color);
+}
+
+.task-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.task-button {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -849,350 +1090,168 @@ input:checked + .slider:before {
     background-color: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: all var(--transition-speed);
+    transition: all 0.3s ease;
 }
 
-.todo-button:hover {
+.task-button:hover {
     background-color: var(--highlight);
     color: var(--text-primary);
 }
 
-.todo-button.delete:hover {
+.task-button.delete:hover {
     background-color: rgba(239, 68, 68, 0.1);
     color: var(--danger-color);
 }
 
-.todo-button svg {
+.task-button svg {
     width: 16px;
     height: 16px;
 }
 
-/* TODO 통계 카드 */
-.todo-stats-card {
-    display: flex;
-    justify-content: space-around;
-    text-align: center;
+/* 통계 패널 */
+.stats-panel {
+    background: var(--quest-bg-item);
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 25px;
+    border: 2px solid var(--quest-border);
 }
 
-.stat-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 20px;
+}
+
+.stat-card {
+    text-align: center;
 }
 
 .stat-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin-bottom: 0.2rem;
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--quest-text-primary);
+    text-shadow: 0 0 10px rgba(233, 69, 96, 0.3);
 }
 
 .stat-label {
-    font-size: 0.8rem;
+    font-size: 12px;
     color: var(--text-muted);
+    margin-top: 5px;
 }
 
-/* 카테고리 필터 */
-.category-filters {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 0.8rem;
-    flex-wrap: wrap;
-}
-
-.category-filter {
-    padding: 0.3rem 0.8rem;
-    border-radius: 15px;
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: all var(--transition-speed);
-    background-color: var(--bg-color);
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-}
-
-.category-filter.active {
-    background-color: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-}
-
-/* 할 일 카테고리 표시 */
-.todo-category {
-    font-size: 0.7rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 10px;
-    margin-left: 0.5rem;
-}
-
-.category-game {
-    background-color: rgba(139, 92, 246, 0.1);
-    color: #a78bfa;
-}
-
-.category-daily {
-    background-color: rgba(16, 185, 129, 0.1);
-    color: #34d399;
-}
-
-.category-shopping {
-    background-color: rgba(245, 158, 11, 0.1);
-    color: #fbbf24;
-}
-
-/* 할 일 필터 드롭다운 */
-.filter-dropdown {
-    position: relative;
-    display: inline-block;
-}
-
-.filter-button {
-    display: flex;
+/* 퀘스트 모달 */
+.quest-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 1000;
     align-items: center;
-    gap: 0.3rem;
-    background: none;
+    justify-content: center;
+}
+
+.quest-modal.show {
+    display: flex;
+}
+
+.quest-modal-content {
+    background: var(--quest-bg-card);
+    border-radius: 15px;
+    padding: 25px;
+    max-width: 500px;
+    width: 90%;
+    border: 2px solid var(--quest-border);
+}
+
+.quest-modal-header {
+    font-size: 20px;
+    font-weight: bold;
+    color: var(--quest-text-primary);
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--text-primary);
+    font-weight: bold;
+}
+
+.form-input,
+.form-select {
+    width: 100%;
+    padding: 12px;
+    background: var(--quest-bg-item);
+    border: 2px solid var(--quest-border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.form-input:focus,
+.form-select:focus {
+    outline: none;
+    border-color: var(--quest-text-primary);
+}
+
+.quest-modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.btn {
+    padding: 10px 20px;
     border: none;
-    color: var(--text-secondary);
-    font-size: 0.85rem;
+    border-radius: 8px;
+    font-weight: bold;
     cursor: pointer;
+    transition: all 0.3s ease;
 }
 
-.filter-button svg {
-    width: 16px;
-    height: 16px;
+.btn-primary {
+    background: linear-gradient(45deg, var(--quest-text-primary), var(--warning-color));
+    color: white;
 }
 
-.filter-button:hover {
+.btn-secondary {
+    background: var(--quest-border);
     color: var(--text-primary);
 }
 
-.filter-menu {
-    position: absolute;
-    right: 0;
-    top: 100%;
-    min-width: 150px;
-    background-color: var(--card-bg);
-    border-radius: 6px;
-    box-shadow: var(--shadow);
-    z-index: 100;
-    overflow: hidden;
-    display: none;
-}
-
-.filter-menu.show {
-    display: block;
-}
-
-.filter-option {
-    padding: 0.6rem 0.8rem;
-    cursor: pointer;
-    transition: all var(--transition-speed);
-    font-size: 0.85rem;
-}
-
-.filter-option:hover {
-    background-color: var(--highlight);
-}
-
-.filter-option.active {
-    color: var(--primary-color);
-}
-
-/* 우선순위 표시 */
-.priority-indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 0.5rem;
-}
-
-.priority-high {
-    background-color: var(--danger-color);
-}
-
-.priority-medium {
-    background-color: var(--warning-color);
-}
-
-.priority-low {
-    background-color: var(--success-color);
-}
-
-/* 빈 상태 메시지 */
-.empty-state {
-    text-align: center;
-    padding: 2rem;
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    font-style: italic;
-}
-
-.empty-state svg {
-    width: 48px;
-    height: 48px;
-    opacity: 0.3;
-    margin-bottom: 1rem;
+.btn:hover {
+    transform: translateY(-2px);
 }
 
 /* 스크롤바 스타일 */
-.todo-list::-webkit-scrollbar {
-    width: 6px;
+.task-list::-webkit-scrollbar {
+    width: 8px;
 }
 
-.todo-list::-webkit-scrollbar-track {
-    background: var(--bg-color);
-    border-radius: 3px;
+.task-list::-webkit-scrollbar-track {
+    background: var(--quest-bg-card);
+    border-radius: 4px;
 }
 
-.todo-list::-webkit-scrollbar-thumb {
-    background-color: var(--border-color);
-    border-radius: 3px;
+.task-list::-webkit-scrollbar-thumb {
+    background-color: var(--quest-border);
+    border-radius: 4px;
 }
 
-.todo-list::-webkit-scrollbar-thumb:hover {
+.task-list::-webkit-scrollbar-thumb:hover {
     background-color: var(--text-muted);
 }
 
-/* 애니메이션 */
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.7; }
-    100% { opacity: 1; }
-}
-
-/* 반응형 디자인 */
-@media (max-width: 992px) {
-    .sidebar {
-        width: 70px;
-    }
-
-    .sidebar-header h1,
-    .sidebar-status span,
-    .nav-button span,
-    .version-info,
-    .exit-button span {
-        display: none;
-    }
-
-    .sidebar-header {
-        justify-content: center;
-        padding: 0.8rem;
-    }
-
-    .app-logo {
-        margin-right: 0;
-    }
-
-    .sidebar-status {
-        justify-content: center;
-        padding: 0.8rem;
-    }
-
-    .nav-button {
-        justify-content: center;
-        padding: 0.8rem;
-    }
-
-    .nav-button.active {
-        border-left: none;
-        border-bottom: 3px solid var(--primary-color);
-    }
-
-    .exit-button {
-        padding: 0.8rem;
-        justify-content: center;
-    }
-
-    .content {
-        margin-left: 70px;
-    }
-}
-
-/* 작은 화면 대응 */
-@media (max-height: 768px) {
-    .timer-card {
-        padding: 0.8rem;
-    }
-
-    .timer-display {
-        font-size: 2.2rem;
-        margin: 0.6rem 0;
-    }
-
-    .card {
-        padding: 0.8rem;
-        margin-bottom: 0.6rem;
-    }
-
-    .card h2 {
-        margin-bottom: 0.6rem;
-    }
-
-    .mini-log-card {
-        padding: 0.6rem;
-        margin-top: 0.6rem;
-    }
-
-    .control-button {
-        padding: 0.6rem;
-    }
-}
-
-@media (max-height: 600px) {
-    .timer-display {
-        font-size: 1.8rem;
-        margin: 0.4rem 0;
-    }
-
-    .card h2 {
-        margin-bottom: 0.4rem;
-    }
-
-    .sidebar-header {
-        padding: 0.6rem;
-    }
-
-    .sidebar-status {
-        padding: 0.4rem 0.6rem;
-    }
-
-    .nav-button {
-        padding: 0.5rem 0.6rem;
-    }
-
-    .sidebar-footer {
-        padding: 0.4rem 0.6rem;
-    }
-
-    .time-value {
-        font-size: 1.3rem;
-    }
-
-    .time-unit {
-        font-size: 0.7rem;
-    }
-
-    .mode-icon {
-        width: 20px;
-        height: 20px;
-    }
-}
-
-/* 작은 화면에서 컨트롤 레이아웃 조정 */
-@media (max-width: 480px) {
-    .controls-container {
-        grid-template-columns: 1fr;
-    }
-
-    .settings-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .mode-options,
-    .time-options {
-        grid-template-columns: 1fr 1fr;
-    }
-}
-
+/* 텔레그램 설정 */
 .telegram-settings-card {
     margin-top: 1rem;
 }
@@ -1367,13 +1426,197 @@ input:checked + .slider:before {
     background-color: var(--primary-color);
 }
 
+/* 애니메이션 */
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}
+
 /* 반응형 디자인 */
+@media (max-width: 992px) {
+    .sidebar {
+        width: 70px;
+    }
+
+    .sidebar-header h1,
+    .sidebar-status span,
+    .nav-button span,
+    .version-info,
+    .exit-button span {
+        display: none;
+    }
+
+    .sidebar-header {
+        justify-content: center;
+        padding: 0.8rem;
+    }
+
+    .app-logo {
+        margin-right: 0;
+    }
+
+    .sidebar-status {
+        justify-content: center;
+        padding: 0.8rem;
+    }
+
+    .nav-button {
+        justify-content: center;
+        padding: 0.8rem;
+    }
+
+    .nav-button.active {
+        border-left: none;
+        border-bottom: 3px solid var(--primary-color);
+    }
+
+    .exit-button {
+        padding: 0.8rem;
+        justify-content: center;
+    }
+
+    .content {
+        margin-left: 70px;
+    }
+
+    /* 퀘스트 섹션 반응형 */
+    .quest-header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+
+    .categories-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* 작은 화면 대응 */
+@media (max-height: 768px) {
+    .timer-card {
+        padding: 0.8rem;
+    }
+
+    .timer-display {
+        font-size: 2.2rem;
+        margin: 0.6rem 0;
+    }
+
+    .card {
+        padding: 0.8rem;
+        margin-bottom: 0.6rem;
+    }
+
+    .card h2 {
+        margin-bottom: 0.6rem;
+    }
+
+    .mini-log-card {
+        padding: 0.6rem;
+        margin-top: 0.6rem;
+    }
+
+    .control-button {
+        padding: 0.6rem;
+    }
+
+    .quest-section {
+        padding: 15px;
+        gap: 15px;
+    }
+}
+
+@media (max-height: 600px) {
+    .timer-display {
+        font-size: 1.8rem;
+        margin: 0.4rem 0;
+    }
+
+    .card h2 {
+        margin-bottom: 0.4rem;
+    }
+
+    .sidebar-header {
+        padding: 0.6rem;
+    }
+
+    .sidebar-status {
+        padding: 0.4rem 0.6rem;
+    }
+
+    .nav-button {
+        padding: 0.5rem 0.6rem;
+    }
+
+    .sidebar-footer {
+        padding: 0.4rem 0.6rem;
+    }
+
+    .time-value {
+        font-size: 1.3rem;
+    }
+
+    .time-unit {
+        font-size: 0.7rem;
+    }
+
+    .mode-icon {
+        width: 20px;
+        height: 20px;
+    }
+}
+
+/* 작은 화면에서 컨트롤 레이아웃 조정 */
 @media (max-width: 480px) {
+    .controls-container {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .mode-options,
+    .time-options {
+        grid-template-columns: 1fr 1fr;
+    }
+
     .telegram-actions {
         flex-direction: column;
     }
 
     .telegram-button {
         flex: none;
+    }
+
+    /* 퀘스트 섹션 모바일 */
+    .categories-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .quest-modal-content {
+        padding: 20px;
+        width: 95%;
+    }
+
+    .quest-modal-actions {
+        flex-direction: column;
     }
 }
