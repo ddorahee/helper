@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -23,44 +24,55 @@ type ConfigData struct {
 	DarkMode        bool   `json:"dark_mode"`
 	SoundEnabled    bool   `json:"sound_enabled"`
 	AutoStartup     bool   `json:"auto_startup"`
+	WindowWidth     int    `json:"window_width"`
+	WindowHeight    int    `json:"window_height"`
 }
 
 // AppConfig는 애플리케이션 설정을 관리합니다
 type AppConfig struct {
+	// 앱 기본 정보
 	DevelopmentMode bool
 	Version         string
 	BuildDate       string
+
+	// 기능 설정
 	TelegramBot     *telegram.TelegramBot
 	TelegramEnabled bool
 	DarkMode        bool
 	SoundEnabled    bool
 	AutoStartup     bool
-	configFilePath  string
-	logFilePath     string
+
+	// UI 설정
+	WindowWidth  int
+	WindowHeight int
+
+	// 파일 경로
+	configFilePath string
+	logFilePath    string
+	dataDir        string
 }
 
 // NewAppConfig는 새로운 앱 설정을 생성합니다
 func NewAppConfig() *AppConfig {
 	cfg := &AppConfig{
-		DevelopmentMode: false,
+		// 기본값 설정
+		DevelopmentMode: Version == "dev",
 		Version:         Version,
 		BuildDate:       BuildDate,
 		TelegramEnabled: false,
-		DarkMode:        true,  // 기본값: 다크모드 켜짐
+		DarkMode:        true,  // 기본값: 다크모드
 		SoundEnabled:    true,  // 기본값: 소리 켜짐
 		AutoStartup:     false, // 기본값: 자동시작 꺼짐
+		WindowWidth:     1024,  // 기본 창 크기
+		WindowHeight:    768,
 	}
 
 	// 경로 설정
-	cfg.configFilePath = getConfigFilePath()
-	cfg.logFilePath = getLogFilePath()
+	cfg.dataDir = getAppDataDir()
+	cfg.configFilePath = filepath.Join(cfg.dataDir, "settings.json")
+	cfg.logFilePath = filepath.Join(cfg.dataDir, "app.log")
 
-	// 개발 모드 확인
-	if Version == "dev" {
-		cfg.DevelopmentMode = true
-	}
-
-	// 개발 모드일 때 환경 변수 설정
+	// 개발 모드 환경 변수 설정
 	if cfg.DevelopmentMode {
 		os.Setenv("DEV_MODE", "1")
 	}
@@ -100,21 +112,19 @@ func getAppDataDir() string {
 	return appDataDir
 }
 
-// getConfigFilePath는 설정 파일 경로를 반환합니다
-func getConfigFilePath() string {
-	appDataDir := getAppDataDir()
-	return filepath.Join(appDataDir, "settings.json")
-}
-
-// getLogFilePath는 로그 파일 경로를 반환합니다
-func getLogFilePath() string {
-	appDataDir := getAppDataDir()
-	return filepath.Join(appDataDir, "app.log")
-}
-
 // GetLogFilePath는 외부에서 로그 파일 경로를 가져올 수 있도록 합니다
 func (cfg *AppConfig) GetLogFilePath() string {
 	return cfg.logFilePath
+}
+
+// GetDataDir는 데이터 디렉토리 경로를 반환합니다
+func (cfg *AppConfig) GetDataDir() string {
+	return cfg.dataDir
+}
+
+// GetConfigFilePath는 설정 파일 경로를 반환합니다
+func (cfg *AppConfig) GetConfigFilePath() string {
+	return cfg.configFilePath
 }
 
 // dirExists는 디렉토리 존재 여부를 확인합니다
@@ -148,6 +158,12 @@ func (cfg *AppConfig) LoadSettings() error {
 	cfg.SoundEnabled = configData.SoundEnabled
 	cfg.AutoStartup = configData.AutoStartup
 
+	// 윈도우 크기 설정 (저장된 값이 있으면 사용)
+	if configData.WindowWidth > 0 && configData.WindowHeight > 0 {
+		cfg.WindowWidth = configData.WindowWidth
+		cfg.WindowHeight = configData.WindowHeight
+	}
+
 	// 텔레그램 봇 초기화
 	if configData.TelegramToken != "" && configData.TelegramChatID != "" {
 		cfg.TelegramBot = telegram.NewTelegramBot(configData.TelegramToken, configData.TelegramChatID)
@@ -164,6 +180,8 @@ func (cfg *AppConfig) SaveSettings() error {
 		DarkMode:        cfg.DarkMode,
 		SoundEnabled:    cfg.SoundEnabled,
 		AutoStartup:     cfg.AutoStartup,
+		WindowWidth:     cfg.WindowWidth,
+		WindowHeight:    cfg.WindowHeight,
 	}
 
 	// 텔레그램 설정 저장
@@ -217,6 +235,13 @@ func (cfg *AppConfig) SetTelegramEnabled(enabled bool) error {
 	return cfg.SaveSettings()
 }
 
+// SetWindowSize는 윈도우 크기를 설정하고 저장합니다
+func (cfg *AppConfig) SetWindowSize(width, height int) error {
+	cfg.WindowWidth = width
+	cfg.WindowHeight = height
+	return cfg.SaveSettings()
+}
+
 // GetModeText는 현재 모드의 텍스트 표현을 반환합니다
 func (cfg *AppConfig) GetModeText() string {
 	if cfg.DevelopmentMode {
@@ -228,4 +253,33 @@ func (cfg *AppConfig) GetModeText() string {
 // GetVersionInfo는 버전 정보를 반환합니다
 func (cfg *AppConfig) GetVersionInfo() string {
 	return cfg.Version + " (" + cfg.BuildDate + ")"
+}
+
+// IsProduction은 프로덕션 빌드인지 확인합니다
+func (cfg *AppConfig) IsProduction() bool {
+	return !cfg.DevelopmentMode && cfg.Version != "dev"
+}
+
+// GetUserAgent는 애플리케이션 User-Agent를 반환합니다
+func (cfg *AppConfig) GetUserAgent() string {
+	return fmt.Sprintf("DoumiBrowser/%s (%s; %s) WebView/1.0",
+		cfg.Version, runtime.GOOS, runtime.GOARCH)
+}
+
+// ValidateConfig는 설정 유효성을 검사합니다
+func (cfg *AppConfig) ValidateConfig() error {
+	// 윈도우 크기 검증
+	if cfg.WindowWidth < 800 || cfg.WindowHeight < 600 {
+		cfg.WindowWidth = 1024
+		cfg.WindowHeight = 768
+		cfg.SaveSettings()
+	}
+
+	// 텔레그램 설정 검증
+	if cfg.TelegramEnabled && cfg.TelegramBot == nil {
+		cfg.TelegramEnabled = false
+		cfg.SaveSettings()
+	}
+
+	return nil
 }
