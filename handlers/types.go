@@ -17,7 +17,6 @@ type StatusResponse struct {
 
 type SettingsResponse struct {
 	DarkMode        bool `json:"dark_mode"`
-	SoundEnabled    bool `json:"sound_enabled"`
 	AutoStartup     bool `json:"auto_startup"`
 	TelegramEnabled bool `json:"telegram_enabled"`
 }

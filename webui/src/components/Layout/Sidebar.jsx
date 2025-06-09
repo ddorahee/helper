@@ -2,7 +2,6 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {
     Home,
     FileText,
-    Scroll,
     Settings,
     LogOut,
     Package
@@ -15,7 +14,6 @@ import styles from './Sidebar.module.css'
 const navigationItems = [
     { path: '/', icon: Home, label: '메인 화면' },
     { path: '/logs', icon: FileText, label: '로그' },
-    { path: '/quests', icon: Scroll, label: '퀘스트 로그' },
     { path: '/settings', icon: Settings, label: '설정' }
 ]
 

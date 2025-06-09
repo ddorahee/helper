@@ -21,7 +21,6 @@ export default function SettingsPage() {
             if (result) {
                 const settingNames = {
                     darkMode: '다크 모드',
-                    soundEnabled: '소리 알림',
                     autoStartup: '시작 시 자동 실행',
                     telegramEnabled: '텔레그램 알림'
                 }
@@ -49,14 +48,6 @@ export default function SettingsPage() {
                             checked={state.settings.darkMode}
                             onChange={(checked) => handleSettingChange('darkMode', checked)}
                             label="다크 모드"
-                        />
-                    </div>
-
-                    <div className={styles.settingItem}>
-                        <Toggle
-                            checked={state.settings.soundEnabled}
-                            onChange={(checked) => handleSettingChange('soundEnabled', checked)}
-                            label="소리 알림"
                         />
                     </div>
 

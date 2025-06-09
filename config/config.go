@@ -22,7 +22,6 @@ type ConfigData struct {
 	TelegramChatID  string `json:"telegram_chat_id"`
 	TelegramEnabled bool   `json:"telegram_enabled"`
 	DarkMode        bool   `json:"dark_mode"`
-	SoundEnabled    bool   `json:"sound_enabled"`
 	AutoStartup     bool   `json:"auto_startup"`
 	WindowWidth     int    `json:"window_width"`
 	WindowHeight    int    `json:"window_height"`
@@ -39,7 +38,6 @@ type AppConfig struct {
 	TelegramBot     *telegram.TelegramBot
 	TelegramEnabled bool
 	DarkMode        bool
-	SoundEnabled    bool
 	AutoStartup     bool
 
 	// UI 설정
@@ -61,7 +59,6 @@ func NewAppConfig() *AppConfig {
 		BuildDate:       BuildDate,
 		TelegramEnabled: false,
 		DarkMode:        true,  // 기본값: 다크모드
-		SoundEnabled:    true,  // 기본값: 소리 켜짐
 		AutoStartup:     false, // 기본값: 자동시작 꺼짐
 		WindowWidth:     1024,  // 기본 창 크기
 		WindowHeight:    768,
@@ -155,7 +152,6 @@ func (cfg *AppConfig) LoadSettings() error {
 	// 설정 적용
 	cfg.TelegramEnabled = configData.TelegramEnabled
 	cfg.DarkMode = configData.DarkMode
-	cfg.SoundEnabled = configData.SoundEnabled
 	cfg.AutoStartup = configData.AutoStartup
 
 	// 윈도우 크기 설정 (저장된 값이 있으면 사용)
@@ -178,7 +174,6 @@ func (cfg *AppConfig) SaveSettings() error {
 	configData := ConfigData{
 		TelegramEnabled: cfg.TelegramEnabled,
 		DarkMode:        cfg.DarkMode,
-		SoundEnabled:    cfg.SoundEnabled,
 		AutoStartup:     cfg.AutoStartup,
 		WindowWidth:     cfg.WindowWidth,
 		WindowHeight:    cfg.WindowHeight,
@@ -214,12 +209,6 @@ func (cfg *AppConfig) SetTelegramConfig(token, chatID string) error {
 // SetDarkMode는 다크모드 설정을 업데이트하고 저장합니다
 func (cfg *AppConfig) SetDarkMode(enabled bool) error {
 	cfg.DarkMode = enabled
-	return cfg.SaveSettings()
-}
-
-// SetSoundEnabled는 소리 알림 설정을 업데이트하고 저장합니다
-func (cfg *AppConfig) SetSoundEnabled(enabled bool) error {
-	cfg.SoundEnabled = enabled
 	return cfg.SaveSettings()
 }
 

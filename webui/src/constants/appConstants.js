@@ -23,44 +23,6 @@ export const SECTIONS = {
     SETTINGS: 'settings'
 }
 
-// 퀘스트 카테고리
-export const QUEST_CATEGORIES = {
-    GAME: 'game',
-    DAILY: 'daily',
-    SHOPPING: 'shopping',
-    SPECIAL: 'special'
-}
-
-// 퀘스트 우선순위
-export const QUEST_PRIORITIES = {
-    LOW: 'low',
-    MEDIUM: 'medium',
-    HIGH: 'high'
-}
-
-// 카테고리 아이콘
-export const CATEGORY_ICONS = {
-    [QUEST_CATEGORIES.GAME]: '🎮',
-    [QUEST_CATEGORIES.DAILY]: '📅',
-    [QUEST_CATEGORIES.SHOPPING]: '🛒',
-    [QUEST_CATEGORIES.SPECIAL]: '⭐'
-}
-
-// 카테고리 이름
-export const CATEGORY_NAMES = {
-    [QUEST_CATEGORIES.GAME]: '게임 퀘스트',
-    [QUEST_CATEGORIES.DAILY]: '일상 업무',
-    [QUEST_CATEGORIES.SHOPPING]: '쇼핑 목록',
-    [QUEST_CATEGORIES.SPECIAL]: '특별 임무'
-}
-
-// 우선순위 라벨
-export const PRIORITY_LABELS = {
-    [QUEST_PRIORITIES.LOW]: '낮음',
-    [QUEST_PRIORITIES.MEDIUM]: '보통',
-    [QUEST_PRIORITIES.HIGH]: '높음'
-}
-
 // API 엔드포인트
 export const API_ENDPOINTS = {
     START: '/api/start',

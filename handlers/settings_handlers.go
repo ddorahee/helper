@@ -12,7 +12,6 @@ import (
 // SettingsConfigInterface - 설정 핸들러 전용 인터페이스
 type SettingsConfigInterface interface {
 	SetDarkMode(enabled bool) error
-	SetSoundEnabled(enabled bool) error
 	SetAutoStartup(enabled bool) error
 	SetTelegramEnabled(enabled bool) error
 }
@@ -58,9 +57,6 @@ func (h *SettingsHandler) HandleSettings(w http.ResponseWriter, r *http.Request)
 	case "dark_mode":
 		enabled := settingValue == "1"
 		err = config.SetDarkMode(enabled)
-	case "sound_enabled":
-		enabled := settingValue == "1"
-		err = config.SetSoundEnabled(enabled)
 	case "auto_startup":
 		enabled := settingValue == "1"
 		err = config.SetAutoStartup(enabled)
@@ -95,7 +91,6 @@ func (h *SettingsHandler) HandleLoadSettings(w http.ResponseWriter, r *http.Requ
 	// 임시로 기본값을 사용합니다.
 	settings := SettingsResponse{
 		DarkMode:        true,
-		SoundEnabled:    true,
 		AutoStartup:     false,
 		TelegramEnabled: false,
 	}

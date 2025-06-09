@@ -16,7 +16,6 @@ const initialState = {
     // 앱 설정
     settings: {
         darkMode: true,
-        soundEnabled: true,
         autoStartup: false,
         telegramEnabled: false
     },
@@ -212,9 +211,9 @@ export function AppProvider({ children }) {
                     actions.setRunning(status.running)
                 }
             } catch (error) {
-                // 오류 무시
+                // 오류 무시 (로그 출력 제거)
             }
-        }, 2000)
+        }, 5000) // 2초에서 5초로 증가
 
         return () => clearInterval(interval)
     }, [state.isRunning])

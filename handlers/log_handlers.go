@@ -28,14 +28,31 @@ func (h *LogHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 
 	// 보안: localhost만 허용
 	if !utils.IsLocalhost(r.Host) {
+		log.Printf("잘못된 호스트에서 요청: %s", r.Host)
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
+	log.Printf("로그 API 요청 수신: %s %s", r.Method, r.URL.Path)
+
 	// Config를 실제 타입으로 변환
 	config, ok := h.Config.(ConfigInterface)
 	if !ok {
-		http.Error(w, "Config interface error", http.StatusInternalServerError)
+		log.Printf("Config 인터페이스 변환 실패: %T", h.Config)
+		// 타입 변환 실패 시 기본 로그 반환
+		defaultLogs := []string{
+			fmt.Sprintf("%s [ERROR] Config 인터페이스 오류 발생", time.Now().Format("2006-01-02 15:04:05")),
+			fmt.Sprintf("%s [INFO] 기본 로그를 표시합니다", time.Now().Format("2006-01-02 15:04:05")),
+			fmt.Sprintf("%s [DEBUG] Config 타입: %T", time.Now().Format("2006-01-02 15:04:05"), h.Config),
+		}
+
+		response := map[string]interface{}{
+			"logs":    defaultLogs,
+			"success": true,
+			"message": "기본 로그 표시",
+		}
+
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 
@@ -50,6 +67,7 @@ func (h *LogHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("%s [INFO] 프로그램이 시작되었습니다.", time.Now().Format("2006-01-02 15:04:05")),
 			fmt.Sprintf("%s [INFO] 로그 시스템이 초기화되었습니다.", time.Now().Format("2006-01-02 15:04:05")),
 			fmt.Sprintf("%s [DEBUG] 로그 파일 경로: %s", time.Now().Format("2006-01-02 15:04:05"), logFilePath),
+			fmt.Sprintf("%s [INFO] 새로운 로그 파일이 생성됩니다.", time.Now().Format("2006-01-02 15:04:05")),
 		}
 
 		response := map[string]interface{}{
@@ -58,6 +76,7 @@ func (h *LogHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 			"message": "기본 로그를 생성했습니다.",
 		}
 
+		log.Printf("기본 로그 응답 전송, 로그 개수: %d", len(defaultLogs))
 		json.NewEncoder(w).Encode(response)
 		return
 	}
