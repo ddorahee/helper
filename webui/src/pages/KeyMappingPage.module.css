@@ -1,0 +1,274 @@
+.keyMappingPage {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    height: 100%;
+}
+
+/* 시스템 상태 카드 */
+.statusCard {
+    flex-shrink: 0;
+}
+
+.systemControls {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.statItem {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    background-color: var(--highlight);
+}
+
+.statLabel {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.statValue {
+    font-size: var(--font-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.statValue.running {
+    color: var(--success-color);
+}
+
+.statValue.stopped {
+    color: var(--text-muted);
+}
+
+/* 키 맵핑 목록 카드 */
+.mappingsCard {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 400px;
+}
+
+.loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: var(--spacing-xl);
+    color: var(--text-muted);
+}
+
+.emptyState {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: var(--spacing-xl);
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.emptyState p {
+    margin: var(--spacing-sm) 0;
+}
+
+/* 키 맵핑 목록 */
+.mappingsList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    max-height: 500px;
+    overflow-y: auto;
+    padding: var(--spacing-sm);
+}
+
+.mappingItem {
+    background-color: var(--highlight);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    transition: all var(--transition-speed);
+}
+
+.mappingItem:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 키 맵핑 헤더 */
+.mappingHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--spacing-sm);
+}
+
+.mappingInfo {
+    flex: 1;
+}
+
+.mappingName {
+    font-size: var(--font-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--spacing-xs) 0;
+}
+
+.mappingDetails {
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: center;
+}
+
+.startKey {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+}
+
+.startKey strong {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.mappingStatus .enabled {
+    color: var(--success-color);
+    font-weight: 500;
+}
+
+.mappingStatus .disabled {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* 키 맵핑 액션 */
+.mappingActions {
+    display: flex;
+    gap: var(--spacing-xs);
+}
+
+.actionButton {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: var(--spacing-xs);
+    border-radius: var(--border-radius);
+    transition: all var(--transition-speed);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+}
+
+.actionButton:hover {
+    background-color: var(--highlight);
+    color: var(--text-primary);
+}
+
+.deleteButton:hover {
+    color: var(--danger-color);
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+.toggleButton:hover {
+    color: var(--primary-color);
+    background-color: rgba(124, 58, 237, 0.1);
+}
+
+.editButton:hover {
+    color: var(--success-color);
+    background-color: rgba(16, 185, 129, 0.1);
+}
+
+/* 키 시퀀스 */
+.keySequence {
+    margin-bottom: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background-color: var(--bg-color);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+}
+
+.sequenceLabel {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-right: var(--spacing-sm);
+}
+
+.sequenceValue {
+    font-family: 'Courier New', monospace;
+    font-size: var(--font-sm);
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+/* 메타 정보 */
+.mappingMeta {
+    display: flex;
+    gap: var(--spacing-md);
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    border-top: 1px solid var(--border-color);
+    padding-top: var(--spacing-sm);
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+    .statsGrid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .mappingHeader {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .mappingDetails {
+        flex-direction: column;
+        gap: var(--spacing-xs);
+        align-items: flex-start;
+    }
+
+    .mappingActions {
+        align-self: flex-end;
+    }
+
+    .mappingMeta {
+        flex-direction: column;
+        gap: var(--spacing-xs);
+    }
+
+    .systemControls {
+        flex-direction: column;
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .statsGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .mappingItem {
+        padding: var(--spacing-sm);
+    }
+
+    .keySequence {
+        padding: var(--spacing-xs);
+    }
+
+    .sequenceValue {
+        font-size: var(--font-xs);
+    }
+}

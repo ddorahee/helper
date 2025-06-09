@@ -4,7 +4,8 @@ import {
     FileText,
     Settings,
     LogOut,
-    Package
+    Package,
+    Keyboard // 키 맵핑 아이콘 추가
 } from 'lucide-react'
 import { useApp } from '@/contexts/AppContext'
 import { appService } from '@services/appService'
@@ -13,6 +14,7 @@ import styles from './Sidebar.module.css'
 
 const navigationItems = [
     { path: '/', icon: Home, label: '메인 화면' },
+    { path: '/keymapping', icon: Keyboard, label: '키 맵핑' }, // 키 맵핑 메뉴 추가
     { path: '/logs', icon: FileText, label: '로그' },
     { path: '/settings', icon: Settings, label: '설정' }
 ]

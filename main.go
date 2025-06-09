@@ -1,3 +1,4 @@
+// main.go - 키 맵핑 시스템 통합
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 
 	"example.com/m/automation"
 	"example.com/m/config"
+	"example.com/m/keymapping"
 	"example.com/m/server"
 	"example.com/m/telegram"
 	"example.com/m/utils"
@@ -21,15 +23,16 @@ var webFiles embed.FS
 
 // Application 구조체
 type Application struct {
-	WebView         webview.WebView
-	Config          *config.AppConfig
-	TimerManager    *utils.TimerManager
-	KeyboardManager *automation.KeyboardManager
-	TelegramBot     *telegram.TelegramBot
-	Server          *server.Server
-	AppContext      context.Context
-	CancelFunc      context.CancelFunc
-	AutoStopTimer   *time.Timer
+	WebView           webview.WebView
+	Config            *config.AppConfig
+	TimerManager      *utils.TimerManager
+	KeyboardManager   *automation.KeyboardManager
+	KeyMappingManager *keymapping.KeyMappingManager // 키 맵핑 매니저 추가
+	TelegramBot       *telegram.TelegramBot
+	Server            *server.Server
+	AppContext        context.Context
+	CancelFunc        context.CancelFunc
+	AutoStopTimer     *time.Timer
 }
 
 // 인터페이스 구현 메서드들
@@ -43,6 +46,10 @@ func (app *Application) GetTimerManager() interface{} {
 
 func (app *Application) GetKeyboardManager() interface{} {
 	return app.KeyboardManager
+}
+
+func (app *Application) GetKeyMappingManager() interface{} {
+	return app.KeyMappingManager
 }
 
 func (app *Application) GetTelegramBot() interface{} {
@@ -103,11 +110,12 @@ func main() {
 
 	// 애플리케이션 초기화
 	app := &Application{
-		Config:          config.NewAppConfig(),
-		TimerManager:    utils.NewTimerManager(),
-		KeyboardManager: automation.NewKeyboardManager(),
-		AppContext:      ctx,
-		CancelFunc:      cancel,
+		Config:            config.NewAppConfig(),
+		TimerManager:      utils.NewTimerManager(),
+		KeyboardManager:   automation.NewKeyboardManager(),
+		KeyMappingManager: keymapping.NewKeyMappingManager(config.NewAppConfig().GetDataDir()), // 키 맵핑 매니저 초기화
+		AppContext:        ctx,
+		CancelFunc:        cancel,
 	}
 
 	// 텔레그램 봇 초기화
@@ -125,7 +133,7 @@ func main() {
 	// 라우트 설정
 	mux := app.Server.SetupRoutes()
 
-	// 핸들러 설정
+	// 핸들러 설정 (키 맵핑 핸들러 추가)
 	app.Server.SetupHandlers(app, mux)
 
 	// HTTP 서버 초기화
@@ -157,7 +165,7 @@ func (app *Application) initWebView() {
 	app.WebView = webview.New(debug)
 	defer app.WebView.Destroy()
 
-	app.WebView.SetTitle("도우미")
+	app.WebView.SetTitle("도우미 - 키 맵핑 시스템")
 	app.WebView.SetSize(1024, 768, webview.HintNone)
 
 	// JavaScript API 바인딩
@@ -181,6 +189,24 @@ func (app *Application) bindJavaScriptAPI() {
 	app.WebView.Bind("logMessage", func(message string) {
 		log.Printf("WebView: %s", message)
 	})
+
+	// 키 맵핑 관련 JavaScript API
+	app.WebView.Bind("startKeyMapping", func() bool {
+		err := app.KeyMappingManager.Start()
+		if err != nil {
+			log.Printf("키 맵핑 시작 실패: %v", err)
+			return false
+		}
+		return true
+	})
+
+	app.WebView.Bind("stopKeyMapping", func() {
+		app.KeyMappingManager.Stop()
+	})
+
+	app.WebView.Bind("getKeyMappingStatus", func() map[string]interface{} {
+		return app.KeyMappingManager.GetMappingStats()
+	})
 }
 
 // shutdown은 애플리케이션을 정리합니다
@@ -197,6 +223,11 @@ func (app *Application) shutdown() {
 
 	if app.KeyboardManager != nil && app.KeyboardManager.IsRunning() {
 		app.KeyboardManager.SetRunning(false)
+	}
+
+	// 키 맵핑 시스템 정리
+	if app.KeyMappingManager != nil && app.KeyMappingManager.IsRunning() {
+		app.KeyMappingManager.Stop()
 	}
 
 	if app.AutoStopTimer != nil {
