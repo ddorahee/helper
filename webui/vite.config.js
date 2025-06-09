@@ -4,6 +4,7 @@ import path from 'path'
 
 export default defineConfig({
     plugins: [react()],
+    base: '/', // 절대 경로 사용 (Go 서버와 맞춤)
     resolve: {
         alias: {
             '@': path.resolve(__dirname, './src'),

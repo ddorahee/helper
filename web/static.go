@@ -3,7 +3,7 @@ package web
 import (
 	"embed"
 	"io/fs"
-	"net/http"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -17,43 +17,58 @@ func SetupStaticRoutes(router *gin.Engine, webFiles embed.FS) {
 		panic("Failed to create web filesystem: " + err.Error())
 	}
 
-	// 정적 파일 핸들러
+	// 디버깅을 위한 파일 목록 출력
+	entries, _ := fs.ReadDir(webFS, ".")
+	log.Println("=== Available static files ===")
+	for _, entry := range entries {
+		log.Printf("- %s", entry.Name())
+		if entry.IsDir() {
+			subEntries, _ := fs.ReadDir(webFS, entry.Name())
+			for _, sub := range subEntries {
+				log.Printf("  - %s/%s", entry.Name(), sub.Name())
+			}
+		}
+	}
+	log.Println("===============================")
+
+	// NoRoute 핸들러 사용 (와일드카드 경로 대신)
 	router.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
 
+		log.Printf("NoRoute handling: %s", path)
+
 		// API 경로는 404 처리
 		if strings.HasPrefix(path, "/api/") {
-			c.JSON(http.StatusNotFound, gin.H{"error": "API endpoint not found"})
+			c.JSON(404, gin.H{"error": "API endpoint not found"})
 			return
 		}
 
-		// 루트 경로는 index.html로 리다이렉트
+		// 경로 정리
 		if path == "" || path == "/" {
 			path = "/index.html"
 		}
 
-		// 파일 확장자가 없으면 index.html 제공 (SPA 라우팅)
-		if !strings.Contains(filepath.Base(path), ".") {
-			path = "/index.html"
-		}
+		// 앞의 슬래시 제거
+		cleanPath := strings.TrimPrefix(path, "/")
 
-		// 앞의 "/" 제거
-		path = strings.TrimPrefix(path, "/")
+		log.Printf("Requesting: %s -> %s", path, cleanPath)
 
-		// 파일 읽기
-		fileContent, err := fs.ReadFile(webFS, path)
+		// 파일 읽기 시도
+		fileContent, err := fs.ReadFile(webFS, cleanPath)
 		if err != nil {
-			// 파일이 없으면 index.html 제공
+			log.Printf("File not found: %s, serving index.html for SPA", cleanPath)
+			// 파일이 없으면 index.html 제공 (SPA 라우팅)
 			fileContent, err = fs.ReadFile(webFS, "index.html")
 			if err != nil {
-				c.String(http.StatusNotFound, "File not found")
+				log.Printf("index.html not found: %v", err)
+				c.String(404, "File not found")
 				return
 			}
-			path = "index.html"
+			cleanPath = "index.html"
 		}
 
 		// Content-Type 설정
-		contentType := getContentType(path)
+		contentType := getContentType(cleanPath)
 		c.Header("Content-Type", contentType)
 
 		// CORS 헤더 추가
@@ -61,13 +76,13 @@ func SetupStaticRoutes(router *gin.Engine, webFiles embed.FS) {
 		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type")
 
-		// 캐시 헤더 설정 (정적 파일인 경우)
-		if isStaticFile(path) {
-			c.Header("Cache-Control", "public, max-age=31536000") // 1년
+		// 정적 파일에 대한 캐시 설정
+		if strings.HasPrefix(cleanPath, "assets/") {
+			c.Header("Cache-Control", "public, max-age=31536000")
 		}
 
-		// 파일 내용 반환
-		c.Data(http.StatusOK, contentType, fileContent)
+		log.Printf("Serving: %s (%s)", cleanPath, contentType)
+		c.Data(200, contentType, fileContent)
 	})
 }
 
@@ -114,17 +129,4 @@ func getContentType(path string) string {
 	default:
 		return "application/octet-stream"
 	}
-}
-
-func isStaticFile(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	staticExts := []string{".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
-		".woff", ".woff2", ".ttf", ".eot", ".webp", ".mp4", ".webm", ".mp3", ".wav"}
-
-	for _, staticExt := range staticExts {
-		if ext == staticExt {
-			return true
-		}
-	}
-	return false
 }
