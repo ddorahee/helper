@@ -99,15 +99,73 @@ class AppService {
 
     async getLogs() {
         try {
-            const response = await fetch(API_ENDPOINTS.LOGS)
-            if (!response.ok) throw new Error('Failed to get logs')
-            return await response.json()
+            console.log('API 요청 시작:', API_ENDPOINTS.LOGS)
+
+            const response = await fetch(API_ENDPOINTS.LOGS, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                // 캐시 방지
+                cache: 'no-cache'
+            })
+
+            console.log('응답 상태:', response.status, response.statusText)
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+            }
+
+            const contentType = response.headers.get('content-type')
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text()
+                console.error('응답이 JSON이 아님:', text)
+                throw new Error('서버에서 잘못된 응답 형식을 반환했습니다.')
+            }
+
+            const data = await response.json()
+            console.log('파싱된 데이터:', data)
+
+            // 데이터 구조 검증
+            if (!data || typeof data !== 'object') {
+                throw new Error('응답 데이터가 올바르지 않습니다.')
+            }
+
+            // logs 배열이 없으면 빈 배열로 초기화
+            if (!Array.isArray(data.logs)) {
+                data.logs = []
+            }
+
+            return data
+
         } catch (error) {
-            console.error('Failed to get logs:', error)
-            return { logs: [] }
+            console.error('getLogs 상세 오류:', error)
+
+            // 네트워크 오류인지 확인
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                return {
+                    logs: [
+                        '서버에 연결할 수 없습니다.',
+                        '프로그램이 실행 중인지 확인해주세요.',
+                        `오류: ${error.message}`
+                    ],
+                    success: false,
+                    error: 'network_error'
+                }
+            }
+
+            // 기타 오류
+            return {
+                logs: [
+                    '로그를 불러오는 중 오류가 발생했습니다.',
+                    `오류 내용: ${error.message}`,
+                    '새로고침 버튼을 눌러 다시 시도해주세요.'
+                ],
+                success: false,
+                error: error.message
+            }
         }
     }
-
     async clearLogs() {
         try {
             const response = await fetch(API_ENDPOINTS.LOGS_CLEAR, {

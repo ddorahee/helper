@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { RefreshCw, Trash2, Filter } from 'lucide-react'
 import { useApp } from '@/contexts/AppContext'
 import { appService } from '@services/appService'
@@ -9,68 +9,104 @@ import styles from './LogsPage.module.css'
 
 export default function LogsPage() {
     const { state, actions } = useApp()
-    const [logs, setLogs] = useState([])
+    const [logs, setLogs] = useState([]) // 빈 배열로 초기화
     const [loading, setLoading] = useState(false)
     const [autoRefresh, setAutoRefresh] = useState(true)
     const [showDebug, setShowDebug] = useState(false)
     const [filter, setFilter] = useState('')
 
-    // 로그 불러오기
-    const loadLogs = async () => {
+    // 로그 불러오기 함수를 useCallback으로 메모이제이션
+    const loadLogs = useCallback(async () => {
+        if (loading) return // 중복 요청 방지
+
         setLoading(true)
         try {
+            console.log('로그 데이터 요청 시작...')
             const data = await appService.getLogs()
-            setLogs(data.logs || [])
+            console.log('받은 로그 데이터:', data)
+
+            if (data && data.logs && Array.isArray(data.logs)) {
+                setLogs(data.logs)
+                console.log('로그 설정 완료, 개수:', data.logs.length)
+            } else {
+                console.warn('로그 데이터 형식이 올바르지 않음:', data)
+                setLogs([
+                    '로그 데이터를 불러올 수 없습니다.',
+                    '서버 응답 형식이 올바르지 않습니다.',
+                    JSON.stringify(data)
+                ])
+            }
         } catch (error) {
+            console.error('로그 로딩 오류:', error)
             actions.addLog('로그를 불러오는 중 오류가 발생했습니다.')
+            setLogs([
+                '로그를 불러오는 중 오류가 발생했습니다.',
+                `오류 내용: ${error.message || error}`,
+                '네트워크 연결을 확인하고 다시 시도해주세요.'
+            ])
         } finally {
             setLoading(false)
         }
-    }
+    }, [loading, actions])
 
     // 로그 지우기
-    const clearLogs = async () => {
+    const clearLogs = useCallback(async () => {
         if (!confirm('모든 로그를 삭제하시겠습니까?')) return
 
         try {
-            await appService.clearLogs()
-            setLogs([])
-            actions.addLog('로그가 삭제되었습니다.')
+            const success = await appService.clearLogs()
+            if (success) {
+                setLogs([])
+                actions.addLog('로그가 삭제되었습니다.')
+            } else {
+                actions.addLog('로그 삭제에 실패했습니다.')
+            }
         } catch (error) {
+            console.error('로그 삭제 오류:', error)
             actions.addLog('로그 삭제 중 오류가 발생했습니다.')
         }
-    }
+    }, [actions])
 
-    // 자동 새로고침
+    // 초기 로드 및 자동 새로고침
     useEffect(() => {
-        loadLogs()
-
+        let mounted = true
         let interval = null
-        if (autoRefresh) {
-            interval = setInterval(loadLogs, 10000) // 10초마다
+
+        // 초기 로드
+        if (mounted) {
+            loadLogs()
+        }
+
+        // 자동 새로고침 설정
+        if (autoRefresh && mounted) {
+            interval = setInterval(() => {
+                if (mounted) {
+                    loadLogs()
+                }
+            }, 10000) // 10초마다
         }
 
         return () => {
-            if (interval) clearInterval(interval)
+            mounted = false
+            if (interval) {
+                clearInterval(interval)
+            }
         }
-    }, [autoRefresh])
+    }, [autoRefresh, loadLogs])
 
-    // 로그 필터링
-    const filteredLogs = logs.filter(log => {
-        if (!showDebug && isDebugLog(log)) return false
-        if (filter && !log.toLowerCase().includes(filter.toLowerCase())) return false
-        return true
-    })
-
-    // 디버그 로그 판단
-    const isDebugLog = (log) => {
+    // 디버그 로그 판단 함수
+    const isDebugLog = useCallback((log) => {
+        if (typeof log !== 'string') return false
         const lowerLog = log.toLowerCase()
-        return lowerLog.includes('debug') || lowerLog.includes('초기화') ||
-            lowerLog.includes('설정') || lowerLog.includes('디버그')
-    }
+        return lowerLog.includes('debug') ||
+            lowerLog.includes('초기화') ||
+            lowerLog.includes('설정') ||
+            lowerLog.includes('디버그')
+    }, [])
 
-    // 로그 레벨 판단
-    const getLogLevel = (log) => {
+    // 로그 레벨 판단 함수
+    const getLogLevel = useCallback((log) => {
+        if (typeof log !== 'string') return 'info'
         const lowerLog = log.toLowerCase()
         if (lowerLog.includes('error') || lowerLog.includes('오류') || lowerLog.includes('실패')) {
             return 'error'
@@ -80,7 +116,21 @@ export default function LogsPage() {
             return 'debug'
         }
         return 'info'
-    }
+    }, [isDebugLog])
+
+    // 로그 필터링
+    const filteredLogs = useCallback(() => {
+        if (!Array.isArray(logs)) return []
+
+        return logs.filter(log => {
+            if (typeof log !== 'string') return false
+            if (!showDebug && isDebugLog(log)) return false
+            if (filter && !log.toLowerCase().includes(filter.toLowerCase())) return false
+            return true
+        })
+    }, [logs, showDebug, filter, isDebugLog])
+
+    const displayLogs = filteredLogs()
 
     return (
         <div className={styles.logsPage}>
@@ -114,15 +164,19 @@ export default function LogsPage() {
                     <div className={styles.logsContainer}>
                         {loading ? (
                             <div className={styles.logPlaceholder}>로그를 불러오는 중...</div>
-                        ) : filteredLogs.length === 0 ? (
-                            <div className={styles.logPlaceholder}>표시할 로그가 없습니다.</div>
+                        ) : displayLogs.length === 0 ? (
+                            <div className={styles.logPlaceholder}>
+                                표시할 로그가 없습니다.
+                                <br />
+                                <small>프로그램 활동이 시작되면 여기에 로그가 표시됩니다.</small>
+                            </div>
                         ) : (
-                            filteredLogs.map((log, index) => (
+                            displayLogs.map((log, index) => (
                                 <div
-                                    key={`${log}-${index}`}
+                                    key={`log-${index}-${log?.substring?.(0, 20) || index}`}
                                     className={`${styles.logEntry} ${styles[getLogLevel(log)]}`}
                                 >
-                                    {log}
+                                    {log || '(빈 로그 항목)'}
                                 </div>
                             ))
                         )}
@@ -154,7 +208,7 @@ export default function LogsPage() {
                         <input
                             type="text"
                             value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
+                            onChange={(e) => setFilter(e.target.value || '')}
                             placeholder="필터링할 텍스트 입력"
                             className={styles.filterInput}
                         />
