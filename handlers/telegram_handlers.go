@@ -1,4 +1,3 @@
-// handlers/telegram_handlers.go 수정
 package handlers
 
 import (
@@ -13,11 +12,6 @@ import (
 // TelegramConfigInterface - 텔레그램 핸들러 전용 인터페이스
 type TelegramConfigInterface interface {
 	SetTelegramConfig(token, chatID string) error
-}
-
-// TelegramBotInterface - 텔레그램 봇 인터페이스
-type TelegramBotInterface interface {
-	TestConnection() error
 }
 
 // isLocalhost 함수 추가

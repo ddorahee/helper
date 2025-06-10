@@ -59,4 +59,5 @@ type KeyboardManagerInterface interface {
 type TelegramBotInterface interface {
 	SendStartNotification(modeName string, duration time.Duration) error
 	SendCompletionNotification(modeName string, duration time.Duration) error
+	TestConnection() error // 이 메서드 추가
 }
