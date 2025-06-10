@@ -1,3 +1,4 @@
+// webui/src/components/KeyMapping/KeyMappingModal.jsx 수정
 import { useState, useEffect } from 'react'
 import { X, Plus, Trash2, HelpCircle } from 'lucide-react'
 import { keyMappingService } from '@services/keyMappingService'
@@ -19,6 +20,9 @@ export default function KeyMappingModal({
     const [availableKeys, setAvailableKeys] = useState({})
     const [errors, setErrors] = useState({})
     const [loading, setLoading] = useState(false)
+
+    // 시작키로 허용되는 키만 정의
+    const allowedStartKeys = ['delete', 'end']
 
     // 컴포넌트 마운트 시 사용 가능한 키 목록 로드
     useEffect(() => {
@@ -55,6 +59,32 @@ export default function KeyMappingModal({
         } catch (error) {
             console.error('사용 가능한 키 목록 로드 실패:', error)
         }
+    }
+
+    // 시작키용 키 목록 필터링
+    const getStartKeyOptions = () => {
+        return allowedStartKeys.map(key => ({
+            value: key,
+            label: key.toUpperCase()
+        }))
+    }
+
+    // 실행키용 키 목록 (시작키 제외)
+    const getExecutionKeyOptions = () => {
+        const options = []
+        Object.entries(availableKeys).forEach(([category, keys]) => {
+            // "시작 키" 카테고리는 제외
+            if (category !== '시작 키') {
+                keys.forEach(key => {
+                    options.push({
+                        value: key,
+                        label: key.toUpperCase(),
+                        category: category
+                    })
+                })
+            }
+        })
+        return options
     }
 
     // 폼 입력 변경 처리
@@ -119,12 +149,17 @@ export default function KeyMappingModal({
         if (!formData.start_key.trim()) {
             newErrors.start_key = '시작 키를 선택해주세요'
         } else {
-            // 중복 검사 (편집 모드가 아니거나 키가 변경된 경우)
-            const isDuplicate = existingStartKeys.includes(formData.start_key) &&
-                (!editingMapping || editingMapping.start_key !== formData.start_key)
+            // 허용된 시작키인지 확인
+            if (!allowedStartKeys.includes(formData.start_key.toLowerCase())) {
+                newErrors.start_key = '시작 키는 DELETE 또는 END만 사용할 수 있습니다'
+            } else {
+                // 중복 검사 (편집 모드가 아니거나 키가 변경된 경우)
+                const isDuplicate = existingStartKeys.includes(formData.start_key) &&
+                    (!editingMapping || editingMapping.start_key !== formData.start_key)
 
-            if (isDuplicate) {
-                newErrors.start_key = '이미 사용 중인 시작 키입니다'
+                if (isDuplicate) {
+                    newErrors.start_key = '이미 사용 중인 시작 키입니다'
+                }
             }
         }
 
@@ -174,6 +209,9 @@ export default function KeyMappingModal({
     // 모달이 열려있지 않으면 렌더링하지 않음
     if (!isOpen) return null
 
+    const startKeyOptions = getStartKeyOptions()
+    const executionKeyOptions = getExecutionKeyOptions()
+
     return (
         <div className={styles.modalOverlay} onClick={onClose}>
             <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
@@ -210,7 +248,7 @@ export default function KeyMappingModal({
                             <button
                                 type="button"
                                 className={styles.helpButton}
-                                title="이 키를 누르면 키 시퀀스가 실행됩니다"
+                                title="이 키를 누르면 키 시퀀스가 실행됩니다 (DELETE 또는 END만 사용 가능)"
                             >
                                 <HelpCircle size={14} />
                             </button>
@@ -221,15 +259,16 @@ export default function KeyMappingModal({
                             className={`${styles.select} ${errors.start_key ? styles.error : ''}`}
                         >
                             <option value="">시작 키를 선택하세요</option>
-                            {Object.entries(availableKeys).map(([category, keys]) => (
-                                <optgroup key={category} label={category}>
-                                    {keys.map(key => (
-                                        <option key={key} value={key}>{key.toUpperCase()}</option>
-                                    ))}
-                                </optgroup>
+                            {startKeyOptions.map(option => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
                             ))}
                         </select>
                         {errors.start_key && <span className={styles.errorText}>{errors.start_key}</span>}
+                        <small className={styles.formHelp}>
+                            안전을 위해 DELETE와 END 키만 시작키로 사용할 수 있습니다.
+                        </small>
                     </div>
 
                     {/* 키 시퀀스 */}
@@ -257,13 +296,18 @@ export default function KeyMappingModal({
                                             className={`${styles.keySelect} ${errors[`key_${index}`] ? styles.error : ''}`}
                                         >
                                             <option value="">키 선택</option>
-                                            {Object.entries(availableKeys).map(([category, keys]) => (
-                                                <optgroup key={category} label={category}>
-                                                    {keys.map(key => (
-                                                        <option key={key} value={key}>{key.toUpperCase()}</option>
-                                                    ))}
-                                                </optgroup>
-                                            ))}
+                                            {Object.entries(availableKeys).map(([category, keys]) => {
+                                                // 시작키 카테고리는 제외
+                                                if (category === '시작 키') return null
+
+                                                return (
+                                                    <optgroup key={category} label={category}>
+                                                        {keys.map(key => (
+                                                            <option key={key} value={key}>{key.toUpperCase()}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                )
+                                            })}
                                         </select>
                                         {errors[`key_${index}`] &&
                                             <span className={styles.errorText}>{errors[`key_${index}`]}</span>
