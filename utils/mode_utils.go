@@ -1,3 +1,4 @@
+// utils/mode_utils.go 수정
 package utils
 
 // GetModeName은 모드 코드를 한글 이름으로 변환합니다

@@ -30,8 +30,13 @@ export default function ControlButtons() {
             actions.setRunning(true)
             actions.setPaused(false)
 
-            // 서버에 시작 요청
-            const success = await appService.startOperation(apiMode, hours, wasTimerPaused)
+            // 서버에 시작 요청 (텔레그램 정보 포함)
+            const success = await appService.startOperation(
+                apiMode,
+                hours,
+                wasTimerPaused,
+                state.settings.telegramEnabled  // 텔레그램 활성화 상태 전달
+            )
 
             if (success) {
                 // 클라이언트 타이머 시작
@@ -47,27 +52,9 @@ export default function ControlButtons() {
                 actions.addLog(message)
                 showNotification('작업이 시작되었습니다', 'success')
 
-                // 텔레그램 시작 알림 (재개가 아닌 경우에만)
+                // 텔레그램 시작 알림 로그 (서버에서 처리됨)
                 if (!wasTimerPaused && state.settings.telegramEnabled) {
-                    try {
-                        // 별도 API 호출로 텔레그램 시작 알림 전송
-                        const telegramResponse = await fetch('/api/telegram/start-notification', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                            },
-                            body: `mode=${encodeURIComponent(modeName)}&duration=${hours}`
-                        })
-
-                        if (telegramResponse.ok) {
-                            actions.addLog('텔레그램 시작 알림이 전송되었습니다.')
-                        } else {
-                            actions.addLog('텔레그램 시작 알림 전송에 실패했습니다.')
-                        }
-                    } catch (telegramError) {
-                        console.error('텔레그램 알림 오류:', telegramError)
-                        actions.addLog('텔레그램 알림 전송 중 오류가 발생했습니다.')
-                    }
+                    actions.addLog('텔레그램 시작 알림이 전송됩니다.')
                 }
             } else {
                 // 실패 시 상태 복원

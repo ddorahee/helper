@@ -86,9 +86,14 @@ class AppService {
         }
     }
 
-    async startOperation(mode, autoStopHours, isResume = false) {
+    async startOperation(mode, autoStopHours, isResume = false, telegramEnabled = false) {
         try {
-            const body = `mode=${mode}&auto_stop=${autoStopHours}${isResume ? '&resume=true' : ''}`
+            console.log('작업 시작 요청:', { mode, autoStopHours, isResume, telegramEnabled })
+
+            const body = `mode=${mode}&auto_stop=${autoStopHours}${isResume ? '&resume=true' : ''}${telegramEnabled ? '&telegram_enabled=true' : ''}`
+
+            console.log('전송 데이터:', body)
+
             const response = await fetch(API_ENDPOINTS.START, {
                 method: 'POST',
                 headers: {
@@ -96,7 +101,17 @@ class AppService {
                 },
                 body
             })
-            if (!response.ok) throw new Error('Failed to start operation')
+
+            console.log('시작 응답:', response.status, response.statusText)
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('시작 요청 실패:', errorText)
+                throw new Error(`Failed to start operation: ${response.status}`)
+            }
+
+            const responseText = await response.text()
+            console.log('시작 성공:', responseText)
             return true
         } catch (error) {
             console.error('Failed to start operation:', error)

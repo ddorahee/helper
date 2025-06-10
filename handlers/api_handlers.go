@@ -1,3 +1,4 @@
+// handlers/api_handlers.go 수정
 package handlers
 
 import (
@@ -76,13 +77,24 @@ func (h *APIHandler) HandleStart(w http.ResponseWriter, r *http.Request) {
 	// 자동화 시작
 	go h.App.RunAutomation(mode)
 
-	// 텔레그램 알림
+	// 텔레그램 시작 알림 (재개가 아닌 경우에만)
 	if !isResume {
 		telegramBot := h.App.GetTelegramBot()
 		if telegramBot != nil {
-			go func() {
-				// 텔레그램 알림 로직 (기존 코드에서 가져옴)
-			}()
+			// 텔레그램 봇을 실제 타입으로 변환하여 알림 전송
+			if bot, ok := telegramBot.(TelegramBotInterface); ok {
+				go func() {
+					modeName := utils.GetModeName(mode)
+					duration := time.Duration(autoStopHours * float64(time.Hour))
+
+					err := bot.SendStartNotification(modeName, duration)
+					if err != nil {
+						fmt.Printf("텔레그램 시작 알림 전송 실패: %v\n", err)
+					} else {
+						fmt.Printf("텔레그램 시작 알림 전송 성공: %s\n", modeName)
+					}
+				}()
+			}
 		}
 	}
 
@@ -90,6 +102,7 @@ func (h *APIHandler) HandleStart(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Started")
 }
 
+// 나머지 핸들러 메서드들은 동일...
 func (h *APIHandler) HandleStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
