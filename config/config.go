@@ -272,3 +272,12 @@ func (cfg *AppConfig) ValidateConfig() error {
 
 	return nil
 }
+
+func (cfg *AppConfig) GetTelegramBot() *telegram.TelegramBot {
+	return cfg.TelegramBot
+}
+
+// IsTelegramEnabled는 텔레그램이 활성화되어 있는지 확인합니다
+func (cfg *AppConfig) IsTelegramEnabled() bool {
+	return cfg.TelegramEnabled && cfg.TelegramBot != nil
+}

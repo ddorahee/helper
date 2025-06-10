@@ -53,7 +53,10 @@ func (app *Application) GetKeyMappingManager() interface{} {
 }
 
 func (app *Application) GetTelegramBot() interface{} {
-	return app.TelegramBot
+	if app.Config.TelegramEnabled && app.Config.TelegramBot != nil {
+		return app.Config.TelegramBot
+	}
+	return nil
 }
 
 func (app *Application) SetupAutoStop(mode string, hours float64) {

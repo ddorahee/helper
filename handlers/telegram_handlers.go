@@ -1,3 +1,4 @@
+// handlers/telegram_handlers.go 수정
 package handlers
 
 import (
@@ -12,6 +13,11 @@ import (
 // TelegramConfigInterface - 텔레그램 핸들러 전용 인터페이스
 type TelegramConfigInterface interface {
 	SetTelegramConfig(token, chatID string) error
+}
+
+// TelegramBotInterface - 텔레그램 봇 인터페이스
+type TelegramBotInterface interface {
+	TestConnection() error
 }
 
 // isLocalhost 함수 추가
@@ -84,19 +90,24 @@ func (h *TelegramHandler) HandleTelegramTest(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// 텔레그램 봇 가져오기
 	telegramBot := h.App.GetTelegramBot()
 	if telegramBot == nil {
 		http.Error(w, "텔레그램이 설정되지 않았습니다", http.StatusBadRequest)
 		return
 	}
 
-	// 실제 테스트 연결 로직은 TelegramBot 인터페이스에 추가 필요
-	// err := telegramBot.TestConnection()
-	// if err != nil {
-	//     http.Error(w, fmt.Sprintf("테스트 실패: %v", err), http.StatusInternalServerError)
-	//     return
-	// }
+	// 텔레그램 봇을 실제 타입으로 변환
+	if bot, ok := telegramBot.(TelegramBotInterface); ok {
+		err := bot.TestConnection()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("테스트 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "테스트 메시지가 전송되었습니다")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "테스트 메시지가 전송되었습니다")
+	} else {
+		http.Error(w, "텔레그램 봇 인터페이스 오류", http.StatusInternalServerError)
+	}
 }
