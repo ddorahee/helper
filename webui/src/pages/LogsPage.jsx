@@ -11,17 +11,23 @@ export default function LogsPage() {
     const { actions } = useApp()
     const [logs, setLogs] = useState([])
     const [loading, setLoading] = useState(false)
-    const [autoRefresh, setAutoRefresh] = useState(false) // 기본값을 false로 변경
+    const [autoRefresh, setAutoRefresh] = useState(false)
     const [showDebug, setShowDebug] = useState(false)
     const [filter, setFilter] = useState('')
 
-    // ref를 사용하여 무한 루프 방지
+    // 가상화 스크롤을 위한 상태
+    const [scrollTop, setScrollTop] = useState(0)
+    const [containerHeight, setContainerHeight] = useState(400)
+    const containerRef = useRef(null)
     const loadingRef = useRef(false)
     const intervalRef = useRef(null)
 
+    // 가상화 설정
+    const ITEM_HEIGHT = 60 // 각 로그 항목의 고정 높이
+    const BUFFER_SIZE = 5 // 버퍼 항목 수
+
     // 로그 불러오기 함수
     const loadLogs = async () => {
-        // 이미 로딩 중이면 중단
         if (loadingRef.current) {
             console.log('이미 로딩 중이므로 요청 무시')
             return
@@ -36,14 +42,16 @@ export default function LogsPage() {
             console.log('받은 로그 데이터:', data)
 
             if (data && data.logs && Array.isArray(data.logs)) {
-                setLogs(data.logs)
-                console.log('로그 설정 완료, 개수:', data.logs.length)
+                // 로그 개수 제한 (최대 1000개)
+                const limitedLogs = data.logs.slice(-1000)
+                setLogs(limitedLogs)
+                console.log('로그 설정 완료, 개수:', limitedLogs.length)
             } else {
                 console.warn('로그 데이터 형식이 올바르지 않음:', data)
                 setLogs([
                     '로그 데이터를 불러올 수 없습니다.',
                     '서버 응답 형식이 올바르지 않습니다.',
-                    JSON.stringify(data)
+                    JSON.stringify(data).slice(0, 100) + '...'
                 ])
             }
         } catch (error) {
@@ -89,18 +97,16 @@ export default function LogsPage() {
         console.log('자동 새로고침 토글:', enabled)
         setAutoRefresh(enabled)
 
-        // 기존 인터벌 정리
         if (intervalRef.current) {
             clearInterval(intervalRef.current)
             intervalRef.current = null
         }
 
         if (enabled) {
-            // 새 인터벌 설정 (30초마다)
             intervalRef.current = setInterval(() => {
                 console.log('자동 새로고침 실행')
                 loadLogs()
-            }, 30000) // 30초로 증가
+            }, 30000)
         }
     }
 
@@ -109,14 +115,23 @@ export default function LogsPage() {
         console.log('LogsPage 마운트됨')
         loadLogs()
 
-        // 컴포넌트 언마운트 시 인터벌 정리
+        // 컨테이너 높이 설정
+        if (containerRef.current) {
+            setContainerHeight(containerRef.current.clientHeight)
+        }
+
         return () => {
             if (intervalRef.current) {
                 clearInterval(intervalRef.current)
                 intervalRef.current = null
             }
         }
-    }, []) // 빈 의존성 배열
+    }, [])
+
+    // 스크롤 핸들러
+    const handleScroll = (e) => {
+        setScrollTop(e.target.scrollTop)
+    }
 
     // 디버그 로그 판단 함수
     const isDebugLog = (log) => {
@@ -142,6 +157,13 @@ export default function LogsPage() {
         return 'info'
     }
 
+    // 로그 텍스트 자르기 함수
+    const truncateLog = (log, maxLength = 200) => {
+        if (!log || typeof log !== 'string') return ''
+        if (log.length <= maxLength) return log
+        return log.slice(0, maxLength) + '...'
+    }
+
     // 로그 필터링
     const filteredLogs = logs.filter(log => {
         if (typeof log !== 'string') return false
@@ -149,6 +171,15 @@ export default function LogsPage() {
         if (filter && !log.toLowerCase().includes(filter.toLowerCase())) return false
         return true
     })
+
+    // 가상화 계산
+    const totalHeight = filteredLogs.length * ITEM_HEIGHT
+    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_SIZE)
+    const endIndex = Math.min(
+        filteredLogs.length,
+        Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT) + BUFFER_SIZE
+    )
+    const visibleLogs = filteredLogs.slice(startIndex, endIndex)
 
     return (
         <div className={styles.logsPage}>
@@ -179,7 +210,11 @@ export default function LogsPage() {
                 }
             >
                 <div className={styles.logsContent}>
-                    <div className={styles.logsContainer}>
+                    <div
+                        ref={containerRef}
+                        className={styles.logsContainer}
+                        onScroll={handleScroll}
+                    >
                         {loading ? (
                             <div className={styles.logPlaceholder}>로그를 불러오는 중...</div>
                         ) : filteredLogs.length === 0 ? (
@@ -189,14 +224,38 @@ export default function LogsPage() {
                                 <small>프로그램 활동이 시작되면 여기에 로그가 표시됩니다.</small>
                             </div>
                         ) : (
-                            filteredLogs.map((log, index) => (
+                            <div
+                                className={styles.virtualList}
+                                style={{ height: totalHeight }}
+                            >
                                 <div
-                                    key={`log-${index}-${log?.substring?.(0, 20) || index}`}
-                                    className={`${styles.logEntry} ${styles[getLogLevel(log)]}`}
+                                    className={styles.virtualContent}
+                                    style={{
+                                        transform: `translateY(${startIndex * ITEM_HEIGHT}px)`,
+                                        height: (endIndex - startIndex) * ITEM_HEIGHT
+                                    }}
                                 >
-                                    {log || '(빈 로그 항목)'}
+                                    {visibleLogs.map((log, index) => {
+                                        const actualIndex = startIndex + index
+                                        return (
+                                            <div
+                                                key={`log-${actualIndex}`}
+                                                className={`${styles.logEntry} ${styles[getLogLevel(log)]}`}
+                                                style={{
+                                                    height: ITEM_HEIGHT,
+                                                    minHeight: ITEM_HEIGHT,
+                                                    maxHeight: ITEM_HEIGHT
+                                                }}
+                                                title={log} // 전체 텍스트를 툴팁으로 표시
+                                            >
+                                                <div className={styles.logText}>
+                                                    {truncateLog(log)}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
                                 </div>
-                            ))
+                            </div>
                         )}
                     </div>
                 </div>
@@ -230,6 +289,9 @@ export default function LogsPage() {
                             placeholder="필터링할 텍스트 입력"
                             className={styles.filterInput}
                         />
+                    </div>
+                    <div className={styles.logStats}>
+                        <small>총 {logs.length}개 로그 (표시: {filteredLogs.length}개)</small>
                     </div>
                 </div>
             </Card>
