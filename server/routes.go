@@ -1,9 +1,10 @@
-// server/routes.go - 키 맵핑 라우트 수정
+// server/routes.go 수정
 package server
 
 import (
 	"net/http"
 
+	"example.com/m/config"
 	"example.com/m/handlers"
 	"example.com/m/keymapping"
 )
@@ -20,9 +21,15 @@ type ApplicationInterface interface {
 }
 
 func (s *Server) SetupHandlers(app ApplicationInterface, mux *http.ServeMux) {
+	// Config를 실제 타입으로 변환
+	appConfig, ok := app.GetConfig().(*config.AppConfig)
+	if !ok {
+		panic("Config 타입 변환 실패")
+	}
+
 	// API 핸들러 생성
 	apiHandler := handlers.NewAPIHandler(app)
-	logHandler := handlers.NewLogHandler(s.Config)
+	logHandler := handlers.NewLogHandler(appConfig) // 직접 AppConfig 전달
 	settingsHandler := handlers.NewSettingsHandler(s.Config)
 	telegramHandler := handlers.NewTelegramHandler(s.Config, app)
 

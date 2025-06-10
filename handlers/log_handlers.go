@@ -1,3 +1,4 @@
+// handlers/log_handlers.go 수정
 package handlers
 
 import (
@@ -8,16 +9,17 @@ import (
 	"os"
 	"time"
 
+	"example.com/m/config"
 	"example.com/m/utils"
 )
 
 type LogHandler struct {
-	Config interface{}
+	Config *config.AppConfig // 직접 AppConfig 타입 사용
 }
 
-func NewLogHandler(config interface{}) *LogHandler {
+func NewLogHandler(appConfig *config.AppConfig) *LogHandler {
 	return &LogHandler{
-		Config: config,
+		Config: appConfig, // 직접 AppConfig 전달
 	}
 }
 
@@ -35,15 +37,13 @@ func (h *LogHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("로그 API 요청 수신: %s %s", r.Method, r.URL.Path)
 
-	// Config를 실제 타입으로 변환
-	config, ok := h.Config.(ConfigInterface)
-	if !ok {
-		log.Printf("Config 인터페이스 변환 실패: %T", h.Config)
-		// 타입 변환 실패 시 기본 로그 반환
+	// Config 직접 사용 (타입 변환 불필요)
+	if h.Config == nil {
+		log.Printf("Config가 nil입니다")
+		// 기본 로그 반환
 		defaultLogs := []string{
-			fmt.Sprintf("%s [ERROR] Config 인터페이스 오류 발생", time.Now().Format("2006-01-02 15:04:05")),
+			fmt.Sprintf("%s [ERROR] Config가 초기화되지 않았습니다", time.Now().Format("2006-01-02 15:04:05")),
 			fmt.Sprintf("%s [INFO] 기본 로그를 표시합니다", time.Now().Format("2006-01-02 15:04:05")),
-			fmt.Sprintf("%s [DEBUG] Config 타입: %T", time.Now().Format("2006-01-02 15:04:05"), h.Config),
 		}
 
 		response := map[string]interface{}{
@@ -56,7 +56,7 @@ func (h *LogHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logFilePath := config.GetLogFilePath()
+	logFilePath := h.Config.GetLogFilePath()
 	log.Printf("로그 파일 경로: %s", logFilePath)
 
 	// 로그 파일 존재 여부 확인
@@ -82,7 +82,7 @@ func (h *LogHandler) HandleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 로그 파일 읽기 시도
-	logContent, err := utils.ReadLogFile(config)
+	logContent, err := utils.ReadLogFile(h.Config)
 	if err != nil {
 		log.Printf("로그 파일 읽기 실패: %v", err)
 		errorLogs := []string{
@@ -140,14 +140,13 @@ func (h *LogHandler) HandleClearLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Config를 실제 타입으로 변환
-	config, ok := h.Config.(ConfigInterface)
-	if !ok {
-		http.Error(w, "Config interface error", http.StatusInternalServerError)
+	// Config 직접 사용
+	if h.Config == nil {
+		http.Error(w, "Config not initialized", http.StatusInternalServerError)
 		return
 	}
 
-	err := utils.ClearLogFile(config)
+	err := utils.ClearLogFile(h.Config)
 	if err != nil {
 		http.Error(w, "Failed to clear log file", http.StatusInternalServerError)
 		return
