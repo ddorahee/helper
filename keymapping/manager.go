@@ -1,4 +1,4 @@
-// keymapping/manager.go
+// keymapping/manager.go 완전한 코드
 package keymapping
 
 import (
@@ -328,9 +328,14 @@ func (km *KeyMappingManager) executeKeySequence(mapping *KeyMapping) {
 
 		log.Printf("키 입력: %s", key.Key)
 
-		// 딜레이 (마지막 키가 아닌 경우)
+		// 딜레이 (마지막 키가 아닌 경우, 딜레이가 0이 아닌 경우)
 		if i < len(mapping.Keys)-1 && key.Delay > 0 {
 			time.Sleep(time.Duration(key.Delay) * time.Millisecond)
+		}
+
+		// 중지 확인
+		if !km.IsRunning() {
+			break
 		}
 	}
 
@@ -351,6 +356,33 @@ func (km *KeyMappingManager) sendKey(key string) error {
 
 	// robotgo를 사용하여 키 입력
 	robotgo.KeyTap(key)
+
+	return nil
+}
+
+// validateKeys 키 유효성 검사 (딜레이 범위 수정: 0ms~1000ms)
+func (km *KeyMappingManager) validateKeys(startKey string, keys []MappedKey) error {
+	// 시작 키 검사 - home과 delete만 허용
+	if startKey == "" {
+		return fmt.Errorf("시작 키가 비어있습니다")
+	}
+
+	// 키 목록 검사
+	if len(keys) == 0 {
+		return fmt.Errorf("실행할 키가 없습니다")
+	}
+
+	// 각 키와 딜레이 검사 (딜레이 범위 수정: 0ms~1000ms)
+	for i, key := range keys {
+		if key.Key == "" {
+			return fmt.Errorf("키 %d가 비어있습니다", i+1)
+		}
+
+		// 딜레이 범위 수정: 0ms~1000ms
+		if key.Delay < 0 || key.Delay > 1000 {
+			return fmt.Errorf("키 %d의 딜레이는 0ms~1000ms 사이여야 합니다", i+1)
+		}
+	}
 
 	return nil
 }

@@ -1,3 +1,4 @@
+// keymapping/utils.go 완전한 코드
 package keymapping
 
 import (
@@ -7,33 +8,6 @@ import (
 	"strconv"
 	"strings"
 )
-
-// validateKeys 키 유효성 검사 (시작키 제한 추가)
-func (km *KeyMappingManager) validateKeys(startKey string, keys []MappedKey) error {
-	// 시작 키 검사 - home과 delete만 허용
-	if startKey == "" {
-		return fmt.Errorf("시작 키가 비어있습니다")
-	}
-
-	// 키 목록 검사
-	if len(keys) == 0 {
-		return fmt.Errorf("실행할 키가 없습니다")
-	}
-
-	// 각 키와 딜레이 검사 (딜레이 범위 수정: 0ms~1000ms)
-	for i, key := range keys {
-		if key.Key == "" {
-			return fmt.Errorf("키 %d가 비어있습니다", i+1)
-		}
-
-		// 딜레이 범위 수정: 0ms~1000ms
-		if key.Delay < 0 || key.Delay > 1000 {
-			return fmt.Errorf("키 %d의 딜레이는 0ms~1000ms 사이여야 합니다", i+1)
-		}
-	}
-
-	return nil
-}
 
 // keyCodeToString 키 코드를 문자열로 변환 (시작키만 포함)
 func (km *KeyMappingManager) keyCodeToString(keycode uint16) string {
@@ -126,7 +100,7 @@ func (km *KeyMappingManager) GetStartKeys() []string {
 	return []string{"delete", "end"}
 }
 
-// LoadConfig 설정 파일 로드 (기존 코드 유지)
+// LoadConfig 설정 파일 로드
 func (km *KeyMappingManager) LoadConfig() error {
 	// 파일이 존재하지 않으면 빈 설정으로 시작
 	if _, err := os.Stat(km.configFile); os.IsNotExist(err) {
@@ -169,7 +143,7 @@ func (km *KeyMappingManager) isValidStartKey(key string) bool {
 	return false
 }
 
-// SaveConfig 설정 파일 저장 (기존 코드 유지)
+// SaveConfig 설정 파일 저장
 func (km *KeyMappingManager) SaveConfig() error {
 	// 맵핑을 슬라이스로 변환
 	mappings := make([]*KeyMapping, 0, len(km.mappings))
@@ -189,7 +163,7 @@ func (km *KeyMappingManager) SaveConfig() error {
 	return nil
 }
 
-// ParseKeySequence 문자열에서 키 시퀀스 파싱 (기존 코드 유지)
+// ParseKeySequence 문자열에서 키 시퀀스 파싱
 func (km *KeyMappingManager) ParseKeySequence(sequence string) ([]MappedKey, error) {
 	if sequence == "" {
 		return nil, fmt.Errorf("키 시퀀스가 비어있습니다")
@@ -223,7 +197,7 @@ func (km *KeyMappingManager) ParseKeySequence(sequence string) ([]MappedKey, err
 	return result, nil
 }
 
-// parseKeyWithDelay 개별 키와 딜레이 파싱 (기존 코드 유지)
+// parseKeyWithDelay 개별 키와 딜레이 파싱 (딜레이 범위 수정: 0ms~1000ms)
 func (km *KeyMappingManager) parseKeyWithDelay(keyStr string) (string, int, error) {
 	// 기본 딜레이 (0ms로 변경)
 	defaultDelay := 0
@@ -261,7 +235,7 @@ func (km *KeyMappingManager) parseKeyWithDelay(keyStr string) (string, int, erro
 	return strings.ToLower(key), delay, nil
 }
 
-// FormatKeySequence 키 시퀀스를 문자열로 포맷팅 (기존 코드 유지)
+// FormatKeySequence 키 시퀀스를 문자열로 포맷팅
 func (km *KeyMappingManager) FormatKeySequence(keys []MappedKey) string {
 	if len(keys) == 0 {
 		return ""
@@ -296,7 +270,7 @@ func (km *KeyMappingManager) IsValidKey(key string) bool {
 	return false
 }
 
-// GetMappingStats 맵핑 통계 반환 (기존 코드 유지)
+// GetMappingStats 맵핑 통계 반환
 func (km *KeyMappingManager) GetMappingStats() map[string]interface{} {
 	km.mutex.RLock()
 	defer km.mutex.RUnlock()
