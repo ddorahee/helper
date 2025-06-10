@@ -13,6 +13,10 @@
     flex: 1;
     min-height: 300px;
     /* 최소 높이 보장 */
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    /* 카드 자체에서 오버플로우 제어 */
 }
 
 .logsActions {
@@ -32,10 +36,16 @@
     position: relative;
     min-height: 0;
     /* flex 아이템이 축소될 수 있도록 */
+    width: 100%;
+    max-width: 100%;
+    contain: layout size;
+    /* 레이아웃과 크기 제한 */
 }
 
 .logsContainer {
     height: 100%;
+    width: 100%;
+    max-width: 100%;
     overflow-x: hidden;
     /* 가로 스크롤 숨김 */
     overflow-y: auto;
@@ -52,9 +62,14 @@
     /* 긴 단어 줄바꿈 */
     word-break: break-all;
     /* 강제 줄바꿈 */
+    box-sizing: border-box;
+    /* 패딩 포함 크기 계산 */
+    contain: layout;
+    /* 레이아웃 제한 */
 }
 
 .logEntry {
+    display: block;
     margin: 0;
     padding: var(--spacing-xs) 0;
     border-bottom: 1px solid rgba(128, 128, 128, 0.1);
@@ -64,13 +79,21 @@
     /* 긴 단어 줄바꿈 */
     word-break: break-all;
     /* 모든 문자에서 줄바꿈 허용 */
-    overflow-wrap: break-word;
-    /* 브라우저 호환성 */
+    overflow-wrap: anywhere;
+    /* 최신 브라우저 지원 */
     color: var(--text-secondary);
+    width: 100%;
+    /* 전체 너비 사용 */
     max-width: 100%;
     /* 부모 컨테이너 너비 제한 */
+    box-sizing: border-box;
+    /* 패딩 포함 크기 계산 */
     hyphens: auto;
     /* 하이픈으로 단어 분리 */
+    overflow: hidden;
+    /* 내용이 넘치면 숨김 */
+    text-overflow: ellipsis;
+    /* 말줄임표 표시 */
 }
 
 .logEntry:last-child {
@@ -254,4 +277,40 @@
 .logEntry.debug::before {
     content: "🔍 ";
     margin-right: var(--spacing-xs);
+}
+
+/* 강제 텍스트 제어 */
+.logEntry * {
+    max-width: 100% !important;
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
+}
+
+/* 테이블 형태 로그 처리 */
+.logEntry pre {
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+}
+
+/* 긴 파일 경로 처리 */
+.logEntry:contains("C:\\") {
+    font-size: calc(var(--font-sm) * 0.9);
+    line-height: 1.3;
+}
+
+/* 전체 앱 컨테이너 오버플로우 제어 */
+.logsPage * {
+    box-sizing: border-box;
+}
+
+/* 최후의 수단: 모든 텍스트 강제 제어 */
+.logsContainer,
+.logsContainer * {
+    overflow-wrap: anywhere !important;
+    word-break: break-all !important;
+    hyphens: auto !important;
+    max-width: 100% !important;
 }
