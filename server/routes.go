@@ -29,9 +29,9 @@ func (s *Server) SetupHandlers(app ApplicationInterface, mux *http.ServeMux) {
 
 	// API 핸들러 생성
 	apiHandler := handlers.NewAPIHandler(app)
-	logHandler := handlers.NewLogHandler(appConfig) // 직접 AppConfig 전달
-	settingsHandler := handlers.NewSettingsHandler(s.Config)
-	telegramHandler := handlers.NewTelegramHandler(s.Config, app)
+	logHandler := handlers.NewLogHandler(appConfig)                // 직접 AppConfig 전달
+	settingsHandler := handlers.NewSettingsHandler(appConfig)      // 직접 AppConfig 전달 (수정됨)
+	telegramHandler := handlers.NewTelegramHandler(appConfig, app) // 직접 AppConfig 전달 (수정됨)
 
 	// 키 맵핑 핸들러 생성 (타입 어설션 수정)
 	if keyMappingManagerInterface := app.GetKeyMappingManager(); keyMappingManagerInterface != nil {

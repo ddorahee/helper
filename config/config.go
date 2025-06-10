@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -135,17 +136,24 @@ func dirExists(dirPath string) bool {
 
 // LoadSettings는 파일에서 설정을 로드합니다
 func (cfg *AppConfig) LoadSettings() error {
+	log.Printf("설정 로드 시작: %s", cfg.configFilePath)
+
 	if _, err := os.Stat(cfg.configFilePath); os.IsNotExist(err) {
+		log.Printf("설정 파일이 존재하지 않음, 기본값 사용")
 		return nil
 	}
 
 	data, err := os.ReadFile(cfg.configFilePath)
 	if err != nil {
+		log.Printf("설정 파일 읽기 실패: %v", err)
 		return err
 	}
 
+	log.Printf("설정 파일 내용: %s", string(data))
+
 	var configData ConfigData
 	if err := json.Unmarshal(data, &configData); err != nil {
+		log.Printf("설정 파일 파싱 실패: %v", err)
 		return err
 	}
 
@@ -153,6 +161,9 @@ func (cfg *AppConfig) LoadSettings() error {
 	cfg.TelegramEnabled = configData.TelegramEnabled
 	cfg.DarkMode = configData.DarkMode
 	cfg.AutoStartup = configData.AutoStartup
+
+	log.Printf("로드된 설정: DarkMode=%t, AutoStartup=%t, TelegramEnabled=%t",
+		cfg.DarkMode, cfg.AutoStartup, cfg.TelegramEnabled)
 
 	// 윈도우 크기 설정 (저장된 값이 있으면 사용)
 	if configData.WindowWidth > 0 && configData.WindowHeight > 0 {
@@ -164,6 +175,7 @@ func (cfg *AppConfig) LoadSettings() error {
 	if configData.TelegramToken != "" && configData.TelegramChatID != "" {
 		cfg.TelegramBot = telegram.NewTelegramBot(configData.TelegramToken, configData.TelegramChatID)
 		cfg.TelegramEnabled = true
+		log.Printf("텔레그램 봇 초기화 완료")
 	}
 
 	return nil
@@ -171,6 +183,15 @@ func (cfg *AppConfig) LoadSettings() error {
 
 // SaveSettings는 설정을 파일에 저장합니다
 func (cfg *AppConfig) SaveSettings() error {
+	log.Printf("설정 저장 시작: %s", cfg.configFilePath)
+
+	// 디렉토리가 없으면 생성
+	configDir := filepath.Dir(cfg.configFilePath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		log.Printf("설정 디렉토리 생성 실패: %v", err)
+		return fmt.Errorf("설정 디렉토리 생성 실패: %v", err)
+	}
+
 	configData := ConfigData{
 		TelegramEnabled: cfg.TelegramEnabled,
 		DarkMode:        cfg.DarkMode,
@@ -183,24 +204,49 @@ func (cfg *AppConfig) SaveSettings() error {
 	if cfg.TelegramBot != nil {
 		configData.TelegramToken = cfg.TelegramBot.Token
 		configData.TelegramChatID = cfg.TelegramBot.ChatID
+		log.Printf("텔레그램 토큰과 채팅ID 저장됨")
 	}
+
+	log.Printf("저장할 설정: DarkMode=%t, AutoStartup=%t, TelegramEnabled=%t",
+		configData.DarkMode, configData.AutoStartup, configData.TelegramEnabled)
 
 	jsonData, err := json.MarshalIndent(configData, "", "  ")
 	if err != nil {
-		return err
+		log.Printf("JSON 마샬링 실패: %v", err)
+		return fmt.Errorf("JSON 마샬링 실패: %v", err)
 	}
 
-	return os.WriteFile(cfg.configFilePath, jsonData, 0644)
+	log.Printf("저장할 JSON 데이터: %s", string(jsonData))
+
+	err = os.WriteFile(cfg.configFilePath, jsonData, 0644)
+	if err != nil {
+		log.Printf("설정 파일 쓰기 실패: %v", err)
+		return fmt.Errorf("설정 파일 쓰기 실패: %v", err)
+	}
+
+	log.Printf("설정 저장 성공")
+	return nil
 }
 
 // SetTelegramConfig는 텔레그램 설정을 업데이트하고 저장합니다
+// SetTelegramConfig는 텔레그램 설정을 업데이트하고 저장합니다 (디버깅 강화)
 func (cfg *AppConfig) SetTelegramConfig(token, chatID string) error {
+	log.Printf("텔레그램 봇 설정 업데이트: token=%s..., chatID=%s",
+		func() string {
+			if len(token) > 10 {
+				return token[:10]
+			}
+			return token
+		}(), chatID)
+
 	if token != "" && chatID != "" {
 		cfg.TelegramBot = telegram.NewTelegramBot(token, chatID)
 		cfg.TelegramEnabled = true
+		log.Printf("텔레그램 봇 생성 및 활성화")
 	} else {
 		cfg.TelegramEnabled = false
 		cfg.TelegramBot = nil
+		log.Printf("텔레그램 봇 비활성화")
 	}
 
 	return cfg.SaveSettings()
@@ -208,18 +254,21 @@ func (cfg *AppConfig) SetTelegramConfig(token, chatID string) error {
 
 // SetDarkMode는 다크모드 설정을 업데이트하고 저장합니다
 func (cfg *AppConfig) SetDarkMode(enabled bool) error {
+	log.Printf("다크모드 설정 변경: %t -> %t", cfg.DarkMode, enabled)
 	cfg.DarkMode = enabled
 	return cfg.SaveSettings()
 }
 
-// SetAutoStartup는 자동 시작 설정을 업데이트하고 저장합니다
+// SetAutoStartup는 자동 시작 설정을 업데이트하고 저장합니다 (디버깅 강화)
 func (cfg *AppConfig) SetAutoStartup(enabled bool) error {
+	log.Printf("자동시작 설정 변경: %t -> %t", cfg.AutoStartup, enabled)
 	cfg.AutoStartup = enabled
 	return cfg.SaveSettings()
 }
 
-// SetTelegramEnabled는 텔레그램 활성화 설정을 업데이트하고 저장합니다
+// SetTelegramEnabled는 텔레그램 활성화 설정을 업데이트하고 저장합니다 (디버깅 강화)
 func (cfg *AppConfig) SetTelegramEnabled(enabled bool) error {
+	log.Printf("텔레그램 설정 변경: %t -> %t", cfg.TelegramEnabled, enabled)
 	cfg.TelegramEnabled = enabled
 	return cfg.SaveSettings()
 }

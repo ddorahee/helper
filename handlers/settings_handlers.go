@@ -1,3 +1,4 @@
+// handlers/settings_handlers.go 완전 수정
 package handlers
 
 import (
@@ -6,23 +7,17 @@ import (
 	"log"
 	"net/http"
 
+	"example.com/m/config"
 	"example.com/m/utils"
 )
 
-// SettingsConfigInterface - 설정 핸들러 전용 인터페이스
-type SettingsConfigInterface interface {
-	SetDarkMode(enabled bool) error
-	SetAutoStartup(enabled bool) error
-	SetTelegramEnabled(enabled bool) error
-}
-
 type SettingsHandler struct {
-	Config interface{}
+	Config *config.AppConfig // 직접 AppConfig 타입 사용
 }
 
-func NewSettingsHandler(config interface{}) *SettingsHandler {
+func NewSettingsHandler(appConfig *config.AppConfig) *SettingsHandler {
 	return &SettingsHandler{
-		Config: config,
+		Config: appConfig, // 직접 AppConfig 전달
 	}
 }
 
@@ -37,17 +32,20 @@ func (h *SettingsHandler) HandleSettings(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Config를 실제 타입으로 변환
-	config, ok := h.Config.(SettingsConfigInterface)
-	if !ok {
-		http.Error(w, "Config interface error", http.StatusInternalServerError)
+	// Config 직접 사용
+	if h.Config == nil {
+		log.Printf("Config가 nil입니다")
+		http.Error(w, "Config not initialized", http.StatusInternalServerError)
 		return
 	}
 
 	settingType := r.FormValue("type")
 	settingValue := r.FormValue("value")
 
+	log.Printf("설정 요청 받음: type=%s, value=%s", settingType, settingValue)
+
 	if settingType == "" || settingValue == "" {
+		log.Printf("필수 파라미터 누락: type=%s, value=%s", settingType, settingValue)
 		http.Error(w, "Missing parameters", http.StatusBadRequest)
 		return
 	}
@@ -56,26 +54,32 @@ func (h *SettingsHandler) HandleSettings(w http.ResponseWriter, r *http.Request)
 	switch settingType {
 	case "dark_mode":
 		enabled := settingValue == "1"
-		err = config.SetDarkMode(enabled)
+		log.Printf("다크모드 설정 변경: %t", enabled)
+		err = h.Config.SetDarkMode(enabled)
 	case "auto_startup":
 		enabled := settingValue == "1"
-		err = config.SetAutoStartup(enabled)
+		log.Printf("자동시작 설정 변경: %t", enabled)
+		err = h.Config.SetAutoStartup(enabled)
 	case "telegram_enabled":
 		enabled := settingValue == "1"
-		err = config.SetTelegramEnabled(enabled)
+		log.Printf("텔레그램 설정 변경: %t", enabled)
+		err = h.Config.SetTelegramEnabled(enabled)
 	case "mode", "time":
 		// 로그만 기록
 		log.Printf("설정 변경: %s = %s", settingType, settingValue)
 	default:
+		log.Printf("알 수 없는 설정 타입: %s", settingType)
 		http.Error(w, "Unknown setting type", http.StatusBadRequest)
 		return
 	}
 
 	if err != nil {
+		log.Printf("설정 저장 실패: %v", err)
 		http.Error(w, fmt.Sprintf("설정 저장 실패: %v", err), http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("설정 저장 성공: %s = %s", settingType, settingValue)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Settings updated")
 }
@@ -86,14 +90,23 @@ func (h *SettingsHandler) HandleLoadSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// 여기서는 실제 설정값을 가져와야 하는데,
-	// 인터페이스에서 개별 설정값을 가져오는 메서드가 필요합니다.
-	// 임시로 기본값을 사용합니다.
-	settings := SettingsResponse{
-		DarkMode:        true,
-		AutoStartup:     false,
-		TelegramEnabled: false,
+	log.Printf("설정 로드 요청 받음")
+
+	if h.Config == nil {
+		log.Printf("Config가 nil입니다")
+		http.Error(w, "Config not initialized", http.StatusInternalServerError)
+		return
 	}
+
+	// 실제 설정값 반환
+	settings := SettingsResponse{
+		DarkMode:        h.Config.DarkMode,
+		AutoStartup:     h.Config.AutoStartup,
+		TelegramEnabled: h.Config.TelegramEnabled,
+	}
+
+	log.Printf("설정 로드 결과: DarkMode=%t, AutoStartup=%t, TelegramEnabled=%t",
+		settings.DarkMode, settings.AutoStartup, settings.TelegramEnabled)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(settings)

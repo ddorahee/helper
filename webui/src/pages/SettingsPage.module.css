@@ -1,3 +1,4 @@
+/* webui/src/pages/SettingsPage.module.css 수정 */
 .settingsPage {
     display: flex;
     flex-direction: column;
@@ -13,7 +14,52 @@
 .settingItem {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.settingItem:last-child {
+    border-bottom: none;
+}
+
+.savingIndicator {
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    font-style: italic;
+    margin-left: var(--spacing-sm);
+}
+
+.debugButtons {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+.debugInfo {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md);
+    background-color: var(--highlight);
+    border-radius: var(--border-radius);
+    border-left: 4px solid var(--primary-color);
+}
+
+.debugInfo h4 {
+    margin: 0 0 var(--spacing-sm) 0;
+    color: var(--text-primary);
+    font-size: var(--font-sm);
+}
+
+.debugInfo ul {
+    margin: 0;
+    padding-left: var(--spacing-lg);
+    list-style: disc;
+}
+
+.debugInfo li {
+    color: var(--text-secondary);
+    font-size: var(--font-sm);
+    margin-bottom: var(--spacing-xs);
 }
 
 .aboutContent {
@@ -49,4 +95,21 @@
 .aboutDescription p {
     color: var(--text-muted);
     font-size: var(--font-sm);
+}
+
+@media (max-width: 768px) {
+    .settingItem {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-sm);
+    }
+
+    .debugButtons {
+        width: 100%;
+        flex-direction: column;
+    }
+
+    .debugButtons button {
+        width: 100%;
+    }
 }
