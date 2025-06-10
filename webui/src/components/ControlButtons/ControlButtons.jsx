@@ -1,3 +1,4 @@
+// webui/src/components/ControlButtons/ControlButtons.jsx 수정
 import { Play, Square, RotateCcw } from 'lucide-react'
 import { useApp } from '@/contexts/AppContext'
 import { appService } from '@services/appService'
@@ -38,12 +39,36 @@ export default function ControlButtons() {
                     actions.setCountdownTime(hours * 60 * 60)
                 }
 
+                const modeName = getModeName(state.currentMode)
                 const message = wasTimerPaused
-                    ? `${getModeName(state.currentMode)} 모드 작업을 재개합니다...`
-                    : `${getModeName(state.currentMode)} 모드로 작업을 시작합니다...`
+                    ? `${modeName} 모드 작업을 재개합니다...`
+                    : `${modeName} 모드로 작업을 시작합니다...`
 
                 actions.addLog(message)
                 showNotification('작업이 시작되었습니다', 'success')
+
+                // 텔레그램 시작 알림 (재개가 아닌 경우에만)
+                if (!wasTimerPaused && state.settings.telegramEnabled) {
+                    try {
+                        // 별도 API 호출로 텔레그램 시작 알림 전송
+                        const telegramResponse = await fetch('/api/telegram/start-notification', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                            },
+                            body: `mode=${encodeURIComponent(modeName)}&duration=${hours}`
+                        })
+
+                        if (telegramResponse.ok) {
+                            actions.addLog('텔레그램 시작 알림이 전송되었습니다.')
+                        } else {
+                            actions.addLog('텔레그램 시작 알림 전송에 실패했습니다.')
+                        }
+                    } catch (telegramError) {
+                        console.error('텔레그램 알림 오류:', telegramError)
+                        actions.addLog('텔레그램 알림 전송 중 오류가 발생했습니다.')
+                    }
+                }
             } else {
                 // 실패 시 상태 복원
                 actions.setRunning(false)
@@ -52,6 +77,7 @@ export default function ControlButtons() {
                 showNotification('작업 시작에 실패했습니다', 'error')
             }
         } catch (error) {
+            console.error('작업 시작 오류:', error)
             actions.setRunning(false)
             actions.addLog('작업 시작 중 오류가 발생했습니다.')
             showNotification('작업 시작 중 오류가 발생했습니다', 'error')
@@ -77,6 +103,7 @@ export default function ControlButtons() {
                 showNotification('작업 중지에 실패했습니다', 'error')
             }
         } catch (error) {
+            console.error('작업 중지 오류:', error)
             actions.addLog('작업 중지 중 오류가 발생했습니다.')
             showNotification('작업 중지 중 오류가 발생했습니다', 'error')
         }
@@ -100,6 +127,7 @@ export default function ControlButtons() {
                 showNotification('재설정에 실패했습니다', 'error')
             }
         } catch (error) {
+            console.error('재설정 오류:', error)
             actions.addLog('재설정 중 오류가 발생했습니다.')
             showNotification('재설정 중 오류가 발생했습니다', 'error')
         }

@@ -1,3 +1,4 @@
+// webui/src/services/appService.js 설정 저장 부분 수정
 import { API_ENDPOINTS } from '@constants/appConstants'
 
 class AppService {
@@ -13,23 +14,63 @@ class AppService {
             return await response.json()
         } catch (error) {
             console.error('Failed to load settings:', error)
-            return {}
+            return {
+                darkMode: true,
+                autoStartup: false,
+                telegramEnabled: false
+            }
         }
     }
 
+    // 개별 설정 저장 (수정됨)
     async saveSetting(type, value) {
         try {
+            console.log('설정 저장 요청:', { type, value })
+
             const response = await fetch(API_ENDPOINTS.SETTINGS, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `type=${type}&value=${value}`
+                body: `type=${encodeURIComponent(type)}&value=${encodeURIComponent(value ? '1' : '0')}`
             })
-            if (!response.ok) throw new Error('Failed to save setting')
+
+            console.log('설정 저장 응답:', response.status, response.statusText)
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('설정 저장 실패:', errorText)
+                throw new Error(`Failed to save setting: ${response.status}`)
+            }
+
+            const responseText = await response.text()
+            console.log('설정 저장 성공:', responseText)
             return true
         } catch (error) {
             console.error('Failed to save setting:', error)
+            return false
+        }
+    }
+
+    // 모든 설정 한번에 저장 (새로 추가)
+    async saveAllSettings(settings) {
+        try {
+            const promises = Object.entries(settings).map(([key, value]) => {
+                // 설정 키 매핑
+                const settingKeyMap = {
+                    darkMode: 'dark_mode',
+                    autoStartup: 'auto_startup',
+                    telegramEnabled: 'telegram_enabled'
+                }
+
+                const apiKey = settingKeyMap[key] || key
+                return this.saveSetting(apiKey, value)
+            })
+
+            const results = await Promise.all(promises)
+            return results.every(result => result === true)
+        } catch (error) {
+            console.error('Failed to save all settings:', error)
             return false
         }
     }

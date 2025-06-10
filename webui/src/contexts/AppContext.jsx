@@ -1,13 +1,30 @@
+// webui/src/contexts/AppContext.jsx 수정
 import { createContext, useContext, useReducer, useEffect } from 'react'
 import { appService } from '@services/appService'
 import { MODES, TIME_OPTIONS } from '@constants/appConstants'
 
-// 초기 상태
+// 헬퍼 함수를 위로 이동
+function getHoursFromTimeOption(option) {
+    switch (option) {
+        case TIME_OPTIONS.ONE_HOUR:
+            return 1 + (10 / 60) // 1시간 10분
+        case TIME_OPTIONS.TWO_HOUR:
+            return 2 + (10 / 60) // 2시간 10분
+        case TIME_OPTIONS.THREE_HOUR:
+            return 3 + (10 / 60) // 3시간 10분
+        case TIME_OPTIONS.FOUR_HOUR:
+            return 4 + (10 / 60) // 4시간 10분
+        default:
+            return 3 + (10 / 60) // 기본값: 3시간 10분
+    }
+}
+
+// 초기 상태 - 타이머 시간 제대로 계산
 const initialState = {
     // 타이머 관련
     isRunning: false,
     isPaused: false,
-    countdownTime: 3 * 60 * 60, // 3시간 (초)
+    countdownTime: getHoursFromTimeOption(TIME_OPTIONS.THREE_HOUR) * 60 * 60, // 3시간 10분 (초)
 
     // 설정 관련
     currentMode: MODES.DAEYA_ENTER,
@@ -64,13 +81,25 @@ function appReducer(state, action) {
             return { ...state, isPaused: action.payload }
 
         case actionTypes.SET_COUNTDOWN_TIME:
-            return { ...state, countdownTime: action.payload }
+            // 함수인 경우 이전 값으로 계산
+            const newTime = typeof action.payload === 'function'
+                ? action.payload(state.countdownTime)
+                : action.payload
+            return { ...state, countdownTime: Math.max(0, newTime) }
 
         case actionTypes.SET_MODE:
             return { ...state, currentMode: action.payload }
 
         case actionTypes.SET_TIME_OPTION:
-            return { ...state, currentTimeOption: action.payload }
+            const hours = getHoursFromTimeOption(action.payload)
+            return {
+                ...state,
+                currentTimeOption: action.payload,
+                // 실행 중이 아니면 시간도 업데이트
+                countdownTime: (!state.isRunning && !state.isPaused)
+                    ? hours * 60 * 60
+                    : state.countdownTime
+            }
 
         case actionTypes.SET_SETTINGS:
             return { ...state, settings: { ...state.settings, ...action.payload } }
@@ -114,42 +143,27 @@ function appReducer(state, action) {
             }
 
         case actionTypes.RESET_TIMER:
-            const hours = getHoursFromTimeOption(state.currentTimeOption)
+            const resetHours = getHoursFromTimeOption(state.currentTimeOption)
             return {
                 ...state,
-                countdownTime: hours * 60 * 60,
+                countdownTime: resetHours * 60 * 60,
                 isRunning: false,
                 isPaused: false
             }
 
         case actionTypes.RESET_ALL:
+            const defaultHours = getHoursFromTimeOption(TIME_OPTIONS.THREE_HOUR)
             return {
                 ...state,
                 currentMode: MODES.DAEYA_ENTER,
                 currentTimeOption: TIME_OPTIONS.THREE_HOUR,
-                countdownTime: 3 * 60 * 60,
+                countdownTime: defaultHours * 60 * 60,
                 isRunning: false,
                 isPaused: false
             }
 
         default:
             return state
-    }
-}
-
-// 헬퍼 함수
-function getHoursFromTimeOption(option) {
-    switch (option) {
-        case TIME_OPTIONS.ONE_HOUR:
-            return 1 + (10 / 60)
-        case TIME_OPTIONS.TWO_HOUR:
-            return 2 + (10 / 60)
-        case TIME_OPTIONS.THREE_HOUR:
-            return 3 + (10 / 60)
-        case TIME_OPTIONS.FOUR_HOUR:
-            return 4 + (10 / 60)
-        default:
-            return 3 + (10 / 60)
     }
 }
 
@@ -195,6 +209,7 @@ export function AppProvider({ children }) {
 
                 actions.addLog('프로그램이 시작되었습니다.')
             } catch (error) {
+                console.error('초기 데이터 로드 오류:', error)
                 actions.addLog('초기 데이터 로드 중 오류가 발생했습니다.')
             }
         }
@@ -202,7 +217,7 @@ export function AppProvider({ children }) {
         loadInitialData()
     }, [])
 
-    // 상태 폴링 (2초마다)
+    // 상태 폴링 (5초마다)
     useEffect(() => {
         const interval = setInterval(async () => {
             try {
@@ -211,9 +226,9 @@ export function AppProvider({ children }) {
                     actions.setRunning(status.running)
                 }
             } catch (error) {
-                // 오류 무시 (로그 출력 제거)
+                // 오류 무시
             }
-        }, 5000) // 2초에서 5초로 증가
+        }, 5000)
 
         return () => clearInterval(interval)
     }, [state.isRunning])
