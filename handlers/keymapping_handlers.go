@@ -1,9 +1,10 @@
-// handlers/keymapping_handlers.go
+// handlers/keymapping_handlers.go 완전한 코드
 package handlers
 
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -56,8 +57,12 @@ func (h *KeyMappingHandler) HandleMappings(w http.ResponseWriter, r *http.Reques
 
 // getMappings 모든 키 맵핑 조회
 func (h *KeyMappingHandler) getMappings(w http.ResponseWriter, r *http.Request) {
+	log.Printf("키 맵핑 목록 조회 요청")
+
 	mappings := h.Manager.GetMappings()
 	stats := h.Manager.GetMappingStats()
+
+	log.Printf("반환할 맵핑 개수: %d", len(mappings))
 
 	response := map[string]interface{}{
 		"mappings": mappings,
@@ -67,6 +72,7 @@ func (h *KeyMappingHandler) getMappings(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("JSON 인코딩 실패: %v", err)
 		http.Error(w, "JSON encoding failed", http.StatusInternalServerError)
 		return
 	}
@@ -74,6 +80,8 @@ func (h *KeyMappingHandler) getMappings(w http.ResponseWriter, r *http.Request) 
 
 // createMapping 새로운 키 맵핑 생성
 func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request) {
+	log.Printf("키 맵핑 생성 요청")
+
 	var request struct {
 		Name        string `json:"name"`
 		StartKey    string `json:"start_key"`
@@ -81,12 +89,17 @@ func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("JSON 디코딩 실패: %v", err)
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
+	log.Printf("생성 요청 데이터: name=%s, start_key=%s, key_sequence=%s",
+		request.Name, request.StartKey, request.KeySequence)
+
 	// 입력 검증
 	if request.Name == "" || request.StartKey == "" || request.KeySequence == "" {
+		log.Printf("필수 필드 누락")
 		http.Error(w, "필수 필드가 누락되었습니다", http.StatusBadRequest)
 		return
 	}
@@ -94,15 +107,19 @@ func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request
 	// 키 시퀀스 파싱
 	keys, err := h.Manager.ParseKeySequence(request.KeySequence)
 	if err != nil {
+		log.Printf("키 시퀀스 파싱 실패: %v", err)
 		http.Error(w, fmt.Sprintf("키 시퀀스 파싱 실패: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	// 키 맵핑 추가
 	if err := h.Manager.AddMapping(request.Name, request.StartKey, keys); err != nil {
+		log.Printf("키 맵핑 추가 실패: %v", err)
 		http.Error(w, fmt.Sprintf("키 맵핑 추가 실패: %v", err), http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("키 맵핑 생성 성공: %s", request.Name)
 
 	response := map[string]interface{}{
 		"success": true,
@@ -115,6 +132,8 @@ func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request
 
 // updateMapping 키 맵핑 수정
 func (h *KeyMappingHandler) updateMapping(w http.ResponseWriter, r *http.Request) {
+	log.Printf("키 맵핑 수정 요청")
+
 	var request struct {
 		OldStartKey string `json:"old_start_key"`
 		Name        string `json:"name"`
@@ -123,12 +142,17 @@ func (h *KeyMappingHandler) updateMapping(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("JSON 디코딩 실패: %v", err)
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
+	log.Printf("수정 요청 데이터: old_start_key=%s, name=%s, start_key=%s",
+		request.OldStartKey, request.Name, request.StartKey)
+
 	// 입력 검증
 	if request.OldStartKey == "" || request.Name == "" || request.StartKey == "" || request.KeySequence == "" {
+		log.Printf("필수 필드 누락")
 		http.Error(w, "필수 필드가 누락되었습니다", http.StatusBadRequest)
 		return
 	}
@@ -136,15 +160,19 @@ func (h *KeyMappingHandler) updateMapping(w http.ResponseWriter, r *http.Request
 	// 키 시퀀스 파싱
 	keys, err := h.Manager.ParseKeySequence(request.KeySequence)
 	if err != nil {
+		log.Printf("키 시퀀스 파싱 실패: %v", err)
 		http.Error(w, fmt.Sprintf("키 시퀀스 파싱 실패: %v", err), http.StatusBadRequest)
 		return
 	}
 
 	// 키 맵핑 수정
 	if err := h.Manager.UpdateMapping(request.OldStartKey, request.Name, request.StartKey, keys); err != nil {
+		log.Printf("키 맵핑 수정 실패: %v", err)
 		http.Error(w, fmt.Sprintf("키 맵핑 수정 실패: %v", err), http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("키 맵핑 수정 성공: %s", request.Name)
 
 	response := map[string]interface{}{
 		"success": true,
@@ -155,15 +183,14 @@ func (h *KeyMappingHandler) updateMapping(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(response)
 }
 
-// deleteMapping 키 맵핑 삭제 (디버깅 강화)
+// deleteMapping 키 맵핑 삭제
 func (h *KeyMappingHandler) deleteMapping(w http.ResponseWriter, r *http.Request) {
 	startKey := r.URL.Query().Get("start_key")
 
-	// 로그 추가
-	fmt.Printf("DELETE 요청 받음 - start_key: '%s'\n", startKey)
+	log.Printf("키 맵핑 삭제 요청: start_key=%s", startKey)
 
 	if startKey == "" {
-		fmt.Println("DELETE 실패: start_key 파라미터 없음")
+		log.Printf("start_key 파라미터 없음")
 		http.Error(w, "start_key 파라미터가 필요합니다", http.StatusBadRequest)
 		return
 	}
@@ -171,7 +198,7 @@ func (h *KeyMappingHandler) deleteMapping(w http.ResponseWriter, r *http.Request
 	// 맵핑 존재 확인
 	mapping, exists := h.Manager.GetMapping(startKey)
 	if !exists {
-		fmt.Printf("DELETE 실패: 키 맵핑을 찾을 수 없음 - '%s'\n", startKey)
+		log.Printf("키 맵핑을 찾을 수 없음: %s", startKey)
 		response := map[string]interface{}{
 			"success": false,
 			"message": fmt.Sprintf("키 맵핑을 찾을 수 없습니다: %s", startKey),
@@ -182,10 +209,10 @@ func (h *KeyMappingHandler) deleteMapping(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	fmt.Printf("삭제할 맵핑 찾음: %s (이름: %s)\n", startKey, mapping.Name)
+	log.Printf("삭제할 맵핑: %s (이름: %s)", startKey, mapping.Name)
 
 	if err := h.Manager.RemoveMapping(startKey); err != nil {
-		fmt.Printf("DELETE 실패: %v\n", err)
+		log.Printf("키 맵핑 삭제 실패: %v", err)
 		response := map[string]interface{}{
 			"success": false,
 			"message": fmt.Sprintf("키 맵핑 삭제 실패: %v", err),
@@ -196,7 +223,7 @@ func (h *KeyMappingHandler) deleteMapping(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	fmt.Printf("DELETE 성공: %s\n", startKey)
+	log.Printf("키 맵핑 삭제 성공: %s", startKey)
 
 	response := map[string]interface{}{
 		"success": true,
@@ -242,7 +269,7 @@ func (h *KeyMappingHandler) HandleMappingToggle(w http.ResponseWriter, r *http.R
 	json.NewEncoder(w).Encode(response)
 }
 
-// HandleMappingControl 키 맵핑 시스템 시작/중지 (개선된 버전)
+// HandleMappingControl 키 맵핑 시스템 시작/중지
 func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -326,25 +353,39 @@ func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(response)
 }
 
-// HandleAvailableKeys 사용 가능한 키 목록 반환
+// HandleAvailableKeys 사용 가능한 키 목록 반환 (수정됨)
 func (h *KeyMappingHandler) HandleAvailableKeys(w http.ResponseWriter, r *http.Request) {
 	if !utils.IsLocalhost(r.Host) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
+	log.Printf("사용 가능한 키 목록 요청")
+
 	// CORS 헤더 추가
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
+	// 키 맵핑 매니저에서 사용 가능한 키 목록 가져오기
 	availableKeys := h.Manager.GetAvailableKeys()
+
+	log.Printf("반환할 키 카테고리 수: %d", len(availableKeys))
+	for category, keys := range availableKeys {
+		log.Printf("카테고리 '%s': %d개 키", category, len(keys))
+	}
 
 	response := map[string]interface{}{
 		"keys":    availableKeys,
 		"success": true,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("JSON 인코딩 실패: %v", err)
+		http.Error(w, "JSON encoding failed", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("사용 가능한 키 목록 반환 완료")
 }
 
 // HandleMappingStatus 키 맵핑 시스템 상태 반환

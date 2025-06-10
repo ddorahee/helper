@@ -1,4 +1,4 @@
-// webui/src/components/KeyMapping/KeyMappingModal.jsx 완전한 코드
+// webui/src/components/KeyMapping/KeyMappingModal.jsx 디버깅 강화
 import { useState, useEffect } from 'react'
 import { X, Plus, Trash2, HelpCircle } from 'lucide-react'
 import { keyMappingService } from '@services/keyMappingService'
@@ -21,6 +21,7 @@ export default function KeyMappingModal({
     const [availableKeys, setAvailableKeys] = useState({})
     const [errors, setErrors] = useState({})
     const [loading, setLoading] = useState(false)
+    const [keysLoading, setKeysLoading] = useState(false)
 
     // 시작키로 허용되는 키만 정의
     const allowedStartKeys = ['delete', 'end']
@@ -28,10 +29,12 @@ export default function KeyMappingModal({
     // 컴포넌트 마운트 시 사용 가능한 키 목록 로드
     useEffect(() => {
         if (isOpen) {
+            console.log('키 맵핑 모달 열림, 키 목록 로드 시작')
             loadAvailableKeys()
 
             // 편집 모드인 경우 기존 데이터 로드
             if (editingMapping) {
+                console.log('편집 모드, 기존 데이터 로드:', editingMapping)
                 setFormData({
                     name: editingMapping.name,
                     start_key: editingMapping.start_key,
@@ -39,6 +42,7 @@ export default function KeyMappingModal({
                 })
             } else {
                 // 새 맵핑인 경우 초기화
+                console.log('새 맵핑 모드, 초기화')
                 setFormData({
                     name: '',
                     start_key: '',
@@ -50,15 +54,54 @@ export default function KeyMappingModal({
         }
     }, [isOpen, editingMapping])
 
-    // 사용 가능한 키 목록 로드
+    // 사용 가능한 키 목록 로드 (디버깅 강화)
     const loadAvailableKeys = async () => {
         try {
+            console.log('사용 가능한 키 목록 로드 시작...')
+            setKeysLoading(true)
+
             const data = await keyMappingService.getAvailableKeys()
-            if (data.success) {
-                setAvailableKeys(data.keys || {})
+            console.log('키 목록 API 응답:', data)
+
+            if (data && data.success && data.keys) {
+                console.log('사용 가능한 키 목록:', data.keys)
+                setAvailableKeys(data.keys)
+
+                // 각 카테고리별 키 개수 로그
+                Object.entries(data.keys).forEach(([category, keys]) => {
+                    console.log(`카테고리 '${category}': ${keys.length}개 키`, keys)
+                })
+            } else {
+                console.error('키 목록 로드 실패 또는 잘못된 응답:', data)
+
+                // 기본 키 목록 설정 (백업)
+                const defaultKeys = {
+                    "숫자 키": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+                    "알파벳 키": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"],
+                    "펑션 키": ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"],
+                    "특수 키": ["space", "enter", "esc", "tab"],
+                    "화살표 키": ["left", "up", "right", "down"],
+                    "넘패드": ["num0", "num1", "num2", "num3", "num4", "num5", "num6", "num7", "num8", "num9"],
+                    "조합 키": ["shift", "ctrl", "alt"]
+                }
+
+                console.log('기본 키 목록 사용:', defaultKeys)
+                setAvailableKeys(defaultKeys)
             }
         } catch (error) {
             console.error('사용 가능한 키 목록 로드 실패:', error)
+
+            // 에러 발생 시 기본 키 목록 설정
+            const defaultKeys = {
+                "숫자 키": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+                "알파벳 키": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"],
+                "특수 키": ["space", "enter", "esc", "tab"]
+            }
+
+            console.log('에러로 인한 기본 키 목록 사용:', defaultKeys)
+            setAvailableKeys(defaultKeys)
+        } finally {
+            setKeysLoading(false)
         }
     }
 
@@ -70,26 +113,9 @@ export default function KeyMappingModal({
         }))
     }
 
-    // 실행키용 키 목록 (시작키 제외)
-    const getExecutionKeyOptions = () => {
-        const options = []
-        Object.entries(availableKeys).forEach(([category, keys]) => {
-            // "시작 키" 카테고리는 제외
-            if (category !== '시작 키') {
-                keys.forEach(key => {
-                    options.push({
-                        value: key,
-                        label: key.toUpperCase(),
-                        category: category
-                    })
-                })
-            }
-        })
-        return options
-    }
-
     // 폼 입력 변경 처리
     const handleInputChange = (field, value) => {
+        console.log(`폼 입력 변경: ${field} = ${value}`)
         setFormData(prev => ({
             ...prev,
             [field]: value
@@ -106,6 +132,7 @@ export default function KeyMappingModal({
 
     // 키 시퀀스 변경 처리
     const handleKeyChange = (index, field, value) => {
+        console.log(`키 시퀀스 변경: [${index}].${field} = ${value}`)
         const newKeys = [...formData.keys]
         newKeys[index] = {
             ...newKeys[index],
@@ -120,6 +147,7 @@ export default function KeyMappingModal({
 
     // 키 추가
     const addKey = () => {
+        console.log('새 키 추가')
         setFormData(prev => ({
             ...prev,
             keys: [...prev.keys, { key: '', delay: KEY_MAPPING.DEFAULT_DELAY }]
@@ -129,6 +157,7 @@ export default function KeyMappingModal({
     // 키 제거
     const removeKey = (index) => {
         if (formData.keys.length > 1) {
+            console.log(`키 제거: index ${index}`)
             const newKeys = formData.keys.filter((_, i) => i !== index)
             setFormData(prev => ({
                 ...prev,
@@ -139,6 +168,7 @@ export default function KeyMappingModal({
 
     // 유효성 검사
     const validateForm = () => {
+        console.log('폼 유효성 검사 시작')
         const newErrors = {}
 
         // 이름 검사
@@ -175,13 +205,17 @@ export default function KeyMappingModal({
             }
         })
 
+        console.log('유효성 검사 결과:', newErrors)
         setErrors(newErrors)
         return Object.keys(newErrors).length === 0
     }
 
     // 저장 처리
     const handleSave = async () => {
+        console.log('키 맵핑 저장 시작')
+
         if (!validateForm()) {
+            console.log('유효성 검사 실패, 저장 중단')
             return
         }
 
@@ -199,6 +233,8 @@ export default function KeyMappingModal({
                 key_sequence: keySequence
             }
 
+            console.log('저장할 맵핑 데이터:', mappingData)
+
             await onSave(mappingData)
         } catch (error) {
             console.error('키 맵핑 저장 실패:', error)
@@ -206,6 +242,12 @@ export default function KeyMappingModal({
             setLoading(false)
         }
     }
+
+    // 키 목록 로딩 상태 디버깅
+    useEffect(() => {
+        console.log('사용 가능한 키 목록 상태 변경:', availableKeys)
+        console.log('키 카테고리 개수:', Object.keys(availableKeys).length)
+    }, [availableKeys])
 
     // 모달이 열려있지 않으면 렌더링하지 않음
     if (!isOpen) return null
@@ -227,6 +269,23 @@ export default function KeyMappingModal({
                 </div>
 
                 <div className={styles.modalBody}>
+                    {/* 키 로딩 상태 표시 */}
+                    {keysLoading && (
+                        <div style={{ padding: '10px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            사용 가능한 키 목록을 불러오는 중...
+                        </div>
+                    )}
+
+                    {/* 디버그 정보 표시 */}
+                    {process.env.NODE_ENV === 'development' && (
+                        <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: 'var(--highlight)', borderRadius: '4px', fontSize: '12px' }}>
+                            <strong>디버그 정보:</strong><br />
+                            키 카테고리 수: {Object.keys(availableKeys).length}<br />
+                            키 로딩 중: {keysLoading ? 'Yes' : 'No'}<br />
+                            총 키 개수: {Object.values(availableKeys).flat().length}
+                        </div>
+                    )}
+
                     {/* 기본 정보 */}
                     <div className={styles.formGroup}>
                         <label className={styles.label}>

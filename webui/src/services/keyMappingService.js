@@ -1,4 +1,4 @@
-// webui/src/services/keyMappingService.js 수정 (validateKeySequence 부분)
+// webui/src/services/keyMappingService.js 디버깅 강화
 import { KEY_MAPPING } from '@constants/appConstants'
 
 class KeyMappingService {
@@ -6,7 +6,264 @@ class KeyMappingService {
         this.baseURL = '/api/keymapping'
     }
 
-    // ... 기존 메서드들 그대로 유지 ...
+    // 모든 키 맵핑 조회
+    async getMappings() {
+        try {
+            console.log('키 맵핑 목록 요청 시작:', `${this.baseURL}/mappings`)
+
+            const response = await fetch(`${this.baseURL}/mappings`)
+            console.log('키 맵핑 목록 응답 상태:', response.status, response.statusText)
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+            }
+
+            const data = await response.json()
+            console.log('키 맵핑 목록 데이터:', data)
+
+            return data
+        } catch (error) {
+            console.error('키 맵핑 목록 조회 실패:', error)
+            throw error
+        }
+    }
+
+    // 새 키 맵핑 생성
+    async createMapping(mappingData) {
+        try {
+            console.log('키 맵핑 생성 요청:', mappingData)
+
+            const response = await fetch(`${this.baseURL}/mappings`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(mappingData)
+            })
+
+            console.log('키 맵핑 생성 응답 상태:', response.status, response.statusText)
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('키 맵핑 생성 실패:', errorText)
+                throw new Error(errorText || `HTTP ${response.status}`)
+            }
+
+            const result = await response.json()
+            console.log('키 맵핑 생성 결과:', result)
+            return result.success
+        } catch (error) {
+            console.error('키 맵핑 생성 실패:', error)
+            throw error
+        }
+    }
+
+    // 키 맵핑 수정
+    async updateMapping(mappingData) {
+        try {
+            console.log('키 맵핑 수정 요청:', mappingData)
+
+            const response = await fetch(`${this.baseURL}/mappings`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(mappingData)
+            })
+
+            console.log('키 맵핑 수정 응답 상태:', response.status, response.statusText)
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('키 맵핑 수정 실패:', errorText)
+                throw new Error(errorText || `HTTP ${response.status}`)
+            }
+
+            const result = await response.json()
+            console.log('키 맵핑 수정 결과:', result)
+            return result.success
+        } catch (error) {
+            console.error('키 맵핑 수정 실패:', error)
+            throw error
+        }
+    }
+
+    // 키 맵핑 삭제
+    async deleteMapping(startKey) {
+        console.log('키 맵핑 삭제 요청:', startKey)
+
+        if (!startKey) {
+            console.error('startKey가 없음')
+            throw new Error('시작 키가 필요합니다')
+        }
+
+        try {
+            const url = `${this.baseURL}/mappings?start_key=${encodeURIComponent(startKey)}`
+            console.log('DELETE 요청 URL:', url)
+
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+
+            console.log('DELETE 응답 상태:', response.status, response.statusText)
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('DELETE 응답 에러:', errorText)
+                throw new Error(errorText || `HTTP ${response.status}`)
+            }
+
+            const result = await response.json()
+            console.log('DELETE 응답 데이터:', result)
+
+            return result.success
+        } catch (error) {
+            console.error('키 맵핑 삭제 서비스 실패:', error)
+            throw error
+        }
+    }
+
+    // 키 맵핑 활성화/비활성화
+    async toggleMapping(startKey) {
+        try {
+            console.log('키 맵핑 토글 요청:', startKey)
+
+            const response = await fetch(`${this.baseURL}/toggle`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `start_key=${encodeURIComponent(startKey)}`
+            })
+
+            console.log('키 맵핑 토글 응답 상태:', response.status, response.statusText)
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('키 맵핑 토글 실패:', errorText)
+                throw new Error(errorText || `HTTP ${response.status}`)
+            }
+
+            const result = await response.json()
+            console.log('키 맵핑 토글 결과:', result)
+            return result.success
+        } catch (error) {
+            console.error('키 맵핑 토글 실패:', error)
+            throw error
+        }
+    }
+
+    // 키 맵핑 시스템 제어 (시작/중지)
+    async controlSystem(action) {
+        try {
+            console.log('키 맵핑 시스템 제어 요청:', action)
+
+            const response = await fetch(`${this.baseURL}/control`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `action=${action}`
+            })
+
+            console.log('키 맵핑 제어 응답 상태:', response.status, response.statusText)
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('키 맵핑 제어 실패:', errorText)
+                throw new Error(errorText || `HTTP ${response.status}`)
+            }
+
+            const result = await response.json()
+            console.log('키 맵핑 제어 결과:', result)
+            return result.success
+        } catch (error) {
+            console.error('키 맵핑 시스템 제어 실패:', error)
+            throw error
+        }
+    }
+
+    // 사용 가능한 키 목록 조회 (디버깅 강화)
+    async getAvailableKeys() {
+        try {
+            console.log('사용 가능한 키 목록 요청 시작:', `${this.baseURL}/keys`)
+
+            const response = await fetch(`${this.baseURL}/keys`)
+            console.log('키 목록 응답 상태:', response.status, response.statusText)
+
+            if (!response.ok) {
+                console.error('키 목록 요청 실패:', response.status, response.statusText)
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+            }
+
+            const data = await response.json()
+            console.log('키 목록 원본 데이터:', data)
+
+            if (!data || !data.success) {
+                console.error('키 목록 응답이 성공하지 않음:', data)
+                throw new Error('키 목록 요청이 실패했습니다')
+            }
+
+            if (!data.keys || typeof data.keys !== 'object') {
+                console.error('키 목록 데이터가 올바르지 않음:', data.keys)
+                throw new Error('키 목록 데이터 형식이 올바르지 않습니다')
+            }
+
+            console.log('사용 가능한 키 목록 성공:', data.keys)
+
+            // 각 카테고리별 키 개수 로그
+            Object.entries(data.keys).forEach(([category, keys]) => {
+                if (Array.isArray(keys)) {
+                    console.log(`카테고리 '${category}': ${keys.length}개 키`, keys)
+                } else {
+                    console.warn(`카테고리 '${category}'의 키 목록이 배열이 아님:`, keys)
+                }
+            })
+
+            return data
+        } catch (error) {
+            console.error('사용 가능한 키 목록 조회 실패:', error)
+
+            // 에러 발생 시 기본 키 목록 반환
+            const fallbackKeys = {
+                "숫자 키": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+                "알파벳 키": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"],
+                "특수 키": ["space", "enter", "esc", "tab"]
+            }
+
+            console.log('폴백 키 목록 사용:', fallbackKeys)
+
+            return {
+                success: true,
+                keys: fallbackKeys
+            }
+        }
+    }
+
+    // 키 맵핑 시스템 상태 조회
+    async getStatus() {
+        try {
+            console.log('키 맵핑 상태 요청 시작:', `${this.baseURL}/status`)
+
+            const response = await fetch(`${this.baseURL}/status`)
+            console.log('키 맵핑 상태 응답 상태:', response.status, response.statusText)
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+            }
+
+            const data = await response.json()
+            console.log('키 맵핑 상태 데이터:', data)
+
+            return data
+        } catch (error) {
+            console.error('키 맵핑 상태 조회 실패:', error)
+            throw error
+        }
+    }
 
     // 키 시퀀스 유효성 검사 (딜레이 범위 수정)
     validateKeySequence(keySequence) {
