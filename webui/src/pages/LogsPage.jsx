@@ -144,15 +144,15 @@ export default function LogsPage() {
         return 'info'
     }
 
-    // 긴 로그 자르기 함수
-    const truncateLog = (log) => {
-        if (!log || typeof log !== 'string') return ''
-        // 200자 이상이면 자르기
-        if (log.length > 200) {
-            return log.substring(0, 200) + '...'
-        }
-        return log
-    }
+    // 긴 로그 자르기 함수 (제거)
+    // const truncateLog = (log) => {
+    //     if (!log || typeof log !== 'string') return ''
+    //     // 200자 이상이면 자르기
+    //     if (log.length > 200) {
+    //         return log.substring(0, 200) + '...'
+    //     }
+    //     return log
+    // }
 
     // 로그 필터링
     const filteredLogs = logs.filter(log => {
@@ -205,9 +205,8 @@ export default function LogsPage() {
                                 <div
                                     key={`log-${index}-${Date.now()}`}
                                     className={`${styles.logEntry} ${styles[getLogLevel(log)]}`}
-                                    title={log} // 전체 텍스트를 툴팁으로 표시
                                 >
-                                    {truncateLog(log)}
+                                    {log}
                                 </div>
                             ))
                         )}
