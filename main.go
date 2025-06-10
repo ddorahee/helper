@@ -1,9 +1,10 @@
-// main.go - 키 맵핑 시스템 통합
+// main.go - 키 맵핑 시스템 통합 (최종 버전)
 package main
 
 import (
 	"context"
 	"embed"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ type Application struct {
 	Config            *config.AppConfig
 	TimerManager      *utils.TimerManager
 	KeyboardManager   *automation.KeyboardManager
-	KeyMappingManager *keymapping.KeyMappingManager // 키 맵핑 매니저 추가
+	KeyMappingManager *keymapping.KeyMappingManager
 	TelegramBot       *telegram.TelegramBot
 	Server            *server.Server
 	AppContext        context.Context
@@ -116,7 +117,7 @@ func main() {
 		Config:            config.NewAppConfig(),
 		TimerManager:      utils.NewTimerManager(),
 		KeyboardManager:   automation.NewKeyboardManager(),
-		KeyMappingManager: keymapping.NewKeyMappingManager(config.NewAppConfig().GetDataDir()), // 키 맵핑 매니저 초기화
+		KeyMappingManager: keymapping.NewKeyMappingManager(config.NewAppConfig().GetDataDir()),
 		AppContext:        ctx,
 		CancelFunc:        cancel,
 	}
@@ -136,7 +137,7 @@ func main() {
 	// 라우트 설정
 	mux := app.Server.SetupRoutes()
 
-	// 핸들러 설정 (키 맵핑 핸들러 추가)
+	// 핸들러 설정
 	app.Server.SetupHandlers(app, mux)
 
 	// HTTP 서버 초기화
@@ -256,6 +257,8 @@ func setupLogging(appConfig *config.AppConfig) {
 		return
 	}
 
-	log.SetOutput(f)
+	// 터미널과 파일 모두에 출력
+	multiWriter := io.MultiWriter(os.Stdout, f)
+	log.SetOutput(multiWriter)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 }

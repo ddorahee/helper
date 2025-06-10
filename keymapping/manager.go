@@ -1,10 +1,11 @@
-// keymapping/manager.go 완전한 코드
+// keymapping/manager.go 완전한 코드 - 최종 버전 (한국어 기계식 키보드 지원)
 package keymapping
 
 import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,24 +16,24 @@ import (
 // KeyMapping 구조체 - 개별 키 맵핑 설정
 type KeyMapping struct {
 	ID        string      `json:"id"`
-	Name      string      `json:"name"`      // 도사, 천인 등
-	StartKey  string      `json:"start_key"` // 시작 키 (DEL, F1 등)
-	Keys      []MappedKey `json:"keys"`      // 실행할 키들
-	Enabled   bool        `json:"enabled"`   // 활성화 여부
+	Name      string      `json:"name"`
+	StartKey  string      `json:"start_key"`
+	Keys      []MappedKey `json:"keys"`
+	Enabled   bool        `json:"enabled"`
 	CreatedAt time.Time   `json:"created_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
 // MappedKey 구조체 - 개별 키와 딜레이 설정
 type MappedKey struct {
-	Key   string `json:"key"`   // 1, 2, 3, 4, 5 등
-	Delay int    `json:"delay"` // 딜레이 (ms)
+	Key   string `json:"key"`
+	Delay int    `json:"delay"`
 }
 
 // KeyMappingManager 구조체 - 키 맵핑 관리자
 type KeyMappingManager struct {
-	mappings    map[string]*KeyMapping // 키 맵핑들 (start_key를 키로 사용)
-	configFile  string                 // 설정 파일 경로
+	mappings    map[string]*KeyMapping
+	configFile  string
 	mutex       sync.RWMutex
 	running     bool
 	stopChan    chan bool
@@ -49,9 +50,7 @@ func NewKeyMappingManager(configDir string) *KeyMappingManager {
 		stopChan:   make(chan bool),
 	}
 
-	// 설정 파일 로드
 	km.LoadConfig()
-
 	return km
 }
 
@@ -60,12 +59,10 @@ func (km *KeyMappingManager) AddMapping(name, startKey string, keys []MappedKey)
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
 
-	// 시작 키 중복 검사
 	if _, exists := km.mappings[startKey]; exists {
 		return fmt.Errorf("시작 키 '%s'는 이미 사용 중입니다", startKey)
 	}
 
-	// 키 유효성 검사
 	if err := km.validateKeys(startKey, keys); err != nil {
 		return err
 	}
@@ -82,7 +79,6 @@ func (km *KeyMappingManager) AddMapping(name, startKey string, keys []MappedKey)
 
 	km.mappings[startKey] = mapping
 
-	// 설정 저장
 	if err := km.SaveConfig(); err != nil {
 		delete(km.mappings, startKey)
 		return fmt.Errorf("설정 저장 실패: %v", err)
@@ -97,39 +93,32 @@ func (km *KeyMappingManager) UpdateMapping(oldStartKey, newName, newStartKey str
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
 
-	// 기존 맵핑 존재 확인
 	mapping, exists := km.mappings[oldStartKey]
 	if !exists {
 		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: %s", oldStartKey)
 	}
 
-	// 새로운 시작 키가 다르고 이미 사용 중인지 확인
 	if oldStartKey != newStartKey {
 		if _, exists := km.mappings[newStartKey]; exists {
 			return fmt.Errorf("시작 키 '%s'는 이미 사용 중입니다", newStartKey)
 		}
 	}
 
-	// 키 유효성 검사
 	if err := km.validateKeys(newStartKey, keys); err != nil {
 		return err
 	}
 
-	// 기존 맵핑 제거 (시작 키가 변경된 경우)
 	if oldStartKey != newStartKey {
 		delete(km.mappings, oldStartKey)
 	}
 
-	// 맵핑 업데이트
 	mapping.Name = newName
 	mapping.StartKey = newStartKey
 	mapping.Keys = keys
 	mapping.UpdatedAt = time.Now()
 
-	// 새로운 키로 저장
 	km.mappings[newStartKey] = mapping
 
-	// 설정 저장
 	if err := km.SaveConfig(); err != nil {
 		return fmt.Errorf("설정 저장 실패: %v", err)
 	}
@@ -150,7 +139,6 @@ func (km *KeyMappingManager) RemoveMapping(startKey string) error {
 
 	delete(km.mappings, startKey)
 
-	// 설정 저장
 	if err := km.SaveConfig(); err != nil {
 		return fmt.Errorf("설정 저장 실패: %v", err)
 	}
@@ -190,7 +178,6 @@ func (km *KeyMappingManager) GetMappings() map[string]*KeyMapping {
 	km.mutex.RLock()
 	defer km.mutex.RUnlock()
 
-	// 복사본 반환
 	result := make(map[string]*KeyMapping)
 	for k, v := range km.mappings {
 		result[k] = v
@@ -238,13 +225,11 @@ func (km *KeyMappingManager) Stop() {
 	km.running = false
 	km.hookRunning = false
 
-	// 훅 중지 신호
 	select {
 	case km.stopChan <- true:
 	default:
 	}
 
-	// gohook 이벤트 종료
 	hook.End()
 
 	log.Println("키 맵핑 시스템이 중지되었습니다")
@@ -269,7 +254,6 @@ func (km *KeyMappingManager) runKeyHook() {
 		km.mutex.Unlock()
 	}()
 
-	// 키 이벤트 처리
 	evChan := hook.Start()
 	defer hook.End()
 
@@ -294,91 +278,83 @@ func (km *KeyMappingManager) handleKeyPress(ev hook.Event) {
 		return
 	}
 
-	// 키 코드를 문자열로 변환
 	keyStr := km.keyCodeToString(ev.Keycode)
 	if keyStr == "" {
 		return
 	}
 
-	// 해당 키로 시작하는 맵핑 찾기
 	mapping, exists := km.mappings[keyStr]
 	if !exists || !mapping.Enabled {
 		return
 	}
 
-	// 키 시퀀스 실행 (별도 고루틴에서)
+	log.Printf("키 맵핑 실행: %s (시작키: %s)", mapping.Name, keyStr)
 	go km.executeKeySequence(mapping)
 }
 
 // executeKeySequence 키 시퀀스 실행
 func (km *KeyMappingManager) executeKeySequence(mapping *KeyMapping) {
-	log.Printf("키 맵핑 실행: %s (시작키: %s)", mapping.Name, mapping.StartKey)
-
 	for i, key := range mapping.Keys {
-		// 중지 확인
 		if !km.IsRunning() {
 			break
 		}
 
-		// 키 입력
 		if err := km.sendKey(key.Key); err != nil {
 			log.Printf("키 입력 실패 (%s): %v", key.Key, err)
 			continue
 		}
 
-		log.Printf("키 입력: %s", key.Key)
-
-		// 딜레이 (마지막 키가 아닌 경우, 딜레이가 0이 아닌 경우)
 		if i < len(mapping.Keys)-1 && key.Delay > 0 {
 			time.Sleep(time.Duration(key.Delay) * time.Millisecond)
 		}
 
-		// 중지 확인
 		if !km.IsRunning() {
 			break
 		}
 	}
-
-	log.Printf("키 맵핑 완료: %s", mapping.Name)
 }
 
 // sendKey 키 입력 전송
 func (km *KeyMappingManager) sendKey(key string) error {
-	// 안전한 키 입력을 위한 recover 처리
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("키 입력 중 패닉 복구: %v", r)
 		}
 	}()
 
-	// 약간의 딜레이
 	time.Sleep(50 * time.Millisecond)
-
-	// robotgo를 사용하여 키 입력
 	robotgo.KeyTap(key)
-
 	return nil
 }
 
-// validateKeys 키 유효성 검사 (딜레이 범위 수정: 0ms~1000ms)
+// validateKeys 키 유효성 검사
 func (km *KeyMappingManager) validateKeys(startKey string, keys []MappedKey) error {
-	// 시작 키 검사 - home과 delete만 허용
 	if startKey == "" {
 		return fmt.Errorf("시작 키가 비어있습니다")
 	}
 
-	// 키 목록 검사
+	allowedStartKeys := []string{"delete", "end"}
+	isValidStartKey := false
+	for _, validKey := range allowedStartKeys {
+		if strings.ToLower(startKey) == validKey {
+			isValidStartKey = true
+			break
+		}
+	}
+
+	if !isValidStartKey {
+		return fmt.Errorf("시작 키는 'delete' 또는 'end'만 사용할 수 있습니다")
+	}
+
 	if len(keys) == 0 {
 		return fmt.Errorf("실행할 키가 없습니다")
 	}
 
-	// 각 키와 딜레이 검사 (딜레이 범위 수정: 0ms~1000ms)
 	for i, key := range keys {
 		if key.Key == "" {
 			return fmt.Errorf("키 %d가 비어있습니다", i+1)
 		}
 
-		// 딜레이 범위 수정: 0ms~1000ms
 		if key.Delay < 0 || key.Delay > 1000 {
 			return fmt.Errorf("키 %d의 딜레이는 0ms~1000ms 사이여야 합니다", i+1)
 		}

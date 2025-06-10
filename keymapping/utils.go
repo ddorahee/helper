@@ -1,42 +1,81 @@
-// keymapping/utils.go 완전한 코드
+// keymapping/utils.go 완전한 코드 - 최종 버전 (한국어 기계식 키보드 지원)
 package keymapping
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 )
 
-// keyCodeToString 키 코드를 문자열로 변환 (시작키만 포함)
+// keyCodeToString 키 코드를 문자열로 변환 - 한국어 기계식 키보드 지원
 func (km *KeyMappingManager) keyCodeToString(keycode uint16) string {
-	// 시작키로 사용할 수 있는 키 코드만 매핑
+	// 한국어 기계식 키보드 특수 키 처리
+	switch keycode {
+	case 61011: // 한국어 기계식 키보드 Delete 키 (0xEE53)
+		return "delete"
+	case 46: // 표준 Delete 키
+		return "delete"
+	case 8: // Backspace
+		return "delete"
+	case 127: // ASCII Delete
+		return "delete"
+	case 35: // End 키
+		return "end"
+	}
+
+	// 일반 키 매핑
 	keyMap := map[uint16]string{
-		// 시작키로 허용되는 키들만
-		35: "end",    // End 키
-		46: "delete", // Delete 키
+		// 숫자 키
+		49: "1", 50: "2", 51: "3", 52: "4", 53: "5",
+		54: "6", 55: "7", 56: "8", 57: "9", 48: "0",
+
+		// 알파벳 키
+		65: "a", 66: "b", 67: "c", 68: "d", 69: "e",
+		70: "f", 71: "g", 72: "h", 73: "i", 74: "j",
+		75: "k", 76: "l", 77: "m", 78: "n", 79: "o",
+		80: "p", 81: "q", 82: "r", 83: "s", 84: "t",
+		85: "u", 86: "v", 87: "w", 88: "x", 89: "y",
+		90: "z",
+
+		// 펑션 키
+		112: "f1", 113: "f2", 114: "f3", 115: "f4",
+		116: "f5", 117: "f6", 118: "f7", 119: "f8",
+		120: "f9", 121: "f10", 122: "f11", 123: "f12",
+
+		// 화살표 키
+		37: "left", 38: "up", 39: "right", 40: "down",
+
+		// 기타 키
+		32: "space", 13: "enter", 27: "esc", 9: "tab",
+		16: "shift", 17: "ctrl", 18: "alt",
+
+		// 넘패드
+		96: "num0", 97: "num1", 98: "num2", 99: "num3",
+		100: "num4", 101: "num5", 102: "num6", 103: "num7",
+		104: "num8", 105: "num9",
 	}
 
 	if key, exists := keyMap[keycode]; exists {
 		return key
 	}
 
-	// 시작키가 아닌 다른 키는 빈 문자열 반환
 	return ""
 }
 
-// stringToKeyCode 문자열을 키 코드로 변환 (시작키 포함)
+// stringToKeyCode 문자열을 키 코드로 변환
 func (km *KeyMappingManager) stringToKeyCode(keyStr string) uint16 {
 	keyStr = strings.ToLower(keyStr)
 
 	// 시작키 매핑
 	startKeyMap := map[string]uint16{
-		"end":    35, // End 키
-		"delete": 46, // Delete 키
+		"end":    35,    // End 키
+		"delete": 61011, // 한국어 기계식 키보드 Delete 키
 	}
 
-	// 일반 키 매핑 (실행할 키들)
+	// 일반 키 매핑
 	keyMap := map[string]uint16{
 		// 숫자 키
 		"1": 49, "2": 50, "3": 51, "4": 52, "5": 53,
@@ -81,10 +120,10 @@ func (km *KeyMappingManager) stringToKeyCode(keyStr string) uint16 {
 	return 0
 }
 
-// GetAvailableKeys 사용 가능한 키 목록 반환 (시작키 분리)
+// GetAvailableKeys 사용 가능한 키 목록 반환
 func (km *KeyMappingManager) GetAvailableKeys() map[string][]string {
 	return map[string][]string{
-		"시작 키":  {"delete", "end"}, // 시작키는 이 두개만
+		"시작 키":  {"delete", "end"},
 		"숫자 키":  {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"},
 		"알파벳 키": {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"},
 		"펑션 키":  {"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"},
@@ -95,14 +134,13 @@ func (km *KeyMappingManager) GetAvailableKeys() map[string][]string {
 	}
 }
 
-// GetStartKeys 시작키 목록만 반환하는 새로운 함수
+// GetStartKeys 시작키 목록만 반환
 func (km *KeyMappingManager) GetStartKeys() []string {
 	return []string{"delete", "end"}
 }
 
 // LoadConfig 설정 파일 로드
 func (km *KeyMappingManager) LoadConfig() error {
-	// 파일이 존재하지 않으면 빈 설정으로 시작
 	if _, err := os.Stat(km.configFile); os.IsNotExist(err) {
 		return nil
 	}
@@ -120,10 +158,8 @@ func (km *KeyMappingManager) LoadConfig() error {
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
 
-	// 맵핑 로드
 	km.mappings = make(map[string]*KeyMapping)
 	for _, mapping := range mappings {
-		// 기존 설정에서 유효하지 않은 시작키는 제외
 		if km.isValidStartKey(mapping.StartKey) {
 			km.mappings[mapping.StartKey] = mapping
 		}
@@ -132,7 +168,7 @@ func (km *KeyMappingManager) LoadConfig() error {
 	return nil
 }
 
-// isValidStartKey 시작키가 유효한지 확인하는 헬퍼 함수
+// isValidStartKey 시작키가 유효한지 확인
 func (km *KeyMappingManager) isValidStartKey(key string) bool {
 	allowedKeys := []string{"delete", "end"}
 	for _, validKey := range allowedKeys {
@@ -145,7 +181,6 @@ func (km *KeyMappingManager) isValidStartKey(key string) bool {
 
 // SaveConfig 설정 파일 저장
 func (km *KeyMappingManager) SaveConfig() error {
-	// 맵핑을 슬라이스로 변환
 	mappings := make([]*KeyMapping, 0, len(km.mappings))
 	for _, mapping := range km.mappings {
 		mappings = append(mappings, mapping)
@@ -178,7 +213,6 @@ func (km *KeyMappingManager) ParseKeySequence(sequence string) ([]MappedKey, err
 			continue
 		}
 
-		// 키와 딜레이 파싱
 		key, delay, err := km.parseKeyWithDelay(keyStr)
 		if err != nil {
 			return nil, fmt.Errorf("키 %d 파싱 실패: %v", i+1, err)
@@ -197,17 +231,14 @@ func (km *KeyMappingManager) ParseKeySequence(sequence string) ([]MappedKey, err
 	return result, nil
 }
 
-// parseKeyWithDelay 개별 키와 딜레이 파싱 (딜레이 범위 수정: 0ms~1000ms)
+// parseKeyWithDelay 개별 키와 딜레이 파싱
 func (km *KeyMappingManager) parseKeyWithDelay(keyStr string) (string, int, error) {
-	// 기본 딜레이 (0ms로 변경)
 	defaultDelay := 0
 
-	// 괄호가 없는 경우
 	if !strings.Contains(keyStr, "(") {
 		return strings.ToLower(keyStr), defaultDelay, nil
 	}
 
-	// 괄호 파싱
 	openIdx := strings.Index(keyStr, "(")
 	closeIdx := strings.Index(keyStr, ")")
 
@@ -227,7 +258,6 @@ func (km *KeyMappingManager) parseKeyWithDelay(keyStr string) (string, int, erro
 		return "", 0, fmt.Errorf("딜레이 파싱 실패: %s", delayStr)
 	}
 
-	// 딜레이 범위 수정: 0ms~1000ms
 	if delay < 0 || delay > 1000 {
 		return "", 0, fmt.Errorf("딜레이는 0~1000ms 사이여야 합니다: %d", delay)
 	}
@@ -243,22 +273,24 @@ func (km *KeyMappingManager) FormatKeySequence(keys []MappedKey) string {
 
 	parts := make([]string, len(keys))
 	for i, key := range keys {
-		parts[i] = fmt.Sprintf("%s(%d)", key.Key, key.Delay)
+		if key.Delay == 0 {
+			parts[i] = fmt.Sprintf("%s(즉시)", key.Key)
+		} else {
+			parts[i] = fmt.Sprintf("%s(%dms)", key.Key, key.Delay)
+		}
 	}
 
 	return strings.Join(parts, ", ")
 }
 
-// IsValidKey 키가 유효한지 확인 (실행키만 확인)
+// IsValidKey 키가 유효한지 확인
 func (km *KeyMappingManager) IsValidKey(key string) bool {
 	availableKeys := km.GetAvailableKeys()
-
 	key = strings.ToLower(key)
 
-	// 시작키는 별도로 확인하지 않음 (실행키만 확인)
 	for category, keyList := range availableKeys {
 		if category == "시작 키" {
-			continue // 시작키는 건너뜀
+			continue
 		}
 		for _, validKey := range keyList {
 			if key == strings.ToLower(validKey) {
@@ -292,5 +324,6 @@ func (km *KeyMappingManager) GetMappingStats() map[string]interface{} {
 		"enabled":  enabled,
 		"disabled": disabled,
 		"running":  km.running,
+		"os":       runtime.GOOS,
 	}
 }
