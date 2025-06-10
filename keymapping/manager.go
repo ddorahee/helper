@@ -1,11 +1,10 @@
-// keymapping/manager.go 완전한 코드 - 최종 버전 (한국어 기계식 키보드 지원)
+// keymapping/manager.go - 원시 키 코드 기반으로 수정
 package keymapping
 
 import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -52,147 +51,6 @@ func NewKeyMappingManager(configDir string) *KeyMappingManager {
 
 	km.LoadConfig()
 	return km
-}
-
-// AddMapping 새로운 키 맵핑 추가
-func (km *KeyMappingManager) AddMapping(name, startKey string, keys []MappedKey) error {
-	km.mutex.Lock()
-	defer km.mutex.Unlock()
-
-	if _, exists := km.mappings[startKey]; exists {
-		return fmt.Errorf("시작 키 '%s'는 이미 사용 중입니다", startKey)
-	}
-
-	if err := km.validateKeys(startKey, keys); err != nil {
-		return err
-	}
-
-	mapping := &KeyMapping{
-		ID:        fmt.Sprintf("%s_%d", name, time.Now().Unix()),
-		Name:      name,
-		StartKey:  startKey,
-		Keys:      keys,
-		Enabled:   true,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	km.mappings[startKey] = mapping
-
-	if err := km.SaveConfig(); err != nil {
-		delete(km.mappings, startKey)
-		return fmt.Errorf("설정 저장 실패: %v", err)
-	}
-
-	log.Printf("키 맵핑 추가: %s (시작키: %s)", name, startKey)
-	return nil
-}
-
-// UpdateMapping 기존 키 맵핑 수정
-func (km *KeyMappingManager) UpdateMapping(oldStartKey, newName, newStartKey string, keys []MappedKey) error {
-	km.mutex.Lock()
-	defer km.mutex.Unlock()
-
-	mapping, exists := km.mappings[oldStartKey]
-	if !exists {
-		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: %s", oldStartKey)
-	}
-
-	if oldStartKey != newStartKey {
-		if _, exists := km.mappings[newStartKey]; exists {
-			return fmt.Errorf("시작 키 '%s'는 이미 사용 중입니다", newStartKey)
-		}
-	}
-
-	if err := km.validateKeys(newStartKey, keys); err != nil {
-		return err
-	}
-
-	if oldStartKey != newStartKey {
-		delete(km.mappings, oldStartKey)
-	}
-
-	mapping.Name = newName
-	mapping.StartKey = newStartKey
-	mapping.Keys = keys
-	mapping.UpdatedAt = time.Now()
-
-	km.mappings[newStartKey] = mapping
-
-	if err := km.SaveConfig(); err != nil {
-		return fmt.Errorf("설정 저장 실패: %v", err)
-	}
-
-	log.Printf("키 맵핑 수정: %s (시작키: %s -> %s)", newName, oldStartKey, newStartKey)
-	return nil
-}
-
-// RemoveMapping 키 맵핑 제거
-func (km *KeyMappingManager) RemoveMapping(startKey string) error {
-	km.mutex.Lock()
-	defer km.mutex.Unlock()
-
-	mapping, exists := km.mappings[startKey]
-	if !exists {
-		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: %s", startKey)
-	}
-
-	delete(km.mappings, startKey)
-
-	if err := km.SaveConfig(); err != nil {
-		return fmt.Errorf("설정 저장 실패: %v", err)
-	}
-
-	log.Printf("키 맵핑 제거: %s (시작키: %s)", mapping.Name, startKey)
-	return nil
-}
-
-// ToggleMapping 키 맵핑 활성화/비활성화
-func (km *KeyMappingManager) ToggleMapping(startKey string) error {
-	km.mutex.Lock()
-	defer km.mutex.Unlock()
-
-	mapping, exists := km.mappings[startKey]
-	if !exists {
-		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: %s", startKey)
-	}
-
-	mapping.Enabled = !mapping.Enabled
-	mapping.UpdatedAt = time.Now()
-
-	if err := km.SaveConfig(); err != nil {
-		return fmt.Errorf("설정 저장 실패: %v", err)
-	}
-
-	status := "비활성화"
-	if mapping.Enabled {
-		status = "활성화"
-	}
-
-	log.Printf("키 맵핑 %s: %s (시작키: %s)", status, mapping.Name, startKey)
-	return nil
-}
-
-// GetMappings 모든 키 맵핑 반환
-func (km *KeyMappingManager) GetMappings() map[string]*KeyMapping {
-	km.mutex.RLock()
-	defer km.mutex.RUnlock()
-
-	result := make(map[string]*KeyMapping)
-	for k, v := range km.mappings {
-		result[k] = v
-	}
-
-	return result
-}
-
-// GetMapping 특정 키 맵핑 반환
-func (km *KeyMappingManager) GetMapping(startKey string) (*KeyMapping, bool) {
-	km.mutex.RLock()
-	defer km.mutex.RUnlock()
-
-	mapping, exists := km.mappings[startKey]
-	return mapping, exists
 }
 
 // Start 키 훅 시작
@@ -269,7 +127,7 @@ func (km *KeyMappingManager) runKeyHook() {
 	}
 }
 
-// handleKeyPress 키 입력 처리
+// handleKeyPress 키 입력 처리 (원시 키 코드 기반)
 func (km *KeyMappingManager) handleKeyPress(ev hook.Event) {
 	km.mutex.RLock()
 	defer km.mutex.RUnlock()
@@ -278,17 +136,36 @@ func (km *KeyMappingManager) handleKeyPress(ev hook.Event) {
 		return
 	}
 
-	keyStr := km.keyCodeToString(ev.Keycode)
+	// 원시 키 코드 사용
+	rawKeycode := ev.Rawcode
+
+	// 허용된 원시 키 코드인지 확인
+	allowedCodes := km.getAllowedRawKeyCodes()
+	isAllowed := false
+	for _, code := range allowedCodes {
+		if rawKeycode == code {
+			isAllowed = true
+			break
+		}
+	}
+
+	if !isAllowed {
+		return
+	}
+
+	// 원시 키 코드를 문자열로 변환
+	keyStr := km.rawKeyCodeToString(rawKeycode)
 	if keyStr == "" {
 		return
 	}
 
+	// 해당 키로 시작하는 맵핑 찾기
 	mapping, exists := km.mappings[keyStr]
 	if !exists || !mapping.Enabled {
 		return
 	}
 
-	log.Printf("키 맵핑 실행: %s (시작키: %s)", mapping.Name, keyStr)
+	log.Printf("키 맵핑 실행: %s", mapping.Name)
 	go km.executeKeySequence(mapping)
 }
 
@@ -304,6 +181,7 @@ func (km *KeyMappingManager) executeKeySequence(mapping *KeyMapping) {
 			continue
 		}
 
+		// 딜레이 적용 (마지막 키가 아닌 경우)
 		if i < len(mapping.Keys)-1 && key.Delay > 0 {
 			time.Sleep(time.Duration(key.Delay) * time.Millisecond)
 		}
@@ -333,16 +211,8 @@ func (km *KeyMappingManager) validateKeys(startKey string, keys []MappedKey) err
 		return fmt.Errorf("시작 키가 비어있습니다")
 	}
 
-	allowedStartKeys := []string{"delete", "end"}
-	isValidStartKey := false
-	for _, validKey := range allowedStartKeys {
-		if strings.ToLower(startKey) == validKey {
-			isValidStartKey = true
-			break
-		}
-	}
-
-	if !isValidStartKey {
+	// 시작키는 DELETE 또는 END만 허용
+	if !km.isValidStartKey(startKey) {
 		return fmt.Errorf("시작 키는 'delete' 또는 'end'만 사용할 수 있습니다")
 	}
 
@@ -361,4 +231,140 @@ func (km *KeyMappingManager) validateKeys(startKey string, keys []MappedKey) err
 	}
 
 	return nil
+}
+
+// CRUD 메서드들...
+func (km *KeyMappingManager) AddMapping(name, startKey string, keys []MappedKey) error {
+	km.mutex.Lock()
+	defer km.mutex.Unlock()
+
+	if _, exists := km.mappings[startKey]; exists {
+		return fmt.Errorf("시작 키 '%s'는 이미 사용 중입니다", startKey)
+	}
+
+	if err := km.validateKeys(startKey, keys); err != nil {
+		return err
+	}
+
+	mapping := &KeyMapping{
+		ID:        fmt.Sprintf("%s_%d", name, time.Now().Unix()),
+		Name:      name,
+		StartKey:  startKey,
+		Keys:      keys,
+		Enabled:   true,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	km.mappings[startKey] = mapping
+
+	if err := km.SaveConfig(); err != nil {
+		delete(km.mappings, startKey)
+		return fmt.Errorf("설정 저장 실패: %v", err)
+	}
+
+	log.Printf("키 맵핑 추가: %s (시작키: %s)", name, startKey)
+	return nil
+}
+
+func (km *KeyMappingManager) UpdateMapping(oldStartKey, newName, newStartKey string, keys []MappedKey) error {
+	km.mutex.Lock()
+	defer km.mutex.Unlock()
+
+	mapping, exists := km.mappings[oldStartKey]
+	if !exists {
+		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: %s", oldStartKey)
+	}
+
+	if oldStartKey != newStartKey {
+		if _, exists := km.mappings[newStartKey]; exists {
+			return fmt.Errorf("시작 키 '%s'는 이미 사용 중입니다", newStartKey)
+		}
+	}
+
+	if err := km.validateKeys(newStartKey, keys); err != nil {
+		return err
+	}
+
+	if oldStartKey != newStartKey {
+		delete(km.mappings, oldStartKey)
+	}
+
+	mapping.Name = newName
+	mapping.StartKey = newStartKey
+	mapping.Keys = keys
+	mapping.UpdatedAt = time.Now()
+
+	km.mappings[newStartKey] = mapping
+
+	if err := km.SaveConfig(); err != nil {
+		return fmt.Errorf("설정 저장 실패: %v", err)
+	}
+
+	log.Printf("키 맵핑 수정: %s (시작키: %s -> %s)", newName, oldStartKey, newStartKey)
+	return nil
+}
+
+func (km *KeyMappingManager) RemoveMapping(startKey string) error {
+	km.mutex.Lock()
+	defer km.mutex.Unlock()
+
+	mapping, exists := km.mappings[startKey]
+	if !exists {
+		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: %s", startKey)
+	}
+
+	delete(km.mappings, startKey)
+
+	if err := km.SaveConfig(); err != nil {
+		return fmt.Errorf("설정 저장 실패: %v", err)
+	}
+
+	log.Printf("키 맵핑 제거: %s (시작키: %s)", mapping.Name, startKey)
+	return nil
+}
+
+func (km *KeyMappingManager) ToggleMapping(startKey string) error {
+	km.mutex.Lock()
+	defer km.mutex.Unlock()
+
+	mapping, exists := km.mappings[startKey]
+	if !exists {
+		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: %s", startKey)
+	}
+
+	mapping.Enabled = !mapping.Enabled
+	mapping.UpdatedAt = time.Now()
+
+	if err := km.SaveConfig(); err != nil {
+		return fmt.Errorf("설정 저장 실패: %v", err)
+	}
+
+	status := "비활성화"
+	if mapping.Enabled {
+		status = "활성화"
+	}
+
+	log.Printf("키 맵핑 %s: %s (시작키: %s)", status, mapping.Name, startKey)
+	return nil
+}
+
+func (km *KeyMappingManager) GetMappings() map[string]*KeyMapping {
+	km.mutex.RLock()
+	defer km.mutex.RUnlock()
+
+	result := make(map[string]*KeyMapping)
+	for k, v := range km.mappings {
+		result[k] = v
+	}
+
+	return result
+}
+
+func (km *KeyMappingManager) GetMapping(startKey string) (*KeyMapping, bool) {
+	km.mutex.RLock()
+	defer km.mutex.RUnlock()
+
+	mapping, exists := km.mappings[startKey]
+	return mapping, exists
 }

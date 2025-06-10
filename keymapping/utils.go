@@ -1,4 +1,4 @@
-// keymapping/utils.go 완전한 코드 - 최종 버전 (한국어 기계식 키보드 지원)
+// keymapping/utils.go - 원시 키 코드 기반으로 수정
 package keymapping
 
 import (
@@ -10,110 +10,39 @@ import (
 	"strings"
 )
 
-// keyCodeToString 키 코드를 문자열로 변환 - 한국어 기계식 키보드 지원
-func (km *KeyMappingManager) keyCodeToString(keycode uint16) string {
-	// 한국어 기계식 키보드 특수 키 처리
-	switch keycode {
-	case 61011: // 한국어 기계식 키보드 Delete 키 (0xEE53)
+// rawKeyCodeToString 원시 키 코드를 문자열로 변환 (수정됨)
+func (km *KeyMappingManager) rawKeyCodeToString(rawKeycode uint16) string {
+	// 허용된 시작키만 처리 (원시 키 코드 기준)
+	switch rawKeycode {
+	case 46: // Delete 키 (원시)
 		return "delete"
-	case 46: // 표준 Delete 키
-		return "delete"
-	case 8: // Backspace
-		return "delete"
-	case 127: // ASCII Delete
-		return "delete"
-	case 35: // End 키
+	case 35: // End 키 (원시)
 		return "end"
 	}
 
-	// 일반 키 매핑
-	keyMap := map[uint16]string{
-		// 숫자 키
-		49: "1", 50: "2", 51: "3", 52: "4", 53: "5",
-		54: "6", 55: "7", 56: "8", 57: "9", 48: "0",
-
-		// 알파벳 키
-		65: "a", 66: "b", 67: "c", 68: "d", 69: "e",
-		70: "f", 71: "g", 72: "h", 73: "i", 74: "j",
-		75: "k", 76: "l", 77: "m", 78: "n", 79: "o",
-		80: "p", 81: "q", 82: "r", 83: "s", 84: "t",
-		85: "u", 86: "v", 87: "w", 88: "x", 89: "y",
-		90: "z",
-
-		// 펑션 키
-		112: "f1", 113: "f2", 114: "f3", 115: "f4",
-		116: "f5", 117: "f6", 118: "f7", 119: "f8",
-		120: "f9", 121: "f10", 122: "f11", 123: "f12",
-
-		// 화살표 키
-		37: "left", 38: "up", 39: "right", 40: "down",
-
-		// 기타 키
-		32: "space", 13: "enter", 27: "esc", 9: "tab",
-		16: "shift", 17: "ctrl", 18: "alt",
-
-		// 넘패드
-		96: "num0", 97: "num1", 98: "num2", 99: "num3",
-		100: "num4", 101: "num5", 102: "num6", 103: "num7",
-		104: "num8", 105: "num9",
-	}
-
-	if key, exists := keyMap[keycode]; exists {
-		return key
-	}
-
+	// 시작키가 아닌 다른 키는 빈 문자열 반환 (무시)
 	return ""
 }
 
-// stringToKeyCode 문자열을 키 코드로 변환
-func (km *KeyMappingManager) stringToKeyCode(keyStr string) uint16 {
+// getAllowedRawKeyCodes 허용된 원시 키 코드 목록 반환
+func (km *KeyMappingManager) getAllowedRawKeyCodes() []uint16 {
+	return []uint16{
+		46, // Delete (원시 키 코드)
+		35, // End (원시 키 코드)
+	}
+}
+
+// stringToRawKeyCode 문자열을 원시 키 코드로 변환
+func (km *KeyMappingManager) stringToRawKeyCode(keyStr string) uint16 {
 	keyStr = strings.ToLower(keyStr)
 
-	// 시작키 매핑
+	// 시작키 매핑 (원시 키 코드 기준)
 	startKeyMap := map[string]uint16{
-		"end":    35,    // End 키
-		"delete": 61011, // 한국어 기계식 키보드 Delete 키
+		"delete": 46, // Delete 원시 키 코드
+		"end":    35, // End 원시 키 코드
 	}
 
-	// 일반 키 매핑
-	keyMap := map[string]uint16{
-		// 숫자 키
-		"1": 49, "2": 50, "3": 51, "4": 52, "5": 53,
-		"6": 54, "7": 55, "8": 56, "9": 57, "0": 48,
-
-		// 알파벳 키
-		"a": 65, "b": 66, "c": 67, "d": 68, "e": 69,
-		"f": 70, "g": 71, "h": 72, "i": 73, "j": 74,
-		"k": 75, "l": 76, "m": 77, "n": 78, "o": 79,
-		"p": 80, "q": 81, "r": 82, "s": 83, "t": 84,
-		"u": 85, "v": 86, "w": 87, "x": 88, "y": 89,
-		"z": 90,
-
-		// 펑션 키
-		"f1": 112, "f2": 113, "f3": 114, "f4": 115,
-		"f5": 116, "f6": 117, "f7": 118, "f8": 119,
-		"f9": 120, "f10": 121, "f11": 122, "f12": 123,
-
-		// 화살표 키
-		"left": 37, "up": 38, "right": 39, "down": 40,
-
-		// 기타 키
-		"space": 32, "enter": 13, "esc": 27, "tab": 9,
-		"shift": 16, "ctrl": 17, "alt": 18,
-
-		// 넘패드
-		"num0": 96, "num1": 97, "num2": 98, "num3": 99,
-		"num4": 100, "num5": 101, "num6": 102, "num7": 103,
-		"num8": 104, "num9": 105,
-	}
-
-	// 시작키 먼저 확인
 	if code, exists := startKeyMap[keyStr]; exists {
-		return code
-	}
-
-	// 일반 키 확인
-	if code, exists := keyMap[keyStr]; exists {
 		return code
 	}
 
@@ -123,7 +52,7 @@ func (km *KeyMappingManager) stringToKeyCode(keyStr string) uint16 {
 // GetAvailableKeys 사용 가능한 키 목록 반환
 func (km *KeyMappingManager) GetAvailableKeys() map[string][]string {
 	return map[string][]string{
-		"시작 키":  {"delete", "end"},
+		"시작 키":  {"delete", "end"}, // 시작키는 이 두 개만
 		"숫자 키":  {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"},
 		"알파벳 키": {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"},
 		"펑션 키":  {"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"},
@@ -132,11 +61,6 @@ func (km *KeyMappingManager) GetAvailableKeys() map[string][]string {
 		"넘패드":   {"num0", "num1", "num2", "num3", "num4", "num5", "num6", "num7", "num8", "num9"},
 		"조합 키":  {"shift", "ctrl", "alt"},
 	}
-}
-
-// GetStartKeys 시작키 목록만 반환
-func (km *KeyMappingManager) GetStartKeys() []string {
-	return []string{"delete", "end"}
 }
 
 // LoadConfig 설정 파일 로드

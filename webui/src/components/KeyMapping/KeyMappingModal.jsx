@@ -1,4 +1,4 @@
-// webui/src/components/KeyMapping/KeyMappingModal.jsx 디버깅 강화
+// webui/src/components/KeyMapping/KeyMappingModal.jsx - 딜레이 입력 개선
 import { useState, useEffect } from 'react'
 import { X, Plus, Trash2, HelpCircle } from 'lucide-react'
 import { keyMappingService } from '@services/keyMappingService'
@@ -23,7 +23,7 @@ export default function KeyMappingModal({
     const [loading, setLoading] = useState(false)
     const [keysLoading, setKeysLoading] = useState(false)
 
-    // 시작키로 허용되는 키만 정의
+    // 시작키로 허용되는 키만 정의 (엄격하게 제한)
     const allowedStartKeys = ['delete', 'end']
 
     // 컴포넌트 마운트 시 사용 가능한 키 목록 로드
@@ -54,7 +54,7 @@ export default function KeyMappingModal({
         }
     }, [isOpen, editingMapping])
 
-    // 사용 가능한 키 목록 로드 (디버깅 강화)
+    // 사용 가능한 키 목록 로드
     const loadAvailableKeys = async () => {
         try {
             console.log('사용 가능한 키 목록 로드 시작...')
@@ -66,15 +66,9 @@ export default function KeyMappingModal({
             if (data && data.success && data.keys) {
                 console.log('사용 가능한 키 목록:', data.keys)
                 setAvailableKeys(data.keys)
-
-                // 각 카테고리별 키 개수 로그
-                Object.entries(data.keys).forEach(([category, keys]) => {
-                    console.log(`카테고리 '${category}': ${keys.length}개 키`, keys)
-                })
             } else {
                 console.error('키 목록 로드 실패 또는 잘못된 응답:', data)
-
-                // 기본 키 목록 설정 (백업)
+                // 기본 키 목록 설정
                 const defaultKeys = {
                     "숫자 키": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
                     "알파벳 키": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"],
@@ -84,21 +78,16 @@ export default function KeyMappingModal({
                     "넘패드": ["num0", "num1", "num2", "num3", "num4", "num5", "num6", "num7", "num8", "num9"],
                     "조합 키": ["shift", "ctrl", "alt"]
                 }
-
-                console.log('기본 키 목록 사용:', defaultKeys)
                 setAvailableKeys(defaultKeys)
             }
         } catch (error) {
             console.error('사용 가능한 키 목록 로드 실패:', error)
-
             // 에러 발생 시 기본 키 목록 설정
             const defaultKeys = {
                 "숫자 키": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
                 "알파벳 키": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"],
                 "특수 키": ["space", "enter", "esc", "tab"]
             }
-
-            console.log('에러로 인한 기본 키 목록 사용:', defaultKeys)
             setAvailableKeys(defaultKeys)
         } finally {
             setKeysLoading(false)
@@ -130,19 +119,102 @@ export default function KeyMappingModal({
         }
     }
 
-    // 키 시퀀스 변경 처리
+    // 키 시퀀스 변경 처리 (딜레이 입력 개선)
     const handleKeyChange = (index, field, value) => {
         console.log(`키 시퀀스 변경: [${index}].${field} = ${value}`)
         const newKeys = [...formData.keys]
-        newKeys[index] = {
-            ...newKeys[index],
-            [field]: field === 'delay' ? parseInt(value) || KEY_MAPPING.DEFAULT_DELAY : value
+
+        if (field === 'delay') {
+            // 딜레이 값 처리 개선
+            let delayValue = 0
+
+            // 빈 문자열이거나 null/undefined인 경우
+            if (value === '' || value === null || value === undefined) {
+                delayValue = 0
+            } else if (typeof value === 'string') {
+                // 문자열인 경우 파싱
+                if (value.trim() === '') {
+                    delayValue = 0
+                } else {
+                    const parsed = parseInt(value.replace(/[^0-9]/g, ''))
+                    delayValue = isNaN(parsed) ? 0 : parsed
+                }
+            } else {
+                // 숫자인 경우
+                delayValue = parseInt(value) || 0
+            }
+
+            // 범위 제한
+            delayValue = Math.max(KEY_MAPPING.MIN_DELAY, Math.min(delayValue, KEY_MAPPING.MAX_DELAY))
+
+            newKeys[index] = {
+                ...newKeys[index],
+                delay: delayValue
+            }
+        } else {
+            newKeys[index] = {
+                ...newKeys[index],
+                [field]: value
+            }
         }
 
         setFormData(prev => ({
             ...prev,
             keys: newKeys
         }))
+    }
+
+    // 딜레이 입력 필드 특별 처리
+    const handleDelayInputChange = (index, event) => {
+        const value = event.target.value
+        console.log(`딜레이 입력 변경: [${index}] = "${value}"`)
+
+        // 빈 문자열인 경우 0으로 설정하되 표시는 빈 문자열로
+        if (value === '') {
+            handleKeyChange(index, 'delay', 0)
+            return
+        }
+
+        // 숫자만 허용
+        const numericValue = value.replace(/[^0-9]/g, '')
+
+        if (numericValue !== value) {
+            // 숫자가 아닌 문자가 포함된 경우 숫자만 추출
+            event.target.value = numericValue
+        }
+
+        const finalValue = numericValue === '' ? 0 : parseInt(numericValue)
+        handleKeyChange(index, 'delay', finalValue)
+    }
+
+    // 딜레이 입력 필드 포커스 처리
+    const handleDelayFocus = (event) => {
+        // 포커스 시 전체 선택
+        setTimeout(() => {
+            event.target.select()
+        }, 10)
+    }
+
+    // 딜레이 입력 필드 키 다운 처리
+    const handleDelayKeyDown = (index, event) => {
+        // 백스페이스로 0 완전히 삭제 허용
+        if (event.key === 'Backspace') {
+            const currentValue = event.target.value
+            if (currentValue === '0' || currentValue === '') {
+                event.preventDefault()
+                handleKeyChange(index, 'delay', 0)
+                event.target.value = ''
+            }
+        }
+
+        // Enter 키로 다음 필드로 이동
+        if (event.key === 'Enter') {
+            event.preventDefault()
+            const nextInput = event.target.closest('.keyRow')?.nextElementSibling?.querySelector('input[type="number"]')
+            if (nextInput) {
+                nextInput.focus()
+            }
+        }
     }
 
     // 키 추가
@@ -184,7 +256,7 @@ export default function KeyMappingModal({
             if (!allowedStartKeys.includes(formData.start_key.toLowerCase())) {
                 newErrors.start_key = '시작 키는 DELETE 또는 END만 사용할 수 있습니다'
             } else {
-                // 중복 검사 (편집 모드가 아니거나 키가 변경된 경우)
+                // 중복 검사
                 const isDuplicate = existingStartKeys.includes(formData.start_key) &&
                     (!editingMapping || editingMapping.start_key !== formData.start_key)
 
@@ -243,12 +315,6 @@ export default function KeyMappingModal({
         }
     }
 
-    // 키 목록 로딩 상태 디버깅
-    useEffect(() => {
-        console.log('사용 가능한 키 목록 상태 변경:', availableKeys)
-        console.log('키 카테고리 개수:', Object.keys(availableKeys).length)
-    }, [availableKeys])
-
     // 모달이 열려있지 않으면 렌더링하지 않음
     if (!isOpen) return null
 
@@ -273,16 +339,6 @@ export default function KeyMappingModal({
                     {keysLoading && (
                         <div style={{ padding: '10px', textAlign: 'center', color: 'var(--text-muted)' }}>
                             사용 가능한 키 목록을 불러오는 중...
-                        </div>
-                    )}
-
-                    {/* 디버그 정보 표시 */}
-                    {process.env.NODE_ENV === 'development' && (
-                        <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: 'var(--highlight)', borderRadius: '4px', fontSize: '12px' }}>
-                            <strong>디버그 정보:</strong><br />
-                            키 카테고리 수: {Object.keys(availableKeys).length}<br />
-                            키 로딩 중: {keysLoading ? 'Yes' : 'No'}<br />
-                            총 키 개수: {Object.values(availableKeys).flat().length}
                         </div>
                     )}
 
@@ -326,7 +382,7 @@ export default function KeyMappingModal({
                         </select>
                         {errors.start_key && <span className={styles.errorText}>{errors.start_key}</span>}
                         <small className={styles.formHelp}>
-                            안전을 위해 DELETE와 END 키만 시작키로 사용할 수 있습니다.
+                            안전을 위해 DELETE와 END 키만 시작키로 사용할 수 있습니다. 다른 키는 동작하지 않습니다.
                         </small>
                     </div>
 
@@ -345,7 +401,7 @@ export default function KeyMappingModal({
 
                         <div className={styles.keySequence}>
                             {formData.keys.map((keyItem, index) => (
-                                <div key={index} className={styles.keyRow}>
+                                <div key={index} className={`${styles.keyRow} keyRow`}>
                                     <div className={styles.keyIndex}>{index + 1}</div>
 
                                     <div className={styles.keySelectGroup}>
@@ -379,9 +435,18 @@ export default function KeyMappingModal({
                                             min={KEY_MAPPING.MIN_DELAY}
                                             max={KEY_MAPPING.MAX_DELAY}
                                             step="10"
-                                            value={keyItem.delay}
-                                            onChange={(e) => handleKeyChange(index, 'delay', e.target.value)}
+                                            value={keyItem.delay === 0 ? '' : keyItem.delay}
+                                            onChange={(e) => handleDelayInputChange(index, e)}
+                                            onFocus={handleDelayFocus}
+                                            onKeyDown={(e) => handleDelayKeyDown(index, e)}
+                                            onBlur={(e) => {
+                                                // 포커스 잃을 때 빈 값이면 0으로 설정
+                                                if (e.target.value === '') {
+                                                    handleKeyChange(index, 'delay', 0)
+                                                }
+                                            }}
                                             className={`${styles.delayInput} ${errors[`delay_${index}`] ? styles.error : ''}`}
+                                            placeholder="0"
                                         />
                                         <span className={styles.delayUnit}>ms</span>
                                         {errors[`delay_${index}`] &&

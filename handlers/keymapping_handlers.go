@@ -1,4 +1,4 @@
-// handlers/keymapping_handlers.go 완전한 코드
+// handlers/keymapping_handlers.go - 키 맵핑 초기화 기능 추가
 package handlers
 
 import (
@@ -64,10 +64,23 @@ func (h *KeyMappingHandler) getMappings(w http.ResponseWriter, r *http.Request) 
 
 	log.Printf("반환할 맵핑 개수: %d", len(mappings))
 
+	// 허용된 시작키만 포함된 맵핑만 반환
+	filteredMappings := make(map[string]interface{})
+	for key, mapping := range mappings {
+		// delete 또는 end 키만 허용
+		if strings.ToLower(key) == "delete" || strings.ToLower(key) == "end" {
+			filteredMappings[key] = mapping
+			log.Printf("유효한 맵핑: %s (시작키: %s)", mapping.Name, key)
+		} else {
+			log.Printf("허용되지 않은 시작키로 맵핑 제외: %s (시작키: %s)", mapping.Name, key)
+		}
+	}
+
 	response := map[string]interface{}{
-		"mappings": mappings,
+		"mappings": filteredMappings,
 		"stats":    stats,
 		"success":  true,
+		"message":  fmt.Sprintf("총 %d개 맵핑 (허용된 키만)", len(filteredMappings)),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -104,6 +117,14 @@ func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// 시작키 검증 (delete 또는 end만 허용)
+	startKeyLower := strings.ToLower(strings.TrimSpace(request.StartKey))
+	if startKeyLower != "delete" && startKeyLower != "end" {
+		log.Printf("허용되지 않은 시작키: %s", request.StartKey)
+		http.Error(w, "시작키는 'delete' 또는 'end'만 사용할 수 있습니다", http.StatusBadRequest)
+		return
+	}
+
 	// 키 시퀀스 파싱
 	keys, err := h.Manager.ParseKeySequence(request.KeySequence)
 	if err != nil {
@@ -113,13 +134,13 @@ func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request
 	}
 
 	// 키 맵핑 추가
-	if err := h.Manager.AddMapping(request.Name, request.StartKey, keys); err != nil {
+	if err := h.Manager.AddMapping(request.Name, startKeyLower, keys); err != nil {
 		log.Printf("키 맵핑 추가 실패: %v", err)
 		http.Error(w, fmt.Sprintf("키 맵핑 추가 실패: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("키 맵핑 생성 성공: %s", request.Name)
+	log.Printf("키 맵핑 생성 성공: %s (시작키: %s)", request.Name, startKeyLower)
 
 	response := map[string]interface{}{
 		"success": true,
@@ -157,6 +178,14 @@ func (h *KeyMappingHandler) updateMapping(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// 시작키 검증
+	startKeyLower := strings.ToLower(strings.TrimSpace(request.StartKey))
+	if startKeyLower != "delete" && startKeyLower != "end" {
+		log.Printf("허용되지 않은 시작키: %s", request.StartKey)
+		http.Error(w, "시작키는 'delete' 또는 'end'만 사용할 수 있습니다", http.StatusBadRequest)
+		return
+	}
+
 	// 키 시퀀스 파싱
 	keys, err := h.Manager.ParseKeySequence(request.KeySequence)
 	if err != nil {
@@ -166,13 +195,13 @@ func (h *KeyMappingHandler) updateMapping(w http.ResponseWriter, r *http.Request
 	}
 
 	// 키 맵핑 수정
-	if err := h.Manager.UpdateMapping(request.OldStartKey, request.Name, request.StartKey, keys); err != nil {
+	if err := h.Manager.UpdateMapping(request.OldStartKey, request.Name, startKeyLower, keys); err != nil {
 		log.Printf("키 맵핑 수정 실패: %v", err)
 		http.Error(w, fmt.Sprintf("키 맵핑 수정 실패: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("키 맵핑 수정 성공: %s", request.Name)
+	log.Printf("키 맵핑 수정 성공: %s (시작키: %s)", request.Name, startKeyLower)
 
 	response := map[string]interface{}{
 		"success": true,
@@ -246,7 +275,6 @@ func (h *KeyMappingHandler) HandleMappingToggle(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// CORS 헤더 추가
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
@@ -281,15 +309,12 @@ func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// CORS 헤더 추가
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
-	// JSON이나 Form 데이터 모두 지원
 	var action string
-
-	// Content-Type 확인
 	contentType := r.Header.Get("Content-Type")
+
 	if strings.Contains(contentType, "application/json") {
 		var request struct {
 			Action string `json:"action"`
@@ -316,20 +341,36 @@ func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.
 		if h.Manager.IsRunning() {
 			message = "키 맵핑 시스템이 이미 실행 중입니다"
 		} else {
+			log.Printf("키 맵핑 시스템 시작 요청")
 			err = h.Manager.Start()
 			if err == nil {
-				message = "키 맵핑 시스템이 시작되었습니다"
+				message = "키 맵핑 시스템이 시작되었습니다 (허용된 키: delete, end)"
+				log.Printf("키 맵핑 시스템 시작됨")
 			}
 		}
 	case "stop":
 		if !h.Manager.IsRunning() {
 			message = "키 맵핑 시스템이 이미 중지되어 있습니다"
 		} else {
+			log.Printf("키 맵핑 시스템 중지 요청")
 			h.Manager.Stop()
 			message = "키 맵핑 시스템이 중지되었습니다"
+			log.Printf("키 맵핑 시스템 중지됨")
 		}
+	case "clear":
+		// 모든 키 맵핑 삭제 (새로 추가)
+		log.Printf("모든 키 맵핑 삭제 요청")
+		mappings := h.Manager.GetMappings()
+		deletedCount := 0
+		for startKey := range mappings {
+			if err := h.Manager.RemoveMapping(startKey); err == nil {
+				deletedCount++
+			}
+		}
+		message = fmt.Sprintf("총 %d개 키 맵핑이 삭제되었습니다", deletedCount)
+		log.Printf("키 맵핑 초기화 완료: %d개 삭제", deletedCount)
 	default:
-		http.Error(w, "잘못된 액션입니다 (start/stop)", http.StatusBadRequest)
+		http.Error(w, "잘못된 액션입니다 (start/stop/clear)", http.StatusBadRequest)
 		return
 	}
 
@@ -353,7 +394,7 @@ func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(response)
 }
 
-// HandleAvailableKeys 사용 가능한 키 목록 반환 (수정됨)
+// HandleAvailableKeys 사용 가능한 키 목록 반환
 func (h *KeyMappingHandler) HandleAvailableKeys(w http.ResponseWriter, r *http.Request) {
 	if !utils.IsLocalhost(r.Host) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -362,11 +403,9 @@ func (h *KeyMappingHandler) HandleAvailableKeys(w http.ResponseWriter, r *http.R
 
 	log.Printf("사용 가능한 키 목록 요청")
 
-	// CORS 헤더 추가
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
-	// 키 맵핑 매니저에서 사용 가능한 키 목록 가져오기
 	availableKeys := h.Manager.GetAvailableKeys()
 
 	log.Printf("반환할 키 카테고리 수: %d", len(availableKeys))
@@ -377,6 +416,7 @@ func (h *KeyMappingHandler) HandleAvailableKeys(w http.ResponseWriter, r *http.R
 	response := map[string]interface{}{
 		"keys":    availableKeys,
 		"success": true,
+		"message": "허용된 시작키: delete, end",
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -395,7 +435,6 @@ func (h *KeyMappingHandler) HandleMappingStatus(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// CORS 헤더 추가
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
