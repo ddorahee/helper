@@ -20,14 +20,15 @@ func (km *KeyMappingManager) validateKeys(startKey string, keys []MappedKey) err
 		return fmt.Errorf("실행할 키가 없습니다")
 	}
 
-	// 각 키와 딜레이 검사
+	// 각 키와 딜레이 검사 (딜레이 범위 수정: 0ms~1000ms)
 	for i, key := range keys {
 		if key.Key == "" {
 			return fmt.Errorf("키 %d가 비어있습니다", i+1)
 		}
 
-		if key.Delay < 100 || key.Delay > 1000 {
-			return fmt.Errorf("키 %d의 딜레이는 100ms~1000ms 사이여야 합니다", i+1)
+		// 딜레이 범위 수정: 0ms~1000ms
+		if key.Delay < 0 || key.Delay > 1000 {
+			return fmt.Errorf("키 %d의 딜레이는 0ms~1000ms 사이여야 합니다", i+1)
 		}
 	}
 
@@ -224,8 +225,8 @@ func (km *KeyMappingManager) ParseKeySequence(sequence string) ([]MappedKey, err
 
 // parseKeyWithDelay 개별 키와 딜레이 파싱 (기존 코드 유지)
 func (km *KeyMappingManager) parseKeyWithDelay(keyStr string) (string, int, error) {
-	// 기본 딜레이
-	defaultDelay := 200
+	// 기본 딜레이 (0ms로 변경)
+	defaultDelay := 0
 
 	// 괄호가 없는 경우
 	if !strings.Contains(keyStr, "(") {
@@ -252,8 +253,9 @@ func (km *KeyMappingManager) parseKeyWithDelay(keyStr string) (string, int, erro
 		return "", 0, fmt.Errorf("딜레이 파싱 실패: %s", delayStr)
 	}
 
-	if delay < 100 || delay > 1000 {
-		return "", 0, fmt.Errorf("딜레이는 100~1000ms 사이여야 합니다: %d", delay)
+	// 딜레이 범위 수정: 0ms~1000ms
+	if delay < 0 || delay > 1000 {
+		return "", 0, fmt.Errorf("딜레이는 0~1000ms 사이여야 합니다: %d", delay)
 	}
 
 	return strings.ToLower(key), delay, nil

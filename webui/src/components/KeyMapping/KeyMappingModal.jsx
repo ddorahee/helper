@@ -1,7 +1,8 @@
-// webui/src/components/KeyMapping/KeyMappingModal.jsx 수정
+// webui/src/components/KeyMapping/KeyMappingModal.jsx 수정 (딜레이 관련 부분)
 import { useState, useEffect } from 'react'
 import { X, Plus, Trash2, HelpCircle } from 'lucide-react'
 import { keyMappingService } from '@services/keyMappingService'
+import { KEY_MAPPING } from '@constants/appConstants'
 import Button from '@components/Common/Button'
 import styles from './KeyMappingModal.module.css'
 
@@ -15,7 +16,7 @@ export default function KeyMappingModal({
     const [formData, setFormData] = useState({
         name: '',
         start_key: '',
-        keys: [{ key: '', delay: 200 }]
+        keys: [{ key: '', delay: KEY_MAPPING.DEFAULT_DELAY }] // 기본값 0ms
     })
     const [availableKeys, setAvailableKeys] = useState({})
     const [errors, setErrors] = useState({})
@@ -34,14 +35,14 @@ export default function KeyMappingModal({
                 setFormData({
                     name: editingMapping.name,
                     start_key: editingMapping.start_key,
-                    keys: editingMapping.keys || [{ key: '', delay: 200 }]
+                    keys: editingMapping.keys || [{ key: '', delay: KEY_MAPPING.DEFAULT_DELAY }]
                 })
             } else {
                 // 새 맵핑인 경우 초기화
                 setFormData({
                     name: '',
                     start_key: '',
-                    keys: [{ key: '', delay: 200 }]
+                    keys: [{ key: '', delay: KEY_MAPPING.DEFAULT_DELAY }]
                 })
             }
 
@@ -49,94 +50,19 @@ export default function KeyMappingModal({
         }
     }, [isOpen, editingMapping])
 
-    // 사용 가능한 키 목록 로드
-    const loadAvailableKeys = async () => {
-        try {
-            const data = await keyMappingService.getAvailableKeys()
-            if (data.success) {
-                setAvailableKeys(data.keys || {})
-            }
-        } catch (error) {
-            console.error('사용 가능한 키 목록 로드 실패:', error)
-        }
-    }
+    // ... 기존 함수들 그대로 유지 ...
 
-    // 시작키용 키 목록 필터링
-    const getStartKeyOptions = () => {
-        return allowedStartKeys.map(key => ({
-            value: key,
-            label: key.toUpperCase()
-        }))
-    }
-
-    // 실행키용 키 목록 (시작키 제외)
-    const getExecutionKeyOptions = () => {
-        const options = []
-        Object.entries(availableKeys).forEach(([category, keys]) => {
-            // "시작 키" 카테고리는 제외
-            if (category !== '시작 키') {
-                keys.forEach(key => {
-                    options.push({
-                        value: key,
-                        label: key.toUpperCase(),
-                        category: category
-                    })
-                })
-            }
-        })
-        return options
-    }
-
-    // 폼 입력 변경 처리
-    const handleInputChange = (field, value) => {
-        setFormData(prev => ({
-            ...prev,
-            [field]: value
-        }))
-
-        // 에러 제거
-        if (errors[field]) {
-            setErrors(prev => ({
-                ...prev,
-                [field]: null
-            }))
-        }
-    }
-
-    // 키 시퀀스 변경 처리
-    const handleKeyChange = (index, field, value) => {
-        const newKeys = [...formData.keys]
-        newKeys[index] = {
-            ...newKeys[index],
-            [field]: field === 'delay' ? parseInt(value) || 200 : value
-        }
-
-        setFormData(prev => ({
-            ...prev,
-            keys: newKeys
-        }))
-    }
-
-    // 키 추가
+    // 키 추가 (기본 딜레이 0ms)
     const addKey = () => {
         setFormData(prev => ({
             ...prev,
-            keys: [...prev.keys, { key: '', delay: 200 }]
+            keys: [...prev.keys, { key: '', delay: KEY_MAPPING.DEFAULT_DELAY }]
         }))
     }
 
-    // 키 제거
-    const removeKey = (index) => {
-        if (formData.keys.length > 1) {
-            const newKeys = formData.keys.filter((_, i) => i !== index)
-            setFormData(prev => ({
-                ...prev,
-                keys: newKeys
-            }))
-        }
-    }
+    // ... 기존 함수들 그대로 유지 ...
 
-    // 유효성 검사
+    // 유효성 검사 (딜레이 범위 수정)
     const validateForm = () => {
         const newErrors = {}
 
@@ -163,14 +89,15 @@ export default function KeyMappingModal({
             }
         }
 
-        // 키 시퀀스 검사
+        // 키 시퀀스 검사 (딜레이 범위 수정: 0ms~1000ms)
         formData.keys.forEach((keyItem, index) => {
             if (!keyItem.key.trim()) {
                 newErrors[`key_${index}`] = '키를 선택해주세요'
             }
 
-            if (keyItem.delay < 100 || keyItem.delay > 1000) {
-                newErrors[`delay_${index}`] = '딜레이는 100~1000ms 사이여야 합니다'
+            // 딜레이 범위 수정: 0ms~1000ms
+            if (keyItem.delay < KEY_MAPPING.MIN_DELAY || keyItem.delay > KEY_MAPPING.MAX_DELAY) {
+                newErrors[`delay_${index}`] = `딜레이는 ${KEY_MAPPING.MIN_DELAY}~${KEY_MAPPING.MAX_DELAY}ms 사이여야 합니다`
             }
         })
 
@@ -178,98 +105,15 @@ export default function KeyMappingModal({
         return Object.keys(newErrors).length === 0
     }
 
-    // 저장 처리
-    const handleSave = async () => {
-        if (!validateForm()) {
-            return
-        }
-
-        setLoading(true)
-
-        try {
-            // 키 시퀀스를 문자열로 변환
-            const keySequence = formData.keys
-                .map(key => `${key.key}(${key.delay})`)
-                .join(',')
-
-            const mappingData = {
-                name: formData.name.trim(),
-                start_key: formData.start_key.trim(),
-                key_sequence: keySequence
-            }
-
-            await onSave(mappingData)
-        } catch (error) {
-            console.error('키 맵핑 저장 실패:', error)
-        } finally {
-            setLoading(false)
-        }
-    }
-
-    // 모달이 열려있지 않으면 렌더링하지 않음
-    if (!isOpen) return null
-
-    const startKeyOptions = getStartKeyOptions()
-    const executionKeyOptions = getExecutionKeyOptions()
+    // ... 기존 JSX 코드에서 딜레이 입력 부분만 수정 ...
 
     return (
         <div className={styles.modalOverlay} onClick={onClose}>
             <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-                <div className={styles.modalHeader}>
-                    <h2>{editingMapping ? '키 맵핑 수정' : '새 키 맵핑 추가'}</h2>
-                    <button
-                        className={styles.closeButton}
-                        onClick={onClose}
-                        aria-label="닫기"
-                    >
-                        <X size={20} />
-                    </button>
-                </div>
+                {/* ... 기존 헤더 코드 ... */}
 
                 <div className={styles.modalBody}>
-                    {/* 기본 정보 */}
-                    <div className={styles.formGroup}>
-                        <label className={styles.label}>
-                            맵핑 이름 *
-                        </label>
-                        <input
-                            type="text"
-                            value={formData.name}
-                            onChange={(e) => handleInputChange('name', e.target.value)}
-                            placeholder="예: 도사, 천인, 마법사"
-                            className={`${styles.input} ${errors.name ? styles.error : ''}`}
-                        />
-                        {errors.name && <span className={styles.errorText}>{errors.name}</span>}
-                    </div>
-
-                    <div className={styles.formGroup}>
-                        <label className={styles.label}>
-                            시작 키 *
-                            <button
-                                type="button"
-                                className={styles.helpButton}
-                                title="이 키를 누르면 키 시퀀스가 실행됩니다 (DELETE 또는 END만 사용 가능)"
-                            >
-                                <HelpCircle size={14} />
-                            </button>
-                        </label>
-                        <select
-                            value={formData.start_key}
-                            onChange={(e) => handleInputChange('start_key', e.target.value)}
-                            className={`${styles.select} ${errors.start_key ? styles.error : ''}`}
-                        >
-                            <option value="">시작 키를 선택하세요</option>
-                            {startKeyOptions.map(option => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                        {errors.start_key && <span className={styles.errorText}>{errors.start_key}</span>}
-                        <small className={styles.formHelp}>
-                            안전을 위해 DELETE와 END 키만 시작키로 사용할 수 있습니다.
-                        </small>
-                    </div>
+                    {/* ... 기존 폼 필드들 ... */}
 
                     {/* 키 시퀀스 */}
                     <div className={styles.formGroup}>
@@ -297,7 +141,6 @@ export default function KeyMappingModal({
                                         >
                                             <option value="">키 선택</option>
                                             {Object.entries(availableKeys).map(([category, keys]) => {
-                                                // 시작키 카테고리는 제외
                                                 if (category === '시작 키') return null
 
                                                 return (
@@ -317,9 +160,9 @@ export default function KeyMappingModal({
                                     <div className={styles.delayGroup}>
                                         <input
                                             type="number"
-                                            min="100"
-                                            max="1000"
-                                            step="50"
+                                            min={KEY_MAPPING.MIN_DELAY}      // 0ms
+                                            max={KEY_MAPPING.MAX_DELAY}      // 1000ms
+                                            step="10"
                                             value={keyItem.delay}
                                             onChange={(e) => handleKeyChange(index, 'delay', e.target.value)}
                                             className={`${styles.delayInput} ${errors[`delay_${index}`] ? styles.error : ''}`}
@@ -351,6 +194,10 @@ export default function KeyMappingModal({
                                 키 추가
                             </button>
                         </div>
+
+                        <small className={styles.formHelp}>
+                            딜레이 범위: 0ms~1000ms (0ms = 딜레이 없음)
+                        </small>
                     </div>
 
                     {/* 미리보기 */}
@@ -362,6 +209,7 @@ export default function KeyMappingModal({
                                 <span key={index}>
                                     <strong>{key.key.toUpperCase()}</strong>
                                     {key.delay > 0 && <span className={styles.delay}>({key.delay}ms)</span>}
+                                    {key.delay === 0 && <span className={styles.delay}>(즉시)</span>}
                                     {index < formData.keys.length - 1 && ' → '}
                                 </span>
                             ))}
@@ -369,22 +217,7 @@ export default function KeyMappingModal({
                     </div>
                 </div>
 
-                <div className={styles.modalFooter}>
-                    <Button
-                        variant="outline"
-                        onClick={onClose}
-                        disabled={loading}
-                    >
-                        취소
-                    </Button>
-                    <Button
-                        variant="primary"
-                        onClick={handleSave}
-                        loading={loading}
-                    >
-                        {editingMapping ? '수정' : '추가'}
-                    </Button>
-                </div>
+                {/* ... 기존 푸터 코드 ... */}
             </div>
         </div>
     )

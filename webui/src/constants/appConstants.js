@@ -18,7 +18,7 @@ export const TIME_OPTIONS = {
 // 섹션 상수
 export const SECTIONS = {
     MAIN: 'main',
-    KEYMAPPING: 'keymapping', // 키 맵핑 섹션 추가
+    KEYMAPPING: 'keymapping',
     LOGS: 'logs',
     QUESTS: 'quests',
     SETTINGS: 'settings'
@@ -38,7 +38,7 @@ export const API_ENDPOINTS = {
     TELEGRAM_CONFIG: '/api/telegram/config',
     TELEGRAM_TEST: '/api/telegram/test',
 
-    // 키 맵핑 API 엔드포인트 추가
+    // 키 맵핑 API 엔드포인트
     KEYMAPPING_MAPPINGS: '/api/keymapping/mappings',
     KEYMAPPING_TOGGLE: '/api/keymapping/toggle',
     KEYMAPPING_CONTROL: '/api/keymapping/control',
@@ -62,11 +62,11 @@ export const NOTIFICATION_TYPES = {
     WARNING: 'warning'
 }
 
-// 키 맵핑 관련 상수
+// 키 맵핑 관련 상수 (딜레이 범위 수정)
 export const KEY_MAPPING = {
-    MIN_DELAY: 100,     // 최소 딜레이 (ms)
-    MAX_DELAY: 1000,    // 최대 딜레이 (ms)
-    DEFAULT_DELAY: 200, // 기본 딜레이 (ms)
+    MIN_DELAY: 0,       // 최소 딜레이 (0ms로 변경)
+    MAX_DELAY: 1000,    // 최대 딜레이 (1000ms 유지)
+    DEFAULT_DELAY: 0,   // 기본 딜레이 (0ms로 변경)
 
     // 키 카테고리
     CATEGORIES: {
