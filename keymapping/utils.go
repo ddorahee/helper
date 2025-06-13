@@ -1,9 +1,10 @@
-// keymapping/utils.go - 조합키 지원 및 중복키 처리
+// keymapping/utils.go - 정리된 키 맵핑 유틸리티 (중복 제거)
 package keymapping
 
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"strconv"
@@ -12,41 +13,19 @@ import (
 
 // rawKeyCodeToString 원시 키 코드를 문자열로 변환
 func (km *KeyMappingManager) rawKeyCodeToString(rawKeycode uint16) string {
-	// 허용된 시작키만 처리 (원시 키 코드 기준)
-	switch rawKeycode {
-	case 46: // Delete 키 (원시)
-		return "delete"
-	case 35: // End 키 (원시)
-		return "end"
+	if keyName, exists := km.allowedKeys[rawKeycode]; exists {
+		return keyName
 	}
-
-	// 시작키가 아닌 다른 키는 빈 문자열 반환 (무시)
 	return ""
 }
 
 // getAllowedRawKeyCodes 허용된 원시 키 코드 목록 반환
 func (km *KeyMappingManager) getAllowedRawKeyCodes() []uint16 {
-	return []uint16{
-		46, // Delete (원시 키 코드)
-		35, // End (원시 키 코드)
+	codes := make([]uint16, 0, len(km.allowedKeys))
+	for code := range km.allowedKeys {
+		codes = append(codes, code)
 	}
-}
-
-// stringToRawKeyCode 문자열을 원시 키 코드로 변환
-func (km *KeyMappingManager) stringToRawKeyCode(keyStr string) uint16 {
-	keyStr = strings.ToLower(keyStr)
-
-	// 시작키 매핑 (원시 키 코드 기준)
-	startKeyMap := map[string]uint16{
-		"delete": 46, // Delete 원시 키 코드
-		"end":    35, // End 원시 키 코드
-	}
-
-	if code, exists := startKeyMap[keyStr]; exists {
-		return code
-	}
-
-	return 0
+	return codes
 }
 
 // GetAvailableKeys 사용 가능한 키 목록 반환 (조합키 지원)
@@ -116,17 +95,6 @@ func (km *KeyMappingManager) LoadConfig() error {
 	}
 
 	return nil
-}
-
-// isValidStartKey 시작키가 유효한지 확인
-func (km *KeyMappingManager) isValidStartKey(key string) bool {
-	allowedKeys := []string{"delete", "end"}
-	for _, validKey := range allowedKeys {
-		if strings.ToLower(key) == strings.ToLower(validKey) {
-			return true
-		}
-	}
-	return false
 }
 
 // SaveConfig 설정 파일 저장 (중복키 지원)
@@ -219,8 +187,8 @@ func (km *KeyMappingManager) parseKeyWithDelay(keyStr string) (string, int, erro
 		return "", 0, fmt.Errorf("딜레이 파싱 실패: %s", delayStr)
 	}
 
-	if delay < 0 || delay > 1000 {
-		return "", 0, fmt.Errorf("딜레이는 0~1000ms 사이여야 합니다: %d", delay)
+	if delay < 0 || delay > 10000 {
+		return "", 0, fmt.Errorf("딜레이는 0~10000ms 사이여야 합니다: %d", delay)
 	}
 
 	return key, delay, nil
@@ -304,7 +272,7 @@ func (km *KeyMappingManager) GetMappingStats() map[string]interface{} {
 		"total":          totalMappings,
 		"enabled":        enabledMappings,
 		"disabled":       disabledMappings,
-		"running":        km.running,
+		"running":        km.IsRunning(),
 		"unique_keys":    len(km.mappings),
 		"duplicate_keys": duplicateKeys,
 		"os":             runtime.GOOS,
@@ -312,6 +280,7 @@ func (km *KeyMappingManager) GetMappingStats() map[string]interface{} {
 			"combo_keys":     true,
 			"duplicate_keys": true,
 			"auto_disable":   true,
+			"no_delay":       true, // 딜레이 없음 기능 추가
 		},
 	}
 }
@@ -400,4 +369,52 @@ func (km *KeyMappingManager) formatComboKeyDescription(comboKey string) string {
 	}
 
 	return strings.Join(descriptions, " + ")
+}
+
+// RemoveMappingByID ID로 특정 맵핑 제거
+func (km *KeyMappingManager) RemoveMappingByID(mappingID string) error {
+	km.mutex.Lock()
+	defer km.mutex.Unlock()
+
+	// 모든 맵핑에서 ID로 찾기
+	var targetMapping *KeyMapping
+	var targetStartKey string
+	var targetIndex int
+
+	for startKey, mappings := range km.mappings {
+		for i, mapping := range mappings {
+			if mapping.ID == mappingID {
+				targetMapping = mapping
+				targetStartKey = startKey
+				targetIndex = i
+				break
+			}
+		}
+		if targetMapping != nil {
+			break
+		}
+	}
+
+	if targetMapping == nil {
+		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: ID %s", mappingID)
+	}
+
+	// 맵핑 제거
+	mappings := km.mappings[targetStartKey]
+	km.mappings[targetStartKey] = append(mappings[:targetIndex], mappings[targetIndex+1:]...)
+
+	// 맵핑이 모두 제거되면 키 자체를 삭제
+	if len(km.mappings[targetStartKey]) == 0 {
+		delete(km.mappings, targetStartKey)
+	}
+
+	// 활성 키 맵 업데이트
+	km.rebuildActiveKeys()
+
+	if err := km.SaveConfig(); err != nil {
+		return fmt.Errorf("설정 저장 실패: %v", err)
+	}
+
+	log.Printf("초고속 키 맵핑 제거: %s (ID: %s)", targetMapping.Name, mappingID)
+	return nil
 }
