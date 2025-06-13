@@ -121,8 +121,10 @@ func (km *KeyMappingManager) runKeyHook() {
 		case <-km.stopChan:
 			return
 		case ev := <-evChan:
+			// KeyDown 이벤트만 처리하여 반응속도 향상
 			if ev.Kind == hook.KeyDown {
-				km.handleKeyPress(ev)
+				// 고루틴으로 처리하여 키 훅 블로킹 방지
+				go km.handleKeyPress(ev)
 			}
 		}
 	}
@@ -140,24 +142,15 @@ func (km *KeyMappingManager) handleKeyPress(ev hook.Event) {
 	// 원시 키 코드 사용
 	rawKeycode := ev.Rawcode
 
-	// 허용된 원시 키 코드인지 확인
-	allowedCodes := km.getAllowedRawKeyCodes()
-	isAllowed := false
-	for _, code := range allowedCodes {
-		if rawKeycode == code {
-			isAllowed = true
-			break
-		}
-	}
-
-	if !isAllowed {
-		return
-	}
-
-	// 원시 키 코드를 문자열로 변환
-	keyStr := km.rawKeyCodeToString(rawKeycode)
-	if keyStr == "" {
-		return
+	// 허용된 원시 키 코드인지 확인 (빠른 체크)
+	var keyStr string
+	switch rawKeycode {
+	case 46: // Delete 키
+		keyStr = "delete"
+	case 35: // End 키
+		keyStr = "end"
+	default:
+		return // 지원하지 않는 키는 즉시 반환
 	}
 
 	// 해당 키로 시작하는 맵핑들 찾기 (중복 허용)
@@ -170,6 +163,7 @@ func (km *KeyMappingManager) handleKeyPress(ev hook.Event) {
 	for _, mapping := range mappings {
 		if mapping.Enabled {
 			log.Printf("키 맵핑 실행: %s (시작키: %s)", mapping.Name, keyStr)
+			// 비동기로 실행하여 키 훅 블로킹 방지
 			go km.executeKeySequence(mapping)
 			break // 첫 번째 활성화된 맵핑만 실행
 		}
@@ -188,9 +182,18 @@ func (km *KeyMappingManager) executeKeySequence(mapping *KeyMapping) {
 			continue
 		}
 
-		// 딜레이 적용 (마지막 키가 아닌 경우)
-		if i < len(mapping.Keys)-1 && key.Delay > 0 {
-			time.Sleep(time.Duration(key.Delay) * time.Millisecond)
+		// 딜레이 적용 최적화
+		if i < len(mapping.Keys)-1 {
+			if key.Delay == 0 {
+				// 딜레이가 0이면 최소 딜레이만 적용
+				time.Sleep(10 * time.Millisecond)
+			} else if key.Delay < 50 {
+				// 50ms 미만이면 50ms로 조정 (시스템 안정성)
+				time.Sleep(50 * time.Millisecond)
+			} else {
+				// 지정된 딜레이 적용
+				time.Sleep(time.Duration(key.Delay) * time.Millisecond)
+			}
 		}
 
 		if !km.IsRunning() {
@@ -207,14 +210,15 @@ func (km *KeyMappingManager) sendKey(key string) error {
 		}
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	// 키 입력 전 딜레이를 최소화 (50ms -> 10ms)
+	time.Sleep(10 * time.Millisecond)
 
 	// 조합키 처리
 	if km.isComboKey(key) {
 		return km.sendComboKey(key)
 	}
 
-	// 일반 키 처리
+	// 일반 키 처리 (속도 최적화)
 	robotgo.KeyTap(key)
 	log.Printf("키 입력: %s", key)
 	return nil
@@ -244,7 +248,7 @@ func (km *KeyMappingManager) sendComboKey(comboKey string) error {
 		modifierInterfaces[i] = modifier
 	}
 
-	// 수정키들을 누른 상태로 메인 키 입력
+	// 조합키 입력 (딜레이 없이 즉시 실행)
 	robotgo.KeyTap(mainKey, modifierInterfaces...)
 	log.Printf("조합키 입력: %s (수정키: %v, 메인키: %s)", comboKey, modifiers, mainKey)
 

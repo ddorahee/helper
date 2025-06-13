@@ -1,4 +1,4 @@
-// webui/src/services/keyMappingService.js 디버깅 강화
+// webui/src/services/keyMappingService.js 단순화 버전
 import { KEY_MAPPING } from '@constants/appConstants'
 
 class KeyMappingService {
@@ -11,7 +11,15 @@ class KeyMappingService {
         try {
             console.log('키 맵핑 목록 요청 시작:', `${this.baseURL}/mappings`)
 
-            const response = await fetch(`${this.baseURL}/mappings`)
+            const response = await fetch(`${this.baseURL}/mappings`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                cache: 'no-cache'
+            })
+
             console.log('키 맵핑 목록 응답 상태:', response.status, response.statusText)
 
             if (!response.ok) {
@@ -88,7 +96,7 @@ class KeyMappingService {
         }
     }
 
-    // 키 맵핑 삭제
+    // 키 맵핑 삭제 (시작키 기반)
     async deleteMapping(startKey) {
         console.log('키 맵핑 삭제 요청:', startKey)
 
@@ -126,10 +134,14 @@ class KeyMappingService {
         }
     }
 
-    // 키 맵핑 활성화/비활성화
+    // 키 맵핑 활성화/비활성화 (시작키 기반)
     async toggleMapping(startKey) {
         try {
             console.log('키 맵핑 토글 요청:', startKey)
+
+            if (!startKey) {
+                throw new Error('start_key가 필요합니다')
+            }
 
             const response = await fetch(`${this.baseURL}/toggle`, {
                 method: 'POST',
@@ -164,9 +176,9 @@ class KeyMappingService {
             const response = await fetch(`${this.baseURL}/control`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Type': 'application/json',
                 },
-                body: `action=${action}`
+                body: JSON.stringify({ action })
             })
 
             console.log('키 맵핑 제어 응답 상태:', response.status, response.statusText)
@@ -186,7 +198,7 @@ class KeyMappingService {
         }
     }
 
-    // 사용 가능한 키 목록 조회 (디버깅 강화)
+    // 사용 가능한 키 목록 조회
     async getAvailableKeys() {
         try {
             console.log('사용 가능한 키 목록 요청 시작:', `${this.baseURL}/keys`)
@@ -214,15 +226,6 @@ class KeyMappingService {
 
             console.log('사용 가능한 키 목록 성공:', data.keys)
 
-            // 각 카테고리별 키 개수 로그
-            Object.entries(data.keys).forEach(([category, keys]) => {
-                if (Array.isArray(keys)) {
-                    console.log(`카테고리 '${category}': ${keys.length}개 키`, keys)
-                } else {
-                    console.warn(`카테고리 '${category}'의 키 목록이 배열이 아님:`, keys)
-                }
-            })
-
             return data
         } catch (error) {
             console.error('사용 가능한 키 목록 조회 실패:', error)
@@ -231,7 +234,8 @@ class KeyMappingService {
             const fallbackKeys = {
                 "숫자 키": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
                 "알파벳 키": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"],
-                "특수 키": ["space", "enter", "esc", "tab"]
+                "특수 키": ["space", "enter", "esc", "tab"],
+                "조합키 예시": ["ctrl+c", "ctrl+v", "alt+tab"]
             }
 
             console.log('폴백 키 목록 사용:', fallbackKeys)
@@ -265,7 +269,7 @@ class KeyMappingService {
         }
     }
 
-    // 키 시퀀스 유효성 검사 (딜레이 범위 수정)
+    // 키 시퀀스 유효성 검사
     validateKeySequence(keySequence) {
         if (!keySequence || typeof keySequence !== 'string') {
             return { valid: false, error: '키 시퀀스가 비어있습니다' }
@@ -281,11 +285,11 @@ class KeyMappingService {
             const key = keys[i]
 
             // 키(딜레이) 형식 검사
-            const match = key.match(/^([a-zA-Z0-9_]+)\((\d+)\)$/)
+            const match = key.match(/^([a-zA-Z0-9_+]+)\((\d+)\)$/)
             if (!match) {
                 return {
                     valid: false,
-                    error: `키 ${i + 1}의 형식이 올바르지 않습니다. 예: 1(200)`
+                    error: `키 ${i + 1}의 형식이 올바르지 않습니다. 예: x(200), ctrl+c(500)`
                 }
             }
 
@@ -296,7 +300,7 @@ class KeyMappingService {
                 return { valid: false, error: `키 ${i + 1}이 비어있습니다` }
             }
 
-            // 딜레이 범위 수정: 0ms~1000ms
+            // 딜레이 범위: 0ms~1000ms
             if (delay < KEY_MAPPING.MIN_DELAY || delay > KEY_MAPPING.MAX_DELAY) {
                 return {
                     valid: false,
@@ -308,7 +312,7 @@ class KeyMappingService {
         return { valid: true }
     }
 
-    // 키 시퀀스 포맷팅 (0ms 처리 개선)
+    // 키 시퀀스 포맷팅
     formatKeySequence(keys) {
         if (!Array.isArray(keys) || keys.length === 0) {
             return ''
@@ -322,7 +326,7 @@ class KeyMappingService {
         }).join(', ')
     }
 
-    // 키 시퀀스 파싱 (기본값 0ms)
+    // 키 시퀀스 파싱
     parseKeySequence(keySequence) {
         if (!keySequence || typeof keySequence !== 'string') {
             return []
@@ -332,7 +336,7 @@ class KeyMappingService {
             .map(k => k.trim())
             .filter(k => k)
             .map(key => {
-                const match = key.match(/^([a-zA-Z0-9_]+)\((\d+)\)$/)
+                const match = key.match(/^([a-zA-Z0-9_+]+)\((\d+)\)$/)
                 if (match) {
                     const [, keyName, delayStr] = match
                     return {

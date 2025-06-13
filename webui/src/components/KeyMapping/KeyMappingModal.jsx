@@ -187,6 +187,7 @@ export default function KeyMappingModal({
     }
 
     // 키 시퀀스 변경 처리
+    // 키 시퀀스 변경 처리 (수정)
     const handleKeyChange = (index, field, value) => {
         console.log(`키 시퀀스 변경: [${index}].${field} = ${value}`)
         const newKeys = [...formData.keys]
@@ -214,15 +215,17 @@ export default function KeyMappingModal({
                 delay: delayValue
             }
         } else if (field === 'key') {
-            // 키 입력 시 조합키 유효성 검사
-            const trimmedValue = value.trim().toLowerCase()
+            // 키 입력 처리 개선
+            const inputValue = value || ''
+            const trimmedValue = inputValue.trim().toLowerCase()
+
             newKeys[index] = {
                 ...newKeys[index],
                 key: trimmedValue
             }
 
             // 조합키 유효성 검사
-            if (isComboKey(trimmedValue)) {
+            if (isComboKey(trimmedValue) && trimmedValue !== '') {
                 const comboError = validateComboKey(trimmedValue)
                 if (comboError) {
                     setErrors(prev => ({
@@ -235,6 +238,12 @@ export default function KeyMappingModal({
                         [`key_${index}`]: null
                     }))
                 }
+            } else {
+                // 에러 제거
+                setErrors(prev => ({
+                    ...prev,
+                    [`key_${index}`]: null
+                }))
             }
         } else {
             newKeys[index] = {

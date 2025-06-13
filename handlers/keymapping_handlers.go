@@ -356,6 +356,7 @@ func (h *KeyMappingHandler) deleteMapping(w http.ResponseWriter, r *http.Request
 }
 
 // HandleMappingToggle 키 맵핑 활성화/비활성화
+// handlers/keymapping_handlers.go 토글 기능 수정 부분
 func (h *KeyMappingHandler) HandleMappingToggle(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -370,28 +371,102 @@ func (h *KeyMappingHandler) HandleMappingToggle(w http.ResponseWriter, r *http.R
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
+	// ID 기반 토글과 시작키 기반 토글 모두 지원
 	startKey := r.FormValue("start_key")
-	if startKey == "" {
-		http.Error(w, "start_key 파라미터가 필요합니다", http.StatusBadRequest)
+	mappingID := r.FormValue("id")
+
+	log.Printf("토글 요청 받음: start_key=%s, id=%s", startKey, mappingID)
+
+	var err error
+	var toggledName string
+
+	if mappingID != "" {
+		// ID 기반 토글
+		log.Printf("ID 기반 토글 실행: %s", mappingID)
+		err = h.Manager.ToggleMappingByID(mappingID)
+
+		// 토글된 맵핑 이름 찾기
+		allMappings := h.Manager.GetAllMappings()
+		for _, mappings := range allMappings {
+			for _, mapping := range mappings {
+				if mapping.ID == mappingID {
+					toggledName = mapping.Name
+					break
+				}
+			}
+			if toggledName != "" {
+				break
+			}
+		}
+	} else if startKey != "" {
+		// 시작키 기반 토글 (기존 방식)
+		log.Printf("시작키 기반 토글 실행: %s", startKey)
+		err = h.Manager.ToggleMapping(startKey)
+
+		// 토글된 맵핑 이름 찾기
+		mapping, exists := h.Manager.GetMapping(startKey)
+		if exists && mapping != nil {
+			toggledName = mapping.Name
+		}
+	} else {
+		log.Printf("토글 파라미터 없음")
+		http.Error(w, "start_key 또는 id 파라미터가 필요합니다", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.Manager.ToggleMapping(startKey); err != nil {
-		http.Error(w, fmt.Sprintf("키 맵핑 토글 실패: %v", err), http.StatusBadRequest)
+	if err != nil {
+		log.Printf("키 맵핑 토글 실패: %v", err)
+		response := map[string]interface{}{
+			"success": false,
+			"message": fmt.Sprintf("키 맵핑 토글 실패: %v", err),
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 
 	// 토글 후 상태 확인
-	mapping, _ := h.Manager.GetMapping(startKey)
-	status := "비활성화"
-	if mapping != nil && mapping.Enabled {
-		status = "활성화"
+	var status string
+	if mappingID != "" {
+		// ID로 상태 확인
+		allMappings := h.Manager.GetAllMappings()
+		found := false
+		for _, mappings := range allMappings {
+			for _, mapping := range mappings {
+				if mapping.ID == mappingID {
+					if mapping.Enabled {
+						status = "활성화"
+					} else {
+						status = "비활성화"
+					}
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			status = "알 수 없음"
+		}
+	} else {
+		// 시작키로 상태 확인
+		mapping, exists := h.Manager.GetMapping(startKey)
+		if exists && mapping != nil && mapping.Enabled {
+			status = "활성화"
+		} else {
+			status = "비활성화"
+		}
 	}
+
+	log.Printf("키 맵핑 토글 성공: %s -> %s", toggledName, status)
 
 	response := map[string]interface{}{
 		"success": true,
 		"message": "키 맵핑 상태가 변경되었습니다",
 		"status":  status,
+		"name":    toggledName,
 	}
 
 	json.NewEncoder(w).Encode(response)
