@@ -1,4 +1,4 @@
-/* KeyMappingPage.module.css - 올바른 키 맵핑 페이지 스타일 */
+/* KeyMappingPage.module.css - ID 표시 추가 스타일 */
 
 .keyMappingPage {
     display: flex;
@@ -215,6 +215,24 @@
     font-family: 'Courier New', monospace;
 }
 
+/* ID 표시 스타일 추가 */
+.mappingID {
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    background-color: var(--highlight);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+}
+
+.mappingID code {
+    font-family: 'Courier New', monospace;
+    font-size: var(--font-xs);
+    color: var(--primary-color);
+    background: none;
+    padding: 0;
+}
+
 .mappingStatus {
     font-size: var(--font-sm);
     font-weight: 500;
@@ -407,6 +425,16 @@
         flex-direction: column;
         gap: var(--spacing-xs);
     }
+
+    /* ID 표시 모바일 최적화 */
+    .mappingID {
+        font-size: 10px;
+        padding: 2px 4px;
+    }
+
+    .mappingID code {
+        font-size: 10px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -430,5 +458,10 @@
     .comboKeyBadge {
         font-size: 10px;
         padding: 2px 4px;
+    }
+
+    .mappingID {
+        font-size: 9px;
+        padding: 1px 3px;
     }
 }

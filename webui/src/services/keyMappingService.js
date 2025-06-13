@@ -1,4 +1,4 @@
-// webui/src/services/keyMappingService.js 단순화 버전
+// webui/src/services/keyMappingService.js - ID 기반 처리로 수정
 import { KEY_MAPPING } from '@constants/appConstants'
 
 class KeyMappingService {
@@ -66,10 +66,10 @@ class KeyMappingService {
         }
     }
 
-    // 키 맵핑 수정
+    // 키 맵핑 수정 (ID 기반으로 수정)
     async updateMapping(mappingData) {
         try {
-            console.log('키 맵핑 수정 요청:', mappingData)
+            console.log('키 맵핑 수정 요청 (ID 기반):', mappingData)
 
             const response = await fetch(`${this.baseURL}/mappings`, {
                 method: 'PUT',
@@ -96,18 +96,24 @@ class KeyMappingService {
         }
     }
 
-    // 키 맵핑 삭제 (시작키 기반)
-    async deleteMapping(startKey) {
-        console.log('키 맵핑 삭제 요청:', startKey)
+    // 키 맵핑 삭제 (ID 우선, 시작키 대안)
+    async deleteMapping(identifier, isID = false) {
+        console.log('키 맵핑 삭제 요청:', { identifier, isID })
 
-        if (!startKey) {
-            console.error('startKey가 없음')
-            throw new Error('시작 키가 필요합니다')
+        if (!identifier) {
+            console.error('식별자가 없음')
+            throw new Error('맵핑 식별자가 필요합니다')
         }
 
         try {
-            const url = `${this.baseURL}/mappings?start_key=${encodeURIComponent(startKey)}`
-            console.log('DELETE 요청 URL:', url)
+            let url
+            if (isID) {
+                url = `${this.baseURL}/mappings?id=${encodeURIComponent(identifier)}`
+                console.log('ID 기반 DELETE 요청 URL:', url)
+            } else {
+                url = `${this.baseURL}/mappings?start_key=${encodeURIComponent(identifier)}`
+                console.log('시작키 기반 DELETE 요청 URL:', url)
+            }
 
             const response = await fetch(url, {
                 method: 'DELETE',
@@ -134,21 +140,37 @@ class KeyMappingService {
         }
     }
 
-    // 키 맵핑 활성화/비활성화 (시작키 기반)
-    async toggleMapping(startKey) {
-        try {
-            console.log('키 맵핑 토글 요청:', startKey)
+    // ID로 키 맵핑 삭제 (새 메서드)
+    async deleteMappingByID(mappingID) {
+        return this.deleteMapping(mappingID, true)
+    }
 
-            if (!startKey) {
-                throw new Error('start_key가 필요합니다')
+    // 시작키로 키 맵핑 삭제 (기존 메서드, 하위 호환성)
+    async deleteMappingByStartKey(startKey) {
+        return this.deleteMapping(startKey, false)
+    }
+
+    // 키 맵핑 활성화/비활성화 (ID 우선 처리)
+    async toggleMapping(identifier, isID = false) {
+        try {
+            console.log('키 맵핑 토글 요청:', { identifier, isID })
+
+            if (!identifier) {
+                throw new Error('맵핑 식별자가 필요합니다')
             }
+
+            const body = isID
+                ? `id=${encodeURIComponent(identifier)}`
+                : `start_key=${encodeURIComponent(identifier)}`
+
+            console.log('토글 요청 본문:', body)
 
             const response = await fetch(`${this.baseURL}/toggle`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `start_key=${encodeURIComponent(startKey)}`
+                body
             })
 
             console.log('키 맵핑 토글 응답 상태:', response.status, response.statusText)
@@ -166,6 +188,16 @@ class KeyMappingService {
             console.error('키 맵핑 토글 실패:', error)
             throw error
         }
+    }
+
+    // ID로 키 맵핑 토글 (새 메서드)
+    async toggleMappingByID(mappingID) {
+        return this.toggleMapping(mappingID, true)
+    }
+
+    // 시작키로 키 맵핑 토글 (기존 메서드, 하위 호환성)
+    async toggleMappingByStartKey(startKey) {
+        return this.toggleMapping(startKey, false)
     }
 
     // 키 맵핑 시스템 제어 (시작/중지)
@@ -225,7 +257,6 @@ class KeyMappingService {
             }
 
             console.log('사용 가능한 키 목록 성공:', data.keys)
-
             return data
         } catch (error) {
             console.error('사용 가능한 키 목록 조회 실패:', error)
@@ -300,7 +331,6 @@ class KeyMappingService {
                 return { valid: false, error: `키 ${i + 1}이 비어있습니다` }
             }
 
-            // 딜레이 범위: 0ms~1000ms
             if (delay < KEY_MAPPING.MIN_DELAY || delay > KEY_MAPPING.MAX_DELAY) {
                 return {
                     valid: false,
@@ -349,6 +379,19 @@ class KeyMappingService {
                     delay: KEY_MAPPING.DEFAULT_DELAY
                 }
             })
+    }
+
+    // 맵핑 ID 추출 헬퍼 함수
+    extractMappingID(mapping) {
+        if (mapping && mapping.id) {
+            return mapping.id
+        }
+        return null
+    }
+
+    // 맵핑이 ID를 가지고 있는지 확인
+    hasValidID(mapping) {
+        return mapping && mapping.id && typeof mapping.id === 'string' && mapping.id.trim() !== ''
     }
 }
 

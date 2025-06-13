@@ -372,7 +372,7 @@ func (km *KeyMappingManager) formatComboKeyDescription(comboKey string) string {
 }
 
 // RemoveMappingByID ID로 특정 맵핑 제거
-func (km *KeyMappingManager) RemoveMappingByID(mappingID string) error {
+func (km *KeyMappingManager) RemoveMappingByID(mappingID string) (string, error) {
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
 
@@ -396,8 +396,10 @@ func (km *KeyMappingManager) RemoveMappingByID(mappingID string) error {
 	}
 
 	if targetMapping == nil {
-		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: ID %s", mappingID)
+		return "", fmt.Errorf("키 맵핑을 찾을 수 없습니다: ID %s", mappingID)
 	}
+
+	deletedName := targetMapping.Name
 
 	// 맵핑 제거
 	mappings := km.mappings[targetStartKey]
@@ -412,9 +414,9 @@ func (km *KeyMappingManager) RemoveMappingByID(mappingID string) error {
 	km.rebuildActiveKeys()
 
 	if err := km.SaveConfig(); err != nil {
-		return fmt.Errorf("설정 저장 실패: %v", err)
+		return deletedName, fmt.Errorf("설정 저장 실패: %v", err)
 	}
 
-	log.Printf("초고속 키 맵핑 제거: %s (ID: %s)", targetMapping.Name, mappingID)
-	return nil
+	log.Printf("ID 기반 키 맵핑 제거: %s (ID: %s)", deletedName, mappingID)
+	return deletedName, nil
 }

@@ -419,7 +419,6 @@ func (km *KeyMappingManager) ToggleMapping(startKey string) error {
 	return nil
 }
 
-// ToggleMappingByID ID로 특정 맵핑 토글
 func (km *KeyMappingManager) ToggleMappingByID(mappingID string) error {
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
@@ -444,10 +443,12 @@ func (km *KeyMappingManager) ToggleMappingByID(mappingID string) error {
 		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: ID %s", mappingID)
 	}
 
+	// 활성화하려는 경우, 같은 시작키의 다른 맵핑들을 비활성화
 	if !targetMapping.Enabled {
 		for _, other := range km.mappings[targetStartKey] {
 			if other != targetMapping {
 				other.Enabled = false
+				other.UpdatedAt = time.Now()
 			}
 		}
 	}
@@ -462,6 +463,12 @@ func (km *KeyMappingManager) ToggleMappingByID(mappingID string) error {
 		return fmt.Errorf("설정 저장 실패: %v", err)
 	}
 
+	status := "비활성화"
+	if targetMapping.Enabled {
+		status = "활성화"
+	}
+
+	log.Printf("ID 기반 키 맵핑 %s: %s (ID: %s)", status, targetMapping.Name, mappingID)
 	return nil
 }
 
@@ -650,4 +657,88 @@ func (km *KeyMappingManager) GetMapping(startKey string) (*KeyMapping, bool) {
 		return nil, false
 	}
 	return mappings[0], true
+}
+
+func (km *KeyMappingManager) UpdateMappingByID(mappingID, newName, newStartKey string, keys []MappedKey) error {
+	km.mutex.Lock()
+	defer km.mutex.Unlock()
+
+	// ID로 맵핑 찾기
+	var targetMapping *KeyMapping
+	var oldStartKey string
+
+	for startKey, mappings := range km.mappings {
+		for _, mapping := range mappings {
+			if mapping.ID == mappingID {
+				targetMapping = mapping
+				oldStartKey = startKey
+				break
+			}
+		}
+		if targetMapping != nil {
+			break
+		}
+	}
+
+	if targetMapping == nil {
+		return fmt.Errorf("키 맵핑을 찾을 수 없습니다: ID %s", mappingID)
+	}
+
+	if err := km.validateKeys(newStartKey, keys); err != nil {
+		return err
+	}
+
+	// 시작키가 변경된 경우 처리
+	if oldStartKey != newStartKey {
+		// 기존 위치에서 제거
+		oldMappings := km.mappings[oldStartKey]
+		for i, mapping := range oldMappings {
+			if mapping.ID == mappingID {
+				km.mappings[oldStartKey] = append(oldMappings[:i], oldMappings[i+1:]...)
+				break
+			}
+		}
+
+		// 기존 시작키에 맵핑이 없으면 삭제
+		if len(km.mappings[oldStartKey]) == 0 {
+			delete(km.mappings, oldStartKey)
+		}
+
+		// 새 위치에 추가
+		if km.mappings[newStartKey] == nil {
+			km.mappings[newStartKey] = make([]*KeyMapping, 0)
+		}
+		km.mappings[newStartKey] = append(km.mappings[newStartKey], targetMapping)
+	}
+
+	// 맵핑 정보 업데이트
+	targetMapping.Name = newName
+	targetMapping.StartKey = newStartKey
+	targetMapping.Keys = keys
+	targetMapping.UpdatedAt = time.Now()
+
+	// 활성 키 맵 업데이트
+	km.rebuildActiveKeys()
+
+	if err := km.SaveConfig(); err != nil {
+		return fmt.Errorf("설정 저장 실패: %v", err)
+	}
+
+	log.Printf("ID 기반 키 맵핑 수정: %s (ID: %s)", newName, mappingID)
+	return nil
+}
+
+// GetMappingByID ID로 특정 맵핑 조회
+func (km *KeyMappingManager) GetMappingByID(mappingID string) (*KeyMapping, bool) {
+	km.mutex.RLock()
+	defer km.mutex.RUnlock()
+
+	for _, mappings := range km.mappings {
+		for _, mapping := range mappings {
+			if mapping.ID == mappingID {
+				return mapping, true
+			}
+		}
+	}
+	return nil, false
 }

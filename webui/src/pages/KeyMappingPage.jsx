@@ -1,4 +1,4 @@
-// KeyMappingPage.jsx - 최종 수정 (삭제/토글 문제 해결)
+// KeyMappingPage.jsx - ID 기반 처리로 완전 수정
 import { useState, useEffect } from 'react'
 import { Plus, Edit, Trash2, Play, Square, ToggleLeft, ToggleRight, Copy, Users } from 'lucide-react'
 import { useApp } from '@/contexts/AppContext'
@@ -22,7 +22,7 @@ export default function KeyMappingPage() {
     const [updating, setUpdating] = useState(false)
 
     useEffect(() => {
-        console.log('KeyMappingPage 마운트됨')
+        console.log('KeyMappingPage 마운트됨 (ID 기반)')
         loadMappings()
         loadStatus()
 
@@ -34,15 +34,16 @@ export default function KeyMappingPage() {
     // 키 맵핑 목록 로드
     const loadMappings = async () => {
         try {
-            console.log('키 맵핑 목록 로드 시작...')
+            console.log('키 맵핑 목록 로드 시작 (ID 기반)...')
             setLoading(true)
             const data = await keyMappingService.getMappings()
-            console.log('로드된 데이터:', data)
+            console.log('로드된 데이터 (ID 기반):', data)
 
             if (data.success) {
                 setMappings(data.mappings || {})
                 setStats(data.stats || {})
                 setDuplicateInfo(data.duplicate_info || {})
+                console.log(`총 ${Object.keys(data.mappings || {}).length}개 맵핑 로드됨`)
             } else {
                 showNotification('키 맵핑 목록을 불러올 수 없습니다', 'error')
             }
@@ -72,17 +73,22 @@ export default function KeyMappingPage() {
             let success = false
 
             if (editingMapping) {
-                const realStartKey = getRealStartKey(editingMapping)
-                success = await keyMappingService.updateMapping({
-                    old_start_key: realStartKey,
+                // 수정 모드 - ID 기반으로 수정
+                const updateData = {
+                    id: editingMapping.id,
                     ...mappingData
-                })
+                }
+                console.log('키 맵핑 수정 데이터 (ID 기반):', updateData)
+
+                success = await keyMappingService.updateMapping(updateData)
 
                 if (success) {
                     showNotification(`키 맵핑 '${mappingData.name}'이 수정되었습니다`, 'success')
-                    actions.addLog(`키 맵핑 수정: ${mappingData.name}`)
+                    actions.addLog(`키 맵핑 수정: ${mappingData.name} (ID: ${editingMapping.id})`)
                 }
             } else {
+                // 추가 모드
+                console.log('키 맵핑 추가 데이터:', mappingData)
                 success = await keyMappingService.createMapping(mappingData)
 
                 if (success) {
@@ -104,12 +110,12 @@ export default function KeyMappingPage() {
         }
     }
 
-    // 키 맵핑 삭제 (시작키 기반으로 단순화)
-    const handleDeleteMapping = async (mappingKey, mapping) => {
-        console.log('삭제 요청:', { mappingKey, mapping })
+    // 키 맵핑 삭제 (ID 기반으로 수정)
+    const handleDeleteMapping = async (mappingID, mapping) => {
+        console.log('삭제 요청 (ID 기반):', { mappingID, mapping })
 
-        if (!mapping || !mapping.start_key) {
-            console.error('삭제 실패: 시작키 정보가 없음')
+        if (!mapping || !mapping.id) {
+            console.error('삭제 실패: ID 정보가 없음')
             showNotification('삭제할 키 맵핑 정보가 올바르지 않습니다', 'error')
             return
         }
@@ -122,15 +128,15 @@ export default function KeyMappingPage() {
 
         try {
             setUpdating(true)
-            console.log('삭제 API 호출:', mapping.start_key)
+            console.log('ID 기반 삭제 API 호출:', mapping.id)
 
-            // 시작키 기반 삭제만 사용
-            const result = await keyMappingService.deleteMapping(mapping.start_key)
-            console.log('삭제 API 응답:', result)
+            // ID 기반 삭제 사용
+            const result = await keyMappingService.deleteMappingByID(mapping.id)
+            console.log('ID 기반 삭제 API 응답:', result)
 
             if (result) {
                 showNotification(`키 맵핑 '${displayName}'이 삭제되었습니다`, 'success')
-                actions.addLog(`키 맵핑 삭제: ${displayName}`)
+                actions.addLog(`키 맵핑 삭제: ${displayName} (ID: ${mapping.id})`)
                 await loadMappings()
             } else {
                 showNotification('키 맵핑 삭제에 실패했습니다', 'error')
@@ -143,29 +149,29 @@ export default function KeyMappingPage() {
         }
     }
 
-    // 키 맵핑 토글 (단순화)
-    const handleToggleMapping = async (mappingKey, mapping) => {
-        console.log('토글 핸들러 호출:', { mappingKey, mapping })
+    // 키 맵핑 토글 (ID 기반으로 수정)
+    const handleToggleMapping = async (mappingID, mapping) => {
+        console.log('토글 핸들러 호출 (ID 기반):', { mappingID, mapping })
 
-        if (updating || !mapping || !mapping.start_key) {
-            console.log('토글 조건 불충족:', { updating, hasMapping: !!mapping, hasStartKey: !!mapping?.start_key })
+        if (updating || !mapping || !mapping.id) {
+            console.log('토글 조건 불충족:', { updating, hasMapping: !!mapping, hasID: !!mapping?.id })
             return
         }
 
         try {
             setUpdating(true)
-            console.log('토글 요청 시작:', mapping.name, mapping.start_key)
+            console.log('ID 기반 토글 요청 시작:', mapping.name, mapping.id)
 
-            // 시작키 기반 토글만 사용
-            const success = await keyMappingService.toggleMapping(mapping.start_key)
-            console.log('토글 API 응답:', success)
+            // ID 기반 토글 사용
+            const success = await keyMappingService.toggleMappingByID(mapping.id)
+            console.log('ID 기반 토글 API 응답:', success)
 
             if (success) {
                 const newStatus = mapping.enabled ? '비활성화' : '활성화'
                 const displayName = `${mapping.name}${mapping.is_duplicate ? ` (${mapping.duplicate_index + 1}/${mapping.total_duplicates})` : ''}`
 
                 showNotification(`키 맵핑 '${displayName}'이 ${newStatus}되었습니다`, 'success')
-                actions.addLog(`키 맵핑 ${newStatus}: ${displayName}`)
+                actions.addLog(`키 맵핑 ${newStatus}: ${displayName} (ID: ${mapping.id})`)
 
                 await loadMappings()
             } else {
@@ -186,7 +192,9 @@ export default function KeyMappingPage() {
             const success = await keyMappingService.controlSystem(action)
 
             if (success) {
-                const message = action === 'start' ? '키 맵핑 시스템이 시작되었습니다' : '키 맵핑 시스템이 중지되었습니다'
+                const message = action === 'start'
+                    ? '키 맵핑 시스템이 시작되었습니다 (ID 기반)'
+                    : '키 맵핑 시스템이 중지되었습니다'
                 showNotification(message, 'success')
                 actions.addLog(message)
                 setSystemRunning(action === 'start')
@@ -208,15 +216,11 @@ export default function KeyMappingPage() {
         setIsModalOpen(true)
     }
 
-    // 맵핑 수정 (단순화)
+    // 맵핑 수정
     const handleEditMapping = (mapping) => {
+        console.log('수정할 맵핑 (ID 기반):', mapping)
         setEditingMapping(mapping)
         setIsModalOpen(true)
-    }
-
-    // 실제 시작키 추출
-    const getRealStartKey = (mapping) => {
-        return mapping.start_key || 'delete'
     }
 
     // 기존 시작키 목록 추출
@@ -265,7 +269,7 @@ export default function KeyMappingPage() {
         <div className={styles.keyMappingPage}>
             {/* 시스템 상태 카드 */}
             <Card
-                title="키 맵핑 시스템 상태"
+                title="키 맵핑 시스템 상태 (ID 기반)"
                 className={styles.statusCard}
                 headerContent={
                     <div className={styles.systemControls}>
@@ -328,7 +332,7 @@ export default function KeyMappingPage() {
 
             {/* 키 맵핑 목록 카드 */}
             <Card
-                title="키 맵핑 목록"
+                title="키 맵핑 목록 (ID 기반)"
                 className={styles.mappingsCard}
                 headerContent={
                     <Button
@@ -351,11 +355,11 @@ export default function KeyMappingPage() {
                     </div>
                 ) : (
                     <div className={styles.mappingsList}>
-                        {Object.entries(mappings).map(([mappingKey, mapping]) => {
+                        {Object.entries(mappings).map(([mappingID, mapping]) => {
                             const duplicateGroup = getDuplicateGroupInfo(mapping)
 
                             return (
-                                <div key={mappingKey} className={styles.mappingItem}>
+                                <div key={mappingID} className={styles.mappingItem}>
                                     <div className={styles.mappingHeader}>
                                         <div className={styles.mappingInfo}>
                                             <div className={styles.mappingTitleRow}>
@@ -376,6 +380,9 @@ export default function KeyMappingPage() {
                                                 <span className={styles.startKey}>
                                                     시작키: <strong>{mapping.start_key?.toUpperCase()}</strong>
                                                 </span>
+                                                <span className={styles.mappingID}>
+                                                    ID: <code>{mapping.id}</code>
+                                                </span>
                                                 <span className={styles.mappingStatus}>
                                                     {mapping.enabled ? (
                                                         <span className={styles.enabled}>활성화</span>
@@ -394,7 +401,7 @@ export default function KeyMappingPage() {
                                             <button
                                                 type="button"
                                                 className={`${styles.actionButton} ${styles.toggleButton}`}
-                                                onClick={() => handleToggleMapping(mappingKey, mapping)}
+                                                onClick={() => handleToggleMapping(mappingID, mapping)}
                                                 disabled={updating}
                                                 title={mapping.enabled ? '비활성화' : '활성화'}
                                             >
@@ -418,7 +425,7 @@ export default function KeyMappingPage() {
                                             <button
                                                 type="button"
                                                 className={`${styles.actionButton} ${styles.deleteButton}`}
-                                                onClick={() => handleDeleteMapping(mappingKey, mapping)}
+                                                onClick={() => handleDeleteMapping(mappingID, mapping)}
                                                 disabled={updating}
                                                 title="삭제"
                                             >
