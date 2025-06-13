@@ -1,161 +1,298 @@
-.keyMappingPage {
+/* KeyMappingModal.module.css - 조합키 및 중복키 지원 스타일 */
+
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6);
     display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-    height: 100%;
-}
-
-/* 시스템 상태 카드 */
-.statusCard {
-    flex-shrink: 0;
-}
-
-.systemControls {
-    display: flex;
-    gap: var(--spacing-sm);
-}
-
-.statsGrid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: var(--spacing-md);
-}
-
-.statItem {
-    display: flex;
-    flex-direction: column;
+    justify-content: center;
     align-items: center;
-    text-align: center;
-    padding: var(--spacing-sm);
-    border-radius: var(--border-radius);
-    background-color: var(--highlight);
+    z-index: 1000;
+    padding: var(--spacing-md);
 }
 
-.statLabel {
-    font-size: var(--font-sm);
-    color: var(--text-secondary);
-    margin-bottom: var(--spacing-xs);
+.modalContent {
+    background-color: var(--card-bg);
+    border-radius: var(--border-radius-lg);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    width: 100%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
-.statValue {
+/* 모달 헤더 */
+.modalHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-lg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modalHeader h2 {
+    margin: 0;
     font-size: var(--font-lg);
     font-weight: 600;
     color: var(--text-primary);
 }
 
-.statValue.running {
-    color: var(--success-color);
+.closeButton {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: var(--spacing-xs);
+    border-radius: var(--border-radius);
+    transition: all var(--transition-speed);
 }
 
-.statValue.stopped {
-    color: var(--text-muted);
+.closeButton:hover {
+    color: var(--text-primary);
+    background-color: var(--highlight);
 }
 
-/* 키 맵핑 목록 카드 */
-.mappingsCard {
+/* 모달 바디 */
+.modalBody {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 400px;
-}
-
-.loading {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: var(--spacing-xl);
-    color: var(--text-muted);
-}
-
-.emptyState {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: var(--spacing-xl);
-    text-align: center;
-    color: var(--text-muted);
-}
-
-.emptyState p {
-    margin: var(--spacing-sm) 0;
-}
-
-/* 키 맵핑 목록 */
-.mappingsList {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-    max-height: 500px;
+    padding: var(--spacing-lg);
     overflow-y: auto;
-    padding: var(--spacing-sm);
 }
 
-.mappingItem {
+/* 폼 그룹 */
+.formGroup {
+    margin-bottom: var(--spacing-lg);
+}
+
+.label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: var(--font-sm);
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.helpButton {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: help;
+    padding: 0;
+    transition: color var(--transition-speed);
+}
+
+.helpButton:hover {
+    color: var(--primary-color);
+}
+
+/* 입력 필드 */
+.input,
+.select {
+    width: 100%;
+    padding: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    font-size: var(--font-sm);
+    transition: all var(--transition-speed);
+}
+
+.input:focus,
+.select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.1);
+}
+
+.input.error,
+.select.error {
+    border-color: var(--danger-color);
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+.errorText {
+    display: block;
+    margin-top: var(--spacing-xs);
+    font-size: var(--font-xs);
+    color: var(--danger-color);
+}
+
+/* 중복키 경고 */
+.duplicateWarning {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background-color: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: var(--border-radius);
+    color: var(--warning-color);
+    font-size: var(--font-sm);
+    margin-top: var(--spacing-sm);
+}
+
+/* 조합키 도움말 */
+.comboKeyHelp {
     background-color: var(--highlight);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     padding: var(--spacing-md);
-    transition: all var(--transition-speed);
+    margin-bottom: var(--spacing-md);
 }
 
-.mappingItem:hover {
-    border-color: var(--primary-color);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-/* 키 맵핑 헤더 */
-.mappingHeader {
+.comboKeyHelp h4 {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: var(--spacing-sm);
-}
-
-.mappingInfo {
-    flex: 1;
-}
-
-.mappingName {
-    font-size: var(--font-lg);
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0 0 var(--spacing-xs) 0;
-}
-
-.mappingDetails {
-    display: flex;
-    gap: var(--spacing-md);
     align-items: center;
+    gap: var(--spacing-sm);
+    margin: 0 0 var(--spacing-md) 0;
+    font-size: var(--font-sm);
+    color: var(--text-primary);
 }
 
-.startKey {
+.comboKeyExamples {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.exampleCategory h5 {
+    margin: 0 0 var(--spacing-sm) 0;
     font-size: var(--font-sm);
     color: var(--text-secondary);
 }
 
-.startKey strong {
-    color: var(--primary-color);
-    font-weight: 600;
-}
-
-.mappingStatus .enabled {
-    color: var(--success-color);
-    font-weight: 500;
-}
-
-.mappingStatus .disabled {
-    color: var(--text-muted);
-    font-weight: 500;
-}
-
-/* 키 맵핑 액션 */
-.mappingActions {
+.exampleKeys {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--spacing-xs);
 }
 
-.actionButton {
+.exampleKey {
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-xs);
+    font-family: 'Courier New', monospace;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all var(--transition-speed);
+}
+
+.exampleKey:hover {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.comboKeyNote {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* 키 시퀀스 */
+.keySequence {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    background-color: var(--highlight);
+}
+
+.keyRow {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: flex-start;
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+}
+
+.keyRow:last-of-type {
+    margin-bottom: var(--spacing-sm);
+}
+
+.keyIndex {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background-color: var(--primary-color);
+    color: white;
+    border-radius: 50%;
+    font-size: var(--font-xs);
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-top: 4px;
+}
+
+.keyInputGroup {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    min-width: 0;
+}
+
+.keyInput {
+    font-size: var(--font-sm);
+    padding: var(--spacing-sm);
+    width: 100%;
+    font-family: 'Courier New', monospace;
+}
+
+.comboKeyIndicator {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+    font-size: var(--font-xs);
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+.delayGroup {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    width: 100px;
+    flex-shrink: 0;
+}
+
+.delayInput {
+    padding: var(--spacing-sm);
+    padding-right: 30px;
+    text-align: center;
+    font-size: var(--font-sm);
+    width: 100%;
+}
+
+.delayUnit {
+    position: absolute;
+    right: var(--spacing-sm);
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.removeKeyButton {
     background: none;
     border: none;
     color: var(--text-muted);
@@ -163,112 +300,356 @@
     padding: var(--spacing-xs);
     border-radius: var(--border-radius);
     transition: all var(--transition-speed);
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    margin-top: 4px;
 }
 
-.actionButton:hover {
-    background-color: var(--highlight);
-    color: var(--text-primary);
-}
-
-.deleteButton:hover {
+.removeKeyButton:hover:not(:disabled) {
     color: var(--danger-color);
     background-color: rgba(239, 68, 68, 0.1);
 }
 
-.toggleButton:hover {
-    color: var(--primary-color);
-    background-color: rgba(124, 58, 237, 0.1);
+.removeKeyButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
-.editButton:hover {
+.addKeyButton {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius);
+    font-size: var(--font-sm);
+    cursor: pointer;
+    transition: all var(--transition-speed);
+}
+
+.addKeyButton:hover {
+    background-color: var(--primary-light);
+}
+
+/* 미리보기 */
+.preview {
+    background-color: var(--highlight);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    margin-top: var(--spacing-md);
+}
+
+.preview h4 {
+    margin: 0 0 var(--spacing-sm) 0;
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+}
+
+.previewContent {
+    font-size: var(--font-sm);
+    color: var(--text-primary);
+    line-height: 1.6;
+    margin-bottom: var(--spacing-sm);
+}
+
+.previewKey {
+    display: inline-block;
+    margin: 0 var(--spacing-xs);
+}
+
+.previewContent strong {
+    color: var(--primary-color);
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+}
+
+.previewContent strong.comboKey {
     color: var(--success-color);
     background-color: rgba(16, 185, 129, 0.1);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius);
+    font-size: var(--font-xs);
 }
 
-/* 키 시퀀스 */
-.keySequence {
-    margin-bottom: var(--spacing-sm);
+.delay {
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    margin-left: var(--spacing-xs);
+}
+
+.duplicateInfo {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
     padding: var(--spacing-sm);
-    background-color: var(--bg-color);
+    background-color: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: var(--border-radius);
+    color: var(--primary-color);
+    font-size: var(--font-xs);
+    margin-top: var(--spacing-sm);
+}
+
+/* 모달 푸터 */
+.modalFooter {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    border-top: 1px solid var(--border-color);
+}
+
+.formHelp {
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    margin-top: var(--spacing-sm);
+    line-height: 1.4;
+}
+
+/* 중복키 정보 섹션 */
+.duplicateInfoSection {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md);
+    background-color: var(--highlight);
     border-radius: var(--border-radius);
     border: 1px solid var(--border-color);
 }
 
-.sequenceLabel {
-    font-size: var(--font-sm);
-    color: var(--text-secondary);
-    font-weight: 500;
-    margin-right: var(--spacing-sm);
-}
-
-.sequenceValue {
-    font-family: 'Courier New', monospace;
+.duplicateInfoSection h4 {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin: 0 0 var(--spacing-md) 0;
     font-size: var(--font-sm);
     color: var(--text-primary);
-    word-break: break-all;
 }
 
-/* 메타 정보 */
-.mappingMeta {
+.duplicateKeyInfo {
     display: flex;
+    align-items: center;
     gap: var(--spacing-md);
-    font-size: var(--font-xs);
-    color: var(--text-muted);
-    border-top: 1px solid var(--border-color);
-    padding-top: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background-color: var(--bg-color);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-sm);
 }
 
-/* 반응형 디자인 */
+.duplicateKeyInfo:last-child {
+    margin-bottom: 0;
+}
+
+.duplicateKeyName {
+    font-weight: 600;
+    color: var(--primary-color);
+    font-family: 'Courier New', monospace;
+}
+
+.duplicateKeyCount {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+}
+
+.duplicateKeyActive {
+    font-size: var(--font-sm);
+    color: var(--success-color);
+    font-weight: 500;
+}
+
+/* 맵핑 제목 행 */
+.mappingTitleRow {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+}
+
+.mappingName {
+    font-size: var(--font-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+/* 배지 스타일 */
+.duplicateBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: var(--warning-color);
+    color: white;
+    border-radius: var(--border-radius);
+    font-size: var(--font-xs);
+    font-weight: 500;
+}
+
+.comboKeyBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: var(--success-color);
+    color: white;
+    border-radius: var(--border-radius);
+    font-size: var(--font-xs);
+    font-weight: 500;
+}
+
+.duplicateNote {
+    font-size: var(--font-xs);
+    color: var(--warning-color);
+    font-style: italic;
+}
+
+/* 기존 스타일 유지하면서 추가 */
 @media (max-width: 768px) {
-    .statsGrid {
-        grid-template-columns: repeat(2, 1fr);
+    .modalOverlay {
+        padding: var(--spacing-sm);
     }
 
-    .mappingHeader {
+    .modalContent {
+        max-width: 100%;
+        max-height: 95vh;
+    }
+
+    .modalHeader,
+    .modalBody,
+    .modalFooter {
+        padding: var(--spacing-md);
+    }
+
+    .keyRow {
         flex-direction: column;
+        gap: var(--spacing-sm);
+        align-items: stretch;
+    }
+
+    .keyIndex {
+        align-self: flex-start;
+        margin-bottom: var(--spacing-xs);
+        margin-top: 0;
+    }
+
+    .delayGroup {
+        max-width: 120px;
+        align-self: flex-start;
+    }
+
+    .removeKeyButton {
+        align-self: flex-end;
+        margin-top: var(--spacing-xs);
+    }
+
+    .modalFooter {
+        flex-direction: column-reverse;
+    }
+
+    .modalFooter button {
+        width: 100%;
+    }
+
+    .comboKeyExamples {
         gap: var(--spacing-sm);
     }
 
-    .mappingDetails {
-        flex-direction: column;
-        gap: var(--spacing-xs);
-        align-items: flex-start;
-    }
-
-    .mappingActions {
-        align-self: flex-end;
-    }
-
-    .mappingMeta {
-        flex-direction: column;
+    .exampleKeys {
         gap: var(--spacing-xs);
     }
 
-    .systemControls {
-        flex-direction: column;
-        width: 100%;
+    .exampleKey {
+        font-size: 10px;
+        padding: 2px 4px;
     }
 }
 
 @media (max-width: 480px) {
-    .statsGrid {
-        grid-template-columns: 1fr;
-    }
-
-    .mappingItem {
-        padding: var(--spacing-sm);
+    .modalHeader h2 {
+        font-size: var(--font-base);
     }
 
     .keySequence {
+        padding: var(--spacing-sm);
+    }
+
+    .keyRow {
         padding: var(--spacing-xs);
     }
 
-    .sequenceValue {
+    .preview {
+        padding: var(--spacing-sm);
+    }
+
+    .previewContent {
         font-size: var(--font-xs);
     }
+
+    .comboKeyHelp {
+        padding: var(--spacing-sm);
+    }
+
+    .comboKeyExamples {
+        gap: var(--spacing-xs);
+    }
+}
+
+/* 애니메이션 */
+.modalContent {
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.exampleKey {
+    animation: keyPulse 0.2s ease-out;
+}
+
+@keyframes keyPulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* 다크 모드 최적화 */
+[data-theme="dark"] .comboKeyHelp {
+    background-color: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .exampleKey {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .exampleKey:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+[data-theme="dark"] .previewContent strong.comboKey {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: #34d399;
 }

@@ -1,6 +1,6 @@
-// webui/src/components/KeyMapping/KeyMappingModal.jsx - 딜레이 입력 개선
+// KeyMappingModal.jsx - 조합키 지원 및 중복키 허용
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, HelpCircle } from 'lucide-react'
+import { X, Plus, Trash2, HelpCircle, Keyboard, AlertTriangle, Info } from 'lucide-react'
 import { keyMappingService } from '@services/keyMappingService'
 import { KEY_MAPPING } from '@constants/appConstants'
 import Button from '@components/Common/Button'
@@ -19,11 +19,14 @@ export default function KeyMappingModal({
         keys: [{ key: '', delay: KEY_MAPPING.DEFAULT_DELAY }]
     })
     const [availableKeys, setAvailableKeys] = useState({})
+    const [comboKeyExamples, setComboKeyExamples] = useState({})
     const [errors, setErrors] = useState({})
     const [loading, setLoading] = useState(false)
     const [keysLoading, setKeysLoading] = useState(false)
+    const [showComboKeyHelp, setShowComboKeyHelp] = useState(false)
+    const [isDuplicateKey, setIsDuplicateKey] = useState(false)
 
-    // 시작키로 허용되는 키만 정의 (엄격하게 제한)
+    // 시작키로 허용되는 키만 정의
     const allowedStartKeys = ['delete', 'end']
 
     // 컴포넌트 마운트 시 사용 가능한 키 목록 로드
@@ -51,8 +54,22 @@ export default function KeyMappingModal({
             }
 
             setErrors({})
+            setIsDuplicateKey(false)
         }
     }, [isOpen, editingMapping])
+
+    // 시작키 변경 감지하여 중복 체크
+    useEffect(() => {
+        if (formData.start_key && existingStartKeys.includes(formData.start_key)) {
+            if (!editingMapping || editingMapping.start_key !== formData.start_key) {
+                setIsDuplicateKey(true)
+            } else {
+                setIsDuplicateKey(false)
+            }
+        } else {
+            setIsDuplicateKey(false)
+        }
+    }, [formData.start_key, existingStartKeys, editingMapping])
 
     // 사용 가능한 키 목록 로드
     const loadAvailableKeys = async () => {
@@ -66,32 +83,45 @@ export default function KeyMappingModal({
             if (data && data.success && data.keys) {
                 console.log('사용 가능한 키 목록:', data.keys)
                 setAvailableKeys(data.keys)
+
+                // 조합키 예시 설정
+                if (data.keys['조합키 예시']) {
+                    const examples = data.keys['조합키 예시']
+                    setComboKeyExamples({
+                        '복사/붙여넣기': examples.filter(k => k.includes('ctrl+') && ['c', 'v', 'x', 'z', 'y'].some(c => k.includes(c))),
+                        '창 관리': examples.filter(k => k.includes('alt+') || k.includes('win+')),
+                        '기타': examples.filter(k => !k.includes('ctrl+c') && !k.includes('ctrl+v') && !k.includes('alt+') && !k.includes('win+'))
+                    })
+                }
             } else {
                 console.error('키 목록 로드 실패 또는 잘못된 응답:', data)
-                // 기본 키 목록 설정
-                const defaultKeys = {
-                    "숫자 키": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
-                    "알파벳 키": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"],
-                    "펑션 키": ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"],
-                    "특수 키": ["space", "enter", "esc", "tab"],
-                    "화살표 키": ["left", "up", "right", "down"],
-                    "넘패드": ["num0", "num1", "num2", "num3", "num4", "num5", "num6", "num7", "num8", "num9"],
-                    "조합 키": ["shift", "ctrl", "alt"]
-                }
-                setAvailableKeys(defaultKeys)
+                setDefaultKeys()
             }
         } catch (error) {
             console.error('사용 가능한 키 목록 로드 실패:', error)
-            // 에러 발생 시 기본 키 목록 설정
-            const defaultKeys = {
-                "숫자 키": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
-                "알파벳 키": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"],
-                "특수 키": ["space", "enter", "esc", "tab"]
-            }
-            setAvailableKeys(defaultKeys)
+            setDefaultKeys()
         } finally {
             setKeysLoading(false)
         }
+    }
+
+    // 기본 키 목록 설정
+    const setDefaultKeys = () => {
+        const defaultKeys = {
+            "숫자 키": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+            "알파벳 키": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"],
+            "펑션 키": ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"],
+            "특수 키": ["space", "enter", "esc", "tab", "backspace", "delete"],
+            "화살표 키": ["left", "up", "right", "down"],
+            "수정키": ["shift", "ctrl", "alt"],
+            "조합키 예시": ["ctrl+c", "ctrl+v", "ctrl+x", "alt+tab", "win+r"]
+        }
+        setAvailableKeys(defaultKeys)
+        setComboKeyExamples({
+            '복사/붙여넣기': ['ctrl+c', 'ctrl+v', 'ctrl+x'],
+            '창 관리': ['alt+tab', 'win+r', 'win+d'],
+            '기타': ['ctrl+z', 'ctrl+y', 'alt+f4']
+        })
     }
 
     // 시작키용 키 목록 필터링
@@ -100,6 +130,43 @@ export default function KeyMappingModal({
             value: key,
             label: key.toUpperCase()
         }))
+    }
+
+    // 조합키인지 확인
+    const isComboKey = (key) => {
+        return key && (
+            key.includes('ctrl+') ||
+            key.includes('shift+') ||
+            key.includes('alt+') ||
+            key.includes('cmd+') ||
+            key.includes('win+')
+        )
+    }
+
+    // 조합키 유효성 검사
+    const validateComboKey = (key) => {
+        if (!isComboKey(key)) return null
+
+        const modifiers = ['ctrl+', 'shift+', 'alt+', 'cmd+', 'win+']
+        let hasModifier = false
+        let mainKey = key.toLowerCase()
+
+        for (const modifier of modifiers) {
+            if (mainKey.includes(modifier)) {
+                hasModifier = true
+                mainKey = mainKey.replace(modifier, '')
+            }
+        }
+
+        if (!hasModifier) {
+            return '조합키에는 최소 하나의 수정키가 필요합니다'
+        }
+
+        if (!mainKey.trim()) {
+            return '조합키에는 메인키가 필요합니다'
+        }
+
+        return null
     }
 
     // 폼 입력 변경 처리
@@ -119,20 +186,17 @@ export default function KeyMappingModal({
         }
     }
 
-    // 키 시퀀스 변경 처리 (딜레이 입력 개선)
+    // 키 시퀀스 변경 처리
     const handleKeyChange = (index, field, value) => {
         console.log(`키 시퀀스 변경: [${index}].${field} = ${value}`)
         const newKeys = [...formData.keys]
 
         if (field === 'delay') {
-            // 딜레이 값 처리 개선
             let delayValue = 0
 
-            // 빈 문자열이거나 null/undefined인 경우
             if (value === '' || value === null || value === undefined) {
                 delayValue = 0
             } else if (typeof value === 'string') {
-                // 문자열인 경우 파싱
                 if (value.trim() === '') {
                     delayValue = 0
                 } else {
@@ -140,16 +204,37 @@ export default function KeyMappingModal({
                     delayValue = isNaN(parsed) ? 0 : parsed
                 }
             } else {
-                // 숫자인 경우
                 delayValue = parseInt(value) || 0
             }
 
-            // 범위 제한
             delayValue = Math.max(KEY_MAPPING.MIN_DELAY, Math.min(delayValue, KEY_MAPPING.MAX_DELAY))
 
             newKeys[index] = {
                 ...newKeys[index],
                 delay: delayValue
+            }
+        } else if (field === 'key') {
+            // 키 입력 시 조합키 유효성 검사
+            const trimmedValue = value.trim().toLowerCase()
+            newKeys[index] = {
+                ...newKeys[index],
+                key: trimmedValue
+            }
+
+            // 조합키 유효성 검사
+            if (isComboKey(trimmedValue)) {
+                const comboError = validateComboKey(trimmedValue)
+                if (comboError) {
+                    setErrors(prev => ({
+                        ...prev,
+                        [`key_${index}`]: comboError
+                    }))
+                } else {
+                    setErrors(prev => ({
+                        ...prev,
+                        [`key_${index}`]: null
+                    }))
+                }
             }
         } else {
             newKeys[index] = {
@@ -162,59 +247,6 @@ export default function KeyMappingModal({
             ...prev,
             keys: newKeys
         }))
-    }
-
-    // 딜레이 입력 필드 특별 처리
-    const handleDelayInputChange = (index, event) => {
-        const value = event.target.value
-        console.log(`딜레이 입력 변경: [${index}] = "${value}"`)
-
-        // 빈 문자열인 경우 0으로 설정하되 표시는 빈 문자열로
-        if (value === '') {
-            handleKeyChange(index, 'delay', 0)
-            return
-        }
-
-        // 숫자만 허용
-        const numericValue = value.replace(/[^0-9]/g, '')
-
-        if (numericValue !== value) {
-            // 숫자가 아닌 문자가 포함된 경우 숫자만 추출
-            event.target.value = numericValue
-        }
-
-        const finalValue = numericValue === '' ? 0 : parseInt(numericValue)
-        handleKeyChange(index, 'delay', finalValue)
-    }
-
-    // 딜레이 입력 필드 포커스 처리
-    const handleDelayFocus = (event) => {
-        // 포커스 시 전체 선택
-        setTimeout(() => {
-            event.target.select()
-        }, 10)
-    }
-
-    // 딜레이 입력 필드 키 다운 처리
-    const handleDelayKeyDown = (index, event) => {
-        // 백스페이스로 0 완전히 삭제 허용
-        if (event.key === 'Backspace') {
-            const currentValue = event.target.value
-            if (currentValue === '0' || currentValue === '') {
-                event.preventDefault()
-                handleKeyChange(index, 'delay', 0)
-                event.target.value = ''
-            }
-        }
-
-        // Enter 키로 다음 필드로 이동
-        if (event.key === 'Enter') {
-            event.preventDefault()
-            const nextInput = event.target.closest('.keyRow')?.nextElementSibling?.querySelector('input[type="number"]')
-            if (nextInput) {
-                nextInput.focus()
-            }
-        }
     }
 
     // 키 추가
@@ -238,6 +270,12 @@ export default function KeyMappingModal({
         }
     }
 
+    // 조합키 예시 적용
+    const applyComboKeyExample = (key) => {
+        const lastIndex = formData.keys.length - 1
+        handleKeyChange(lastIndex, 'key', key)
+    }
+
     // 유효성 검사
     const validateForm = () => {
         console.log('폼 유효성 검사 시작')
@@ -255,21 +293,21 @@ export default function KeyMappingModal({
             // 허용된 시작키인지 확인
             if (!allowedStartKeys.includes(formData.start_key.toLowerCase())) {
                 newErrors.start_key = '시작 키는 DELETE 또는 END만 사용할 수 있습니다'
-            } else {
-                // 중복 검사
-                const isDuplicate = existingStartKeys.includes(formData.start_key) &&
-                    (!editingMapping || editingMapping.start_key !== formData.start_key)
-
-                if (isDuplicate) {
-                    newErrors.start_key = '이미 사용 중인 시작 키입니다'
-                }
             }
         }
 
         // 키 시퀀스 검사
         formData.keys.forEach((keyItem, index) => {
             if (!keyItem.key.trim()) {
-                newErrors[`key_${index}`] = '키를 선택해주세요'
+                newErrors[`key_${index}`] = '키를 입력해주세요'
+            } else {
+                // 조합키 유효성 검사
+                if (isComboKey(keyItem.key)) {
+                    const comboError = validateComboKey(keyItem.key)
+                    if (comboError) {
+                        newErrors[`key_${index}`] = comboError
+                    }
+                }
             }
 
             if (keyItem.delay < KEY_MAPPING.MIN_DELAY || keyItem.delay > KEY_MAPPING.MAX_DELAY) {
@@ -351,7 +389,7 @@ export default function KeyMappingModal({
                             type="text"
                             value={formData.name}
                             onChange={(e) => handleInputChange('name', e.target.value)}
-                            placeholder="예: 도사, 천인, 마법사"
+                            placeholder="예: 도사 스킬, 천인 콤보, 마법사 버프"
                             className={`${styles.input} ${errors.name ? styles.error : ''}`}
                         />
                         {errors.name && <span className={styles.errorText}>{errors.name}</span>}
@@ -381,8 +419,20 @@ export default function KeyMappingModal({
                             ))}
                         </select>
                         {errors.start_key && <span className={styles.errorText}>{errors.start_key}</span>}
+
+                        {/* 중복키 경고 */}
+                        {isDuplicateKey && (
+                            <div className={styles.duplicateWarning}>
+                                <AlertTriangle size={16} />
+                                <span>
+                                    이미 이 시작키를 사용하는 맵핑이 있습니다.
+                                    같은 시작키의 맵핑은 하나만 활성화할 수 있습니다.
+                                </span>
+                            </div>
+                        )}
+
                         <small className={styles.formHelp}>
-                            안전을 위해 DELETE와 END 키만 시작키로 사용할 수 있습니다. 다른 키는 동작하지 않습니다.
+                            안전을 위해 DELETE와 END 키만 시작키로 사용할 수 있습니다.
                         </small>
                     </div>
 
@@ -393,37 +443,64 @@ export default function KeyMappingModal({
                             <button
                                 type="button"
                                 className={styles.helpButton}
-                                title="시작 키를 누르면 이 순서대로 키가 입력됩니다"
+                                onClick={() => setShowComboKeyHelp(!showComboKeyHelp)}
+                                title="조합키 사용법 보기"
                             >
-                                <HelpCircle size={14} />
+                                <Keyboard size={14} />
                             </button>
                         </label>
+
+                        {/* 조합키 도움말 */}
+                        {showComboKeyHelp && (
+                            <div className={styles.comboKeyHelp}>
+                                <h4><Keyboard size={16} /> 조합키 사용법</h4>
+                                <div className={styles.comboKeyExamples}>
+                                    {Object.entries(comboKeyExamples).map(([category, examples]) => (
+                                        <div key={category} className={styles.exampleCategory}>
+                                            <h5>{category}</h5>
+                                            <div className={styles.exampleKeys}>
+                                                {examples.map(key => (
+                                                    <button
+                                                        key={key}
+                                                        type="button"
+                                                        className={styles.exampleKey}
+                                                        onClick={() => applyComboKeyExample(key)}
+                                                        title={`${key} 적용`}
+                                                    >
+                                                        {key}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className={styles.comboKeyNote}>
+                                    <Info size={14} />
+                                    조합키는 "수정키+메인키" 형태로 입력하세요.
+                                    예: ctrl+c, alt+tab, win+r
+                                </p>
+                            </div>
+                        )}
 
                         <div className={styles.keySequence}>
                             {formData.keys.map((keyItem, index) => (
                                 <div key={index} className={`${styles.keyRow} keyRow`}>
                                     <div className={styles.keyIndex}>{index + 1}</div>
 
-                                    <div className={styles.keySelectGroup}>
-                                        <select
+                                    <div className={styles.keyInputGroup}>
+                                        <input
+                                            type="text"
                                             value={keyItem.key}
                                             onChange={(e) => handleKeyChange(index, 'key', e.target.value)}
-                                            className={`${styles.keySelect} ${errors[`key_${index}`] ? styles.error : ''}`}
-                                        >
-                                            <option value="">키 선택</option>
-                                            {Object.entries(availableKeys).map(([category, keys]) => {
-                                                // 시작키 카테고리는 제외
-                                                if (category === '시작 키') return null
-
-                                                return (
-                                                    <optgroup key={category} label={category}>
-                                                        {keys.map(key => (
-                                                            <option key={key} value={key}>{key.toUpperCase()}</option>
-                                                        ))}
-                                                    </optgroup>
-                                                )
-                                            })}
-                                        </select>
+                                            placeholder="키 입력 (예: x, ctrl+c, alt+tab)"
+                                            className={`${styles.keyInput} ${errors[`key_${index}`] ? styles.error : ''}`}
+                                        />
+                                        {isComboKey(keyItem.key) && (
+                                            <div className={styles.comboKeyIndicator}>
+                                                <Keyboard size={12} />
+                                                조합키
+                                            </div>
+                                        )}
                                         {errors[`key_${index}`] &&
                                             <span className={styles.errorText}>{errors[`key_${index}`]}</span>
                                         }
@@ -436,11 +513,11 @@ export default function KeyMappingModal({
                                             max={KEY_MAPPING.MAX_DELAY}
                                             step="10"
                                             value={keyItem.delay === 0 ? '' : keyItem.delay}
-                                            onChange={(e) => handleDelayInputChange(index, e)}
-                                            onFocus={handleDelayFocus}
-                                            onKeyDown={(e) => handleDelayKeyDown(index, e)}
+                                            onChange={(e) => handleKeyChange(index, 'delay', e.target.value)}
+                                            onFocus={(e) => {
+                                                setTimeout(() => e.target.select(), 10)
+                                            }}
                                             onBlur={(e) => {
-                                                // 포커스 잃을 때 빈 값이면 0으로 설정
                                                 if (e.target.value === '') {
                                                     handleKeyChange(index, 'delay', 0)
                                                 }
@@ -477,7 +554,8 @@ export default function KeyMappingModal({
                         </div>
 
                         <small className={styles.formHelp}>
-                            딜레이 범위: 0ms~1000ms (0ms = 딜레이 없음)
+                            딜레이 범위: 0ms~1000ms (0ms = 딜레이 없음) |
+                            조합키 지원: ctrl+키, alt+키, shift+키, win+키
                         </small>
                     </div>
 
@@ -487,14 +565,26 @@ export default function KeyMappingModal({
                         <div className={styles.previewContent}>
                             <strong>{formData.start_key.toUpperCase()}</strong> 키를 누르면 → {' '}
                             {formData.keys.map((key, index) => (
-                                <span key={index}>
-                                    <strong>{key.key.toUpperCase()}</strong>
+                                <span key={index} className={styles.previewKey}>
+                                    <strong className={isComboKey(key.key) ? styles.comboKey : ''}>
+                                        {key.key.toUpperCase()}
+                                    </strong>
                                     {key.delay > 0 && <span className={styles.delay}>({key.delay}ms)</span>}
                                     {key.delay === 0 && <span className={styles.delay}>(즉시)</span>}
                                     {index < formData.keys.length - 1 && ' → '}
                                 </span>
                             ))}
                         </div>
+
+                        {/* 중복키 정보 표시 */}
+                        {isDuplicateKey && (
+                            <div className={styles.duplicateInfo}>
+                                <Info size={14} />
+                                <span>
+                                    중복키 허용: 같은 시작키의 맵핑 중 하나만 활성화됩니다.
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 

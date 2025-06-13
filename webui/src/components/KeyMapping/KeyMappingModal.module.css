@@ -1,3 +1,5 @@
+/* KeyMappingModal.module.css - 조합키 및 중복키 지원 스타일 */
+
 .modalOverlay {
     position: fixed;
     top: 0;
@@ -17,7 +19,7 @@
     border-radius: var(--border-radius-lg);
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
     width: 100%;
-    max-width: 600px;
+    max-width: 700px;
     max-height: 90vh;
     overflow: hidden;
     display: flex;
@@ -123,6 +125,84 @@
     color: var(--danger-color);
 }
 
+/* 중복키 경고 */
+.duplicateWarning {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background-color: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: var(--border-radius);
+    color: var(--warning-color);
+    font-size: var(--font-sm);
+    margin-top: var(--spacing-sm);
+}
+
+/* 조합키 도움말 */
+.comboKeyHelp {
+    background-color: var(--highlight);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.comboKeyHelp h4 {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin: 0 0 var(--spacing-md) 0;
+    font-size: var(--font-sm);
+    color: var(--text-primary);
+}
+
+.comboKeyExamples {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+.exampleCategory h5 {
+    margin: 0 0 var(--spacing-sm) 0;
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+}
+
+.exampleKeys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+}
+
+.exampleKey {
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-xs);
+    font-family: 'Courier New', monospace;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all var(--transition-speed);
+}
+
+.exampleKey:hover {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.comboKeyNote {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    font-style: italic;
+}
+
 /* 키 시퀀스 */
 .keySequence {
     border: 1px solid var(--border-color);
@@ -161,17 +241,29 @@
     margin-top: 4px;
 }
 
-.keySelectGroup {
+.keyInputGroup {
     flex: 1;
     display: flex;
     flex-direction: column;
+    position: relative;
     min-width: 0;
 }
 
-.keySelect {
+.keyInput {
     font-size: var(--font-sm);
     padding: var(--spacing-sm);
     width: 100%;
+    font-family: 'Courier New', monospace;
+}
+
+.comboKeyIndicator {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-xs);
+    font-size: var(--font-xs);
+    color: var(--primary-color);
+    font-weight: 500;
 }
 
 .delayGroup {
@@ -263,18 +355,46 @@
 .previewContent {
     font-size: var(--font-sm);
     color: var(--text-primary);
-    line-height: 1.5;
+    line-height: 1.6;
+    margin-bottom: var(--spacing-sm);
+}
+
+.previewKey {
+    display: inline-block;
+    margin: 0 var(--spacing-xs);
 }
 
 .previewContent strong {
     color: var(--primary-color);
     font-weight: 600;
+    font-family: 'Courier New', monospace;
+}
+
+.previewContent strong.comboKey {
+    color: var(--success-color);
+    background-color: rgba(16, 185, 129, 0.1);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius);
+    font-size: var(--font-xs);
 }
 
 .delay {
     font-size: var(--font-xs);
     color: var(--text-muted);
     margin-left: var(--spacing-xs);
+}
+
+.duplicateInfo {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background-color: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: var(--border-radius);
+    color: var(--primary-color);
+    font-size: var(--font-xs);
+    margin-top: var(--spacing-sm);
 }
 
 /* 모달 푸터 */
@@ -286,7 +406,111 @@
     border-top: 1px solid var(--border-color);
 }
 
-/* 반응형 디자인 */
+.formHelp {
+    font-size: var(--font-xs);
+    color: var(--text-muted);
+    margin-top: var(--spacing-sm);
+    line-height: 1.4;
+}
+
+/* 중복키 정보 섹션 */
+.duplicateInfoSection {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md);
+    background-color: var(--highlight);
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+}
+
+.duplicateInfoSection h4 {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin: 0 0 var(--spacing-md) 0;
+    font-size: var(--font-sm);
+    color: var(--text-primary);
+}
+
+.duplicateKeyInfo {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-sm);
+    background-color: var(--bg-color);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-sm);
+}
+
+.duplicateKeyInfo:last-child {
+    margin-bottom: 0;
+}
+
+.duplicateKeyName {
+    font-weight: 600;
+    color: var(--primary-color);
+    font-family: 'Courier New', monospace;
+}
+
+.duplicateKeyCount {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+}
+
+.duplicateKeyActive {
+    font-size: var(--font-sm);
+    color: var(--success-color);
+    font-weight: 500;
+}
+
+/* 맵핑 제목 행 */
+.mappingTitleRow {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+}
+
+.mappingName {
+    font-size: var(--font-lg);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+/* 배지 스타일 */
+.duplicateBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: var(--warning-color);
+    color: white;
+    border-radius: var(--border-radius);
+    font-size: var(--font-xs);
+    font-weight: 500;
+}
+
+.comboKeyBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: var(--success-color);
+    color: white;
+    border-radius: var(--border-radius);
+    font-size: var(--font-xs);
+    font-weight: 500;
+}
+
+.duplicateNote {
+    font-size: var(--font-xs);
+    color: var(--warning-color);
+    font-style: italic;
+}
+
+/* 기존 스타일 유지하면서 추가 */
 @media (max-width: 768px) {
     .modalOverlay {
         padding: var(--spacing-sm);
@@ -332,6 +556,19 @@
     .modalFooter button {
         width: 100%;
     }
+
+    .comboKeyExamples {
+        gap: var(--spacing-sm);
+    }
+
+    .exampleKeys {
+        gap: var(--spacing-xs);
+    }
+
+    .exampleKey {
+        font-size: 10px;
+        padding: 2px 4px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -354,4 +591,65 @@
     .previewContent {
         font-size: var(--font-xs);
     }
+
+    .comboKeyHelp {
+        padding: var(--spacing-sm);
+    }
+
+    .comboKeyExamples {
+        gap: var(--spacing-xs);
+    }
+}
+
+/* 애니메이션 */
+.modalContent {
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.exampleKey {
+    animation: keyPulse 0.2s ease-out;
+}
+
+@keyframes keyPulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* 다크 모드 최적화 */
+[data-theme="dark"] .comboKeyHelp {
+    background-color: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .exampleKey {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .exampleKey:hover {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+[data-theme="dark"] .previewContent strong.comboKey {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: #34d399;
 }

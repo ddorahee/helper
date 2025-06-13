@@ -1,4 +1,4 @@
-// handlers/keymapping_handlers.go - 키 맵핑 초기화 기능 추가
+// handlers/keymapping_handlers.go - 중복키 허용 및 조합키 지원
 package handlers
 
 import (
@@ -24,7 +24,7 @@ func NewKeyMappingHandler(manager *keymapping.KeyMappingManager) *KeyMappingHand
 	}
 }
 
-// HandleMappings 키 맵핑 목록 관리 (GET, POST, PUT, DELETE)
+// HandleMappings 키 맵핑 목록 관리 (GET, POST, PUT, DELETE) - 중복키 지원
 func (h *KeyMappingHandler) HandleMappings(w http.ResponseWriter, r *http.Request) {
 	if !utils.IsLocalhost(r.Host) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -55,32 +55,77 @@ func (h *KeyMappingHandler) HandleMappings(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// getMappings 모든 키 맵핑 조회
+// getMappings 모든 키 맵핑 조회 (중복키 지원 - 모든 맵핑 반환)
 func (h *KeyMappingHandler) getMappings(w http.ResponseWriter, r *http.Request) {
 	log.Printf("키 맵핑 목록 조회 요청")
 
-	mappings := h.Manager.GetMappings()
+	// 모든 맵핑 정보 가져오기
+	allMappings := h.Manager.GetAllMappings()
 	stats := h.Manager.GetMappingStats()
 
-	log.Printf("반환할 맵핑 개수: %d", len(mappings))
+	// 모든 맵핑을 플랫 구조로 변환 (UI 호환성)
+	flatMappings := make(map[string]interface{})
+	duplicateInfo := make(map[string]interface{})
 
-	// 허용된 시작키만 포함된 맵핑만 반환
-	filteredMappings := make(map[string]interface{})
-	for key, mapping := range mappings {
+	for startKey, mappingList := range allMappings {
 		// delete 또는 end 키만 허용
-		if strings.ToLower(key) == "delete" || strings.ToLower(key) == "end" {
-			filteredMappings[key] = mapping
-			log.Printf("유효한 맵핑: %s (시작키: %s)", mapping.Name, key)
-		} else {
-			log.Printf("허용되지 않은 시작키로 맵핑 제외: %s (시작키: %s)", mapping.Name, key)
+		if strings.ToLower(startKey) != "delete" && strings.ToLower(startKey) != "end" {
+			continue
+		}
+
+		// 각 맵핑에 고유 키 생성 (startKey + index)
+		for i, mapping := range mappingList {
+			var mapKey string
+			if len(mappingList) == 1 {
+				// 중복이 없으면 기존 방식
+				mapKey = startKey
+			} else {
+				// 중복이 있으면 인덱스 추가
+				mapKey = fmt.Sprintf("%s_%d", startKey, i)
+			}
+
+			// 맵핑 정보에 원래 시작키와 인덱스 정보 추가
+			mappingData := map[string]interface{}{
+				"id":               mapping.ID,
+				"name":             mapping.Name,
+				"start_key":        mapping.StartKey,
+				"keys":             mapping.Keys,
+				"enabled":          mapping.Enabled,
+				"created_at":       mapping.CreatedAt,
+				"updated_at":       mapping.UpdatedAt,
+				"is_duplicate":     len(mappingList) > 1,
+				"duplicate_index":  i,
+				"total_duplicates": len(mappingList),
+			}
+
+			flatMappings[mapKey] = mappingData
+			log.Printf("맵핑 추가: %s (키: %s, 활성화: %t, 중복: %t)",
+				mapping.Name, mapKey, mapping.Enabled, len(mappingList) > 1)
+		}
+
+		// 중복키 정보
+		if len(mappingList) > 1 {
+			duplicateInfo[startKey] = map[string]interface{}{
+				"count":    len(mappingList),
+				"active":   getActiveMappingName(mappingList),
+				"mappings": getMappingNames(mappingList),
+			}
 		}
 	}
 
+	log.Printf("반환할 총 맵핑 개수: %d", len(flatMappings))
+
 	response := map[string]interface{}{
-		"mappings": filteredMappings,
-		"stats":    stats,
-		"success":  true,
-		"message":  fmt.Sprintf("총 %d개 맵핑 (허용된 키만)", len(filteredMappings)),
+		"mappings":       flatMappings,
+		"stats":          stats,
+		"duplicate_info": duplicateInfo,
+		"success":        true,
+		"message":        fmt.Sprintf("총 %d개 맵핑 (중복키 지원)", len(flatMappings)),
+		"features": map[string]bool{
+			"combo_keys":     true,
+			"duplicate_keys": true,
+			"auto_disable":   true,
+		},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -91,7 +136,7 @@ func (h *KeyMappingHandler) getMappings(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// createMapping 새로운 키 맵핑 생성
+// createMapping 새로운 키 맵핑 생성 (중복키 허용)
 func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request) {
 	log.Printf("키 맵핑 생성 요청")
 
@@ -125,7 +170,7 @@ func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 키 시퀀스 파싱
+	// 키 시퀀스 파싱 (조합키 지원)
 	keys, err := h.Manager.ParseKeySequence(request.KeySequence)
 	if err != nil {
 		log.Printf("키 시퀀스 파싱 실패: %v", err)
@@ -133,7 +178,18 @@ func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 키 맵핑 추가
+	// 조합키 유효성 검사
+	for i, key := range keys {
+		if isComboKey(key.Key) {
+			if err := validateComboKey(key.Key); err != nil {
+				log.Printf("조합키 유효성 검사 실패 (키 %d): %v", i+1, err)
+				http.Error(w, fmt.Sprintf("키 %d의 조합키 형식 오류: %v", i+1, err), http.StatusBadRequest)
+				return
+			}
+		}
+	}
+
+	// 키 맵핑 추가 (중복키 허용)
 	if err := h.Manager.AddMapping(request.Name, startKeyLower, keys); err != nil {
 		log.Printf("키 맵핑 추가 실패: %v", err)
 		http.Error(w, fmt.Sprintf("키 맵핑 추가 실패: %v", err), http.StatusBadRequest)
@@ -142,9 +198,21 @@ func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request
 
 	log.Printf("키 맵핑 생성 성공: %s (시작키: %s)", request.Name, startKeyLower)
 
+	// 중복키 정보 포함하여 응답
+	duplicateWarning := ""
+	allMappings := h.Manager.GetAllMappings()
+	if mappings, exists := allMappings[startKeyLower]; exists && len(mappings) > 1 {
+		duplicateWarning = fmt.Sprintf("시작키 '%s'에 %d개의 맵핑이 있습니다. 하나만 활성화됩니다.", startKeyLower, len(mappings))
+	}
+
 	response := map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("키 맵핑 '%s'가 추가되었습니다", request.Name),
+		"warning": duplicateWarning,
+		"features": map[string]bool{
+			"combo_keys_supported":   true,
+			"duplicate_keys_allowed": true,
+		},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -186,12 +254,23 @@ func (h *KeyMappingHandler) updateMapping(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 키 시퀀스 파싱
+	// 키 시퀀스 파싱 (조합키 지원)
 	keys, err := h.Manager.ParseKeySequence(request.KeySequence)
 	if err != nil {
 		log.Printf("키 시퀀스 파싱 실패: %v", err)
 		http.Error(w, fmt.Sprintf("키 시퀀스 파싱 실패: %v", err), http.StatusBadRequest)
 		return
+	}
+
+	// 조합키 유효성 검사
+	for i, key := range keys {
+		if isComboKey(key.Key) {
+			if err := validateComboKey(key.Key); err != nil {
+				log.Printf("조합키 유효성 검사 실패 (키 %d): %v", i+1, err)
+				http.Error(w, fmt.Sprintf("키 %d의 조합키 형식 오류: %v", i+1, err), http.StatusBadRequest)
+				return
+			}
+		}
 	}
 
 	// 키 맵핑 수정
@@ -254,9 +333,22 @@ func (h *KeyMappingHandler) deleteMapping(w http.ResponseWriter, r *http.Request
 
 	log.Printf("키 맵핑 삭제 성공: %s", startKey)
 
+	// 남은 중복키 정보 확인
+	allMappings := h.Manager.GetAllMappings()
+	remainingCount := 0
+	if mappings, exists := allMappings[startKey]; exists {
+		remainingCount = len(mappings)
+	}
+
+	warningMessage := ""
+	if remainingCount > 0 {
+		warningMessage = fmt.Sprintf("시작키 '%s'에 %d개의 맵핑이 더 있습니다", startKey, remainingCount)
+	}
+
 	response := map[string]interface{}{
 		"success": true,
 		"message": "키 맵핑이 삭제되었습니다",
+		"warning": warningMessage,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -289,9 +381,17 @@ func (h *KeyMappingHandler) HandleMappingToggle(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// 토글 후 상태 확인
+	mapping, _ := h.Manager.GetMapping(startKey)
+	status := "비활성화"
+	if mapping != nil && mapping.Enabled {
+		status = "활성화"
+	}
+
 	response := map[string]interface{}{
 		"success": true,
 		"message": "키 맵핑 상태가 변경되었습니다",
+		"status":  status,
 	}
 
 	json.NewEncoder(w).Encode(response)
@@ -329,7 +429,7 @@ func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.
 	}
 
 	if action == "" {
-		http.Error(w, "action 파라미터가 필요합니다 (start/stop)", http.StatusBadRequest)
+		http.Error(w, "action 파라미터가 필요합니다 (start/stop/clear)", http.StatusBadRequest)
 		return
 	}
 
@@ -344,8 +444,8 @@ func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.
 			log.Printf("키 맵핑 시스템 시작 요청")
 			err = h.Manager.Start()
 			if err == nil {
-				message = "키 맵핑 시스템이 시작되었습니다 (허용된 키: delete, end)"
-				log.Printf("키 맵핑 시스템 시작됨")
+				message = "키 맵핑 시스템이 시작되었습니다 (조합키 및 중복키 지원)"
+				log.Printf("키 맵핑 시스템 시작됨 (고급 기능 활성화)")
 			}
 		}
 	case "stop":
@@ -358,17 +458,17 @@ func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.
 			log.Printf("키 맵핑 시스템 중지됨")
 		}
 	case "clear":
-		// 모든 키 맵핑 삭제 (새로 추가)
+		// 모든 키 맵핑 삭제
 		log.Printf("모든 키 맵핑 삭제 요청")
-		mappings := h.Manager.GetMappings()
+		allMappings := h.Manager.GetAllMappings()
 		deletedCount := 0
-		for startKey := range mappings {
+		for startKey := range allMappings {
 			if err := h.Manager.RemoveMapping(startKey); err == nil {
 				deletedCount++
 			}
 		}
-		message = fmt.Sprintf("총 %d개 키 맵핑이 삭제되었습니다", deletedCount)
-		log.Printf("키 맵핑 초기화 완료: %d개 삭제", deletedCount)
+		message = fmt.Sprintf("총 %d개 키 시작키의 맵핑이 삭제되었습니다", deletedCount)
+		log.Printf("키 맵핑 초기화 완료: %d개 시작키 삭제", deletedCount)
 	default:
 		http.Error(w, "잘못된 액션입니다 (start/stop/clear)", http.StatusBadRequest)
 		return
@@ -389,12 +489,17 @@ func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.
 		"success": true,
 		"message": message,
 		"running": h.Manager.IsRunning(),
+		"features": map[string]bool{
+			"combo_keys":     true,
+			"duplicate_keys": true,
+			"auto_disable":   true,
+		},
 	}
 
 	json.NewEncoder(w).Encode(response)
 }
 
-// HandleAvailableKeys 사용 가능한 키 목록 반환
+// HandleAvailableKeys 사용 가능한 키 목록 반환 (조합키 포함)
 func (h *KeyMappingHandler) HandleAvailableKeys(w http.ResponseWriter, r *http.Request) {
 	if !utils.IsLocalhost(r.Host) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -416,7 +521,11 @@ func (h *KeyMappingHandler) HandleAvailableKeys(w http.ResponseWriter, r *http.R
 	response := map[string]interface{}{
 		"keys":    availableKeys,
 		"success": true,
-		"message": "허용된 시작키: delete, end",
+		"message": "허용된 시작키: delete, end | 조합키 지원: ctrl+키, alt+키, shift+키, win+키",
+		"features": map[string]bool{
+			"combo_keys_supported":   true,
+			"duplicate_keys_allowed": true,
+		},
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -443,7 +552,69 @@ func (h *KeyMappingHandler) HandleMappingStatus(w http.ResponseWriter, r *http.R
 	response := map[string]interface{}{
 		"stats":   stats,
 		"success": true,
+		"features": map[string]bool{
+			"combo_keys":     true,
+			"duplicate_keys": true,
+			"auto_disable":   true,
+		},
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+// 헬퍼 함수들
+
+// isComboKey 조합키인지 확인
+func isComboKey(key string) bool {
+	key = strings.ToLower(key)
+	return strings.Contains(key, "ctrl+") ||
+		strings.Contains(key, "shift+") ||
+		strings.Contains(key, "alt+") ||
+		strings.Contains(key, "cmd+") ||
+		strings.Contains(key, "win+")
+}
+
+// validateComboKey 조합키 유효성 검사
+func validateComboKey(key string) error {
+	key = strings.ToLower(key)
+
+	modifiers := []string{"ctrl+", "shift+", "alt+", "cmd+", "win+"}
+	hasModifier := false
+	mainKey := key
+
+	for _, modifier := range modifiers {
+		if strings.Contains(mainKey, modifier) {
+			hasModifier = true
+			mainKey = strings.Replace(mainKey, modifier, "", 1)
+		}
+	}
+
+	if !hasModifier {
+		return fmt.Errorf("조합키에는 최소 하나의 수정키가 필요합니다")
+	}
+
+	if strings.TrimSpace(mainKey) == "" {
+		return fmt.Errorf("조합키에는 메인키가 필요합니다")
+	}
+
+	return nil
+}
+
+// getActiveMappingName 활성화된 맵핑 이름 반환
+func getActiveMappingName(mappings []*keymapping.KeyMapping) string {
+	for _, mapping := range mappings {
+		if mapping.Enabled {
+			return mapping.Name
+		}
+	}
+	return "없음"
+}
+
+// getMappingNames 모든 맵핑 이름 반환
+func getMappingNames(mappings []*keymapping.KeyMapping) []string {
+	names := make([]string, len(mappings))
+	for i, mapping := range mappings {
+		names[i] = mapping.Name
+	}
+	return names
 }
