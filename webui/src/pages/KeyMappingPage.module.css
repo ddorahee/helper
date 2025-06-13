@@ -1,12 +1,14 @@
-/* KeyMappingPage.module.css - ID 표시 추가 스타일 */
+/* KeyMappingPage.module.css - 최적화 및 성능 개선 */
 
 .keyMappingPage {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
-    height: 100%;
+    height: 100vh;
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-y: auto; /* 세로 스크롤 허용 */
+    overflow-x: hidden; /* 가로 스크롤만 숨김 */
+    padding-bottom: var(--spacing-md); /* 하단 여백 */
 }
 
 .statusCard {
@@ -15,17 +17,16 @@
 }
 
 .mappingsCard {
-    flex: 1;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    min-height: 400px;
     width: 100%;
-    max-width: 100%;
 }
 
 .systemControls {
     display: flex;
     gap: var(--spacing-sm);
+    flex-shrink: 0;
 }
 
 .statsGrid {
@@ -40,18 +41,25 @@
     flex-direction: column;
     gap: var(--spacing-xs);
     text-align: center;
+    min-width: 0; /* 텍스트 오버플로우 방지 */
 }
 
 .statLabel {
     font-size: var(--font-xs);
     color: var(--text-secondary);
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .statValue {
     font-size: var(--font-lg);
     font-weight: 700;
     color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .statValue.running {
@@ -62,13 +70,15 @@
     color: var(--text-muted);
 }
 
-/* 중복키 정보 섹션 */
+/* 중복키 정보 섹션 - 최적화 */
 .duplicateInfoSection {
     margin-top: var(--spacing-md);
     padding: var(--spacing-md);
     background-color: var(--highlight);
     border-radius: var(--border-radius);
     border: 1px solid var(--border-color);
+    max-height: 200px; /* 최대 높이 제한 */
+    overflow-y: auto; /* 스크롤 추가 */
 }
 
 .duplicateInfoSection h4 {
@@ -78,6 +88,10 @@
     margin: 0 0 var(--spacing-md) 0;
     font-size: var(--font-sm);
     color: var(--text-primary);
+    position: sticky; /* 헤더 고정 */
+    top: 0;
+    background-color: var(--highlight);
+    z-index: 1;
 }
 
 .duplicateKeyInfo {
@@ -88,6 +102,7 @@
     background-color: var(--bg-color);
     border-radius: var(--border-radius);
     margin-bottom: var(--spacing-sm);
+    min-width: 0; /* flexbox 오버플로우 방지 */
 }
 
 .duplicateKeyInfo:last-child {
@@ -98,17 +113,26 @@
     font-weight: 600;
     color: var(--primary-color);
     font-family: 'Courier New', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
 }
 
 .duplicateKeyCount {
     font-size: var(--font-sm);
     color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .duplicateKeyActive {
     font-size: var(--font-sm);
     color: var(--success-color);
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* 로딩 및 빈 상태 */
@@ -119,6 +143,7 @@
     padding: var(--spacing-xl);
     color: var(--text-muted);
     font-style: italic;
+    min-height: 200px;
 }
 
 .emptyState {
@@ -129,10 +154,12 @@
     padding: var(--spacing-xl);
     text-align: center;
     color: var(--text-muted);
+    min-height: 300px;
 }
 
 .emptyState p {
     margin-bottom: var(--spacing-sm);
+    max-width: 400px;
 }
 
 .emptyState p:last-child {
@@ -141,32 +168,42 @@
     opacity: 0.7;
 }
 
-/* 맵핑 목록 */
+/* 맵핑 목록 - 깔끔한 디자인 */
 .mappingsList {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-md);
-    flex: 1;
-    width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
+    padding: var(--spacing-sm);
 }
 
+/* 맵핑 아이템 - 성능 최적화 */
 .mappingItem {
     background-color: var(--bg-color);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     padding: var(--spacing-md);
-    transition: all var(--transition-speed);
+    margin-bottom: var(--spacing-md);
     width: 100%;
-    max-width: 100%;
     box-sizing: border-box;
+
+    /* 성능 최적화 */
+    contain: layout style paint;
+    will-change: transform;
+    transform: translateZ(0); /* GPU 가속 */
+
+    /* 트랜지션 최적화 */
+    transition: border-color var(--transition-speed),
+                transform var(--transition-speed);
+}
+
+.mappingItem:last-child {
+    margin-bottom: 0;
 }
 
 .mappingItem:hover {
     border-color: var(--primary-color);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px) translateZ(0);
+    /* box-shadow 제거로 성능 개선 */
 }
 
 .mappingHeader {
@@ -174,11 +211,14 @@
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: var(--spacing-md);
+    gap: var(--spacing-md);
+    min-width: 0;
 }
 
 .mappingInfo {
     flex: 1;
-    min-width: 0;
+    min-width: 0; /* flexbox 오버플로우 방지 */
+    overflow: hidden;
 }
 
 .mappingTitleRow {
@@ -186,6 +226,7 @@
     align-items: center;
     gap: var(--spacing-sm);
     margin-bottom: var(--spacing-xs);
+    min-width: 0;
 }
 
 .mappingName {
@@ -196,6 +237,15 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
+    min-width: 0;
+    flex: 1;
+}
+
+.mappingName span:first-child {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
 }
 
 .mappingDetails {
@@ -203,11 +253,14 @@
     align-items: center;
     gap: var(--spacing-md);
     flex-wrap: wrap;
+    min-width: 0;
 }
 
 .startKey {
     font-size: var(--font-sm);
     color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .startKey strong {
@@ -215,7 +268,7 @@
     font-family: 'Courier New', monospace;
 }
 
-/* ID 표시 스타일 추가 */
+/* ID 표시 최적화 */
 .mappingID {
     font-size: var(--font-xs);
     color: var(--text-muted);
@@ -223,6 +276,8 @@
     padding: var(--spacing-xs) var(--spacing-sm);
     border-radius: var(--border-radius);
     border: 1px solid var(--border-color);
+    flex-shrink: 0;
+    max-width: 150px; /* 최대 너비 제한 */
 }
 
 .mappingID code {
@@ -231,11 +286,17 @@
     color: var(--primary-color);
     background: none;
     padding: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+    max-width: 100%;
 }
 
 .mappingStatus {
     font-size: var(--font-sm);
     font-weight: 500;
+    flex-shrink: 0;
 }
 
 .enabled {
@@ -250,9 +311,10 @@
     font-size: var(--font-xs);
     color: var(--warning-color);
     font-style: italic;
+    white-space: nowrap;
 }
 
-/* 배지 스타일 */
+/* 배지 최적화 */
 .duplicateBadge {
     display: inline-flex;
     align-items: center;
@@ -263,6 +325,8 @@
     border-radius: var(--border-radius);
     font-size: var(--font-xs);
     font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .comboKeyBadge {
@@ -274,13 +338,16 @@
     border-radius: var(--border-radius);
     font-size: var(--font-xs);
     font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
-/* 맵핑 액션 */
+/* 맵핑 액션 - 성능 최적화 */
 .mappingActions {
     display: flex;
     gap: var(--spacing-xs);
     flex-shrink: 0;
+    align-items: flex-start;
 }
 
 .actionButton {
@@ -292,9 +359,14 @@
     border: none;
     border-radius: var(--border-radius);
     cursor: pointer;
-    transition: all var(--transition-speed);
     background-color: var(--highlight);
     color: var(--text-secondary);
+    flex-shrink: 0;
+
+    /* 성능 최적화 */
+    contain: layout style paint;
+    transition: background-color var(--transition-speed),
+                color var(--transition-speed);
 }
 
 .actionButton:hover:not(:disabled) {
@@ -312,10 +384,6 @@
     box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.3);
 }
 
-.actionButton:active {
-    transform: scale(0.95);
-}
-
 .toggleButton:hover:not(:disabled) {
     background-color: var(--primary-color);
     color: white;
@@ -331,7 +399,7 @@
     color: white;
 }
 
-/* 스피너 */
+/* 스피너 최적화 */
 .spinner {
     width: 16px;
     height: 16px;
@@ -342,15 +410,11 @@
 }
 
 @keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
-/* 키 시퀀스 */
+/* 키 시퀀스 - 오버플로우 최적화 */
 .keySequence {
     margin-bottom: var(--spacing-sm);
     padding: var(--spacing-sm);
@@ -358,26 +422,28 @@
     border-radius: var(--border-radius);
     border: 1px solid var(--border-color);
     width: 100%;
-    max-width: 100%;
     box-sizing: border-box;
-    overflow-x: auto;
+    overflow: hidden; /* 스크롤 제거, 텍스트 숨김 */
 }
 
 .sequenceLabel {
     font-size: var(--font-sm);
     color: var(--text-secondary);
     margin-right: var(--spacing-sm);
+    flex-shrink: 0;
 }
 
 .sequenceValue {
     font-family: 'Courier New', monospace;
     font-size: var(--font-sm);
     color: var(--text-primary);
-    word-break: break-all;
-    white-space: pre-wrap;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
 }
 
-/* 맵핑 메타 정보 */
+/* 맵핑 메타 정보 최적화 */
 .mappingMeta {
     display: flex;
     gap: var(--spacing-md);
@@ -385,9 +451,50 @@
     color: var(--text-muted);
     border-top: 1px solid var(--border-color);
     padding-top: var(--spacing-sm);
+    flex-wrap: wrap;
 }
 
-/* 반응형 디자인 */
+.mappingMeta span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+/* 스크롤바 원래 디자인으로 복원 */
+.mappingsList::-webkit-scrollbar {
+    width: 8px;
+}
+
+.mappingsList::-webkit-scrollbar-track {
+    background: var(--card-bg);
+    border-radius: 4px;
+}
+
+.mappingsList::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 4px;
+}
+
+.mappingsList::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-muted);
+}
+
+.duplicateInfoSection::-webkit-scrollbar {
+    width: 6px;
+}
+
+.duplicateInfoSection::-webkit-scrollbar-track {
+    background: var(--highlight);
+    border-radius: 3px;
+}
+
+.duplicateInfoSection::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 3px;
+}
+
+/* 반응형 디자인 - 최적화 */
 @media (max-width: 768px) {
     .statsGrid {
         grid-template-columns: repeat(2, 1fr);
@@ -401,7 +508,7 @@
 
     .mappingHeader {
         flex-direction: column;
-        gap: var(--spacing-md);
+        gap: var(--spacing-sm);
         align-items: stretch;
     }
 
@@ -426,14 +533,26 @@
         gap: var(--spacing-xs);
     }
 
-    /* ID 표시 모바일 최적화 */
     .mappingID {
         font-size: 10px;
         padding: 2px 4px;
+        max-width: 120px;
     }
 
     .mappingID code {
         font-size: 10px;
+    }
+
+    .duplicateInfoSection {
+        max-height: 150px; /* 모바일에서 더 작게 */
+    }
+
+    .keySequence {
+        padding: var(--spacing-xs);
+    }
+
+    .sequenceValue {
+        font-size: var(--font-xs);
     }
 }
 
@@ -444,6 +563,7 @@
 
     .mappingItem {
         padding: var(--spacing-sm);
+        margin-bottom: var(--spacing-sm);
     }
 
     .statsGrid {
@@ -463,5 +583,44 @@
     .mappingID {
         font-size: 9px;
         padding: 1px 3px;
+        max-width: 100px;
+    }
+
+    .duplicateInfoSection {
+        max-height: 120px;
+        padding: var(--spacing-sm);
+    }
+}
+
+/* 성능 최적화 - GPU 가속 및 레이어 분리 */
+.mappingItem,
+.actionButton,
+.duplicateInfoSection {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+/* 메모리 사용량 최적화 */
+.mappingsList {
+    /* 큰 목록에서 렌더링 최적화 */
+    contain: layout style paint;
+}
+
+/* 애니메이션 성능 최적화 */
+@media (prefers-reduced-motion: reduce) {
+    .mappingItem,
+    .actionButton,
+    .spinner {
+        transition: none;
+        animation: none;
+    }
+}
+
+/* 고해상도 화면 최적화 */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx) {
+    .mappingID code,
+    .sequenceValue {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
 }
