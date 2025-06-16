@@ -1,4 +1,4 @@
-/* KeyMappingPage.module.css - 최적화 및 성능 개선 */
+/* KeyMappingPage.module.css - 테이블 형태로 개선 */
 
 .keyMappingPage {
     display: flex;
@@ -6,9 +6,9 @@
     gap: var(--spacing-md);
     height: 100vh;
     max-width: 100%;
-    overflow-y: auto; /* 세로 스크롤 허용 */
-    overflow-x: hidden; /* 가로 스크롤만 숨김 */
-    padding-bottom: var(--spacing-md); /* 하단 여백 */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-bottom: var(--spacing-md);
 }
 
 .statusCard {
@@ -41,7 +41,7 @@
     flex-direction: column;
     gap: var(--spacing-xs);
     text-align: center;
-    min-width: 0; /* 텍스트 오버플로우 방지 */
+    min-width: 0;
 }
 
 .statLabel {
@@ -70,15 +70,15 @@
     color: var(--text-muted);
 }
 
-/* 중복키 정보 섹션 - 최적화 */
+/* 중복키 정보 섹션 */
 .duplicateInfoSection {
     margin-top: var(--spacing-md);
     padding: var(--spacing-md);
     background-color: var(--highlight);
     border-radius: var(--border-radius);
     border: 1px solid var(--border-color);
-    max-height: 200px; /* 최대 높이 제한 */
-    overflow-y: auto; /* 스크롤 추가 */
+    max-height: 200px;
+    overflow-y: auto;
 }
 
 .duplicateInfoSection h4 {
@@ -88,7 +88,7 @@
     margin: 0 0 var(--spacing-md) 0;
     font-size: var(--font-sm);
     color: var(--text-primary);
-    position: sticky; /* 헤더 고정 */
+    position: sticky;
     top: 0;
     background-color: var(--highlight);
     z-index: 1;
@@ -102,7 +102,7 @@
     background-color: var(--bg-color);
     border-radius: var(--border-radius);
     margin-bottom: var(--spacing-sm);
-    min-width: 0; /* flexbox 오버플로우 방지 */
+    min-width: 0;
 }
 
 .duplicateKeyInfo:last-child {
@@ -168,215 +168,254 @@
     opacity: 0.7;
 }
 
-/* 맵핑 목록 - 깔끔한 디자인 */
-.mappingsList {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-    padding: var(--spacing-sm);
-}
-
-/* 맵핑 아이템 - 성능 최적화 */
-.mappingItem {
-    background-color: var(--bg-color);
-    border: 1px solid var(--border-color);
+/* 테이블 컨테이너 - 가로 스크롤 방지 */
+.tableContainer {
+    overflow-x: hidden; /* 가로 스크롤 완전 제거 */
+    overflow-y: visible;
     border-radius: var(--border-radius);
-    padding: var(--spacing-md);
-    margin-bottom: var(--spacing-md);
+    border: 1px solid var(--border-color);
     width: 100%;
-    box-sizing: border-box;
-
-    /* 성능 최적화 */
-    contain: layout style paint;
-    will-change: transform;
-    transform: translateZ(0); /* GPU 가속 */
-
-    /* 트랜지션 최적화 */
-    transition: border-color var(--transition-speed),
-                transform var(--transition-speed);
-}
-
-.mappingItem:last-child {
-    margin-bottom: 0;
-}
-
-.mappingItem:hover {
-    border-color: var(--primary-color);
-    transform: translateY(-1px) translateZ(0);
-    /* box-shadow 제거로 성능 개선 */
-}
-
-.mappingHeader {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: var(--spacing-md);
-    gap: var(--spacing-md);
-    min-width: 0;
-}
-
-.mappingInfo {
-    flex: 1;
-    min-width: 0; /* flexbox 오버플로우 방지 */
-    overflow: hidden;
-}
-
-.mappingTitleRow {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-xs);
-    min-width: 0;
-}
-
-.mappingName {
-    font-size: var(--font-lg);
-    font-weight: 600;
-    color: var(--text-primary);
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    min-width: 0;
-    flex: 1;
-}
-
-.mappingName span:first-child {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-}
-
-.mappingDetails {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    flex-wrap: wrap;
-    min-width: 0;
-}
-
-.startKey {
-    font-size: var(--font-sm);
-    color: var(--text-secondary);
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-.startKey strong {
-    color: var(--primary-color);
-    font-family: 'Courier New', monospace;
-}
-
-/* ID 표시 최적화 */
-.mappingID {
-    font-size: var(--font-xs);
-    color: var(--text-muted);
-    background-color: var(--highlight);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--border-radius);
-    border: 1px solid var(--border-color);
-    flex-shrink: 0;
-    max-width: 150px; /* 최대 너비 제한 */
-}
-
-.mappingID code {
-    font-family: 'Courier New', monospace;
-    font-size: var(--font-xs);
-    color: var(--primary-color);
-    background: none;
-    padding: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: block;
     max-width: 100%;
 }
 
-.mappingStatus {
-    font-size: var(--font-sm);
-    font-weight: 500;
-    flex-shrink: 0;
-}
-
-.enabled {
-    color: var(--success-color);
-}
-
-.disabled {
-    color: var(--text-muted);
-}
-
-.duplicateNote {
+/* 테이블 스타일 - 컴팩트 */
+.mappingsTable {
+    width: 100%;
+    max-width: 100%;
+    border-collapse: collapse;
+    background-color: var(--card-bg);
     font-size: var(--font-xs);
-    color: var(--warning-color);
-    font-style: italic;
+    table-layout: fixed; /* 컬럼 너비 고정 */
+}
+
+/* 테이블 헤더 - 컴팩트 버전 */
+.mappingsTable thead th {
+    background-color: var(--highlight);
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: var(--font-xs);
+    padding: var(--spacing-sm) var(--spacing-xs);
+    text-align: left;
+    border-bottom: 2px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 1;
     white-space: nowrap;
 }
 
-/* 배지 최적화 */
+.nameHeader {
+    width: 30%;
+    min-width: 120px;
+}
+
+.startKeyHeader {
+    width: 15%;
+    min-width: 60px;
+    text-align: center;
+}
+
+.sequenceHeader {
+    width: 35%;
+    min-width: 150px;
+}
+
+.statusHeader {
+    width: 10%;
+    min-width: 50px;
+    text-align: center;
+}
+
+.actionsHeader {
+    width: 10%;
+    min-width: 90px;
+    text-align: center;
+}
+
+/* 테이블 행 */
+.mappingRow {
+    transition: background-color var(--transition-speed);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.mappingRow:hover {
+    background-color: var(--highlight);
+}
+
+.mappingRow.disabled {
+    opacity: 0.6;
+}
+
+.mappingRow:last-child {
+    border-bottom: none;
+}
+
+/* 테이블 셀 - 컴팩트 버전 */
+.mappingsTable td {
+    padding: var(--spacing-sm) var(--spacing-xs);
+    vertical-align: middle;
+    border-bottom: 1px solid var(--border-color);
+    font-size: var(--font-xs);
+}
+
+/* 이름 셀 - 컴팩트 */
+.nameCell {
+    padding: var(--spacing-sm) var(--spacing-xs);
+    max-width: 120px;
+}
+
+.nameContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.mappingName {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: var(--font-xs);
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.badges {
+    display: flex;
+    gap: 2px;
+    flex-wrap: wrap;
+}
+
 .duplicateBadge {
     display: inline-flex;
     align-items: center;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-xs) var(--spacing-sm);
+    gap: 2px;
+    padding: 1px 4px;
     background-color: var(--warning-color);
     color: white;
-    border-radius: var(--border-radius);
-    font-size: var(--font-xs);
+    border-radius: 8px;
+    font-size: 9px;
     font-weight: 500;
     white-space: nowrap;
-    flex-shrink: 0;
 }
 
 .comboKeyBadge {
     display: inline-flex;
     align-items: center;
-    padding: var(--spacing-xs) var(--spacing-sm);
+    gap: 2px;
+    padding: 1px 4px;
     background-color: var(--success-color);
     color: white;
-    border-radius: var(--border-radius);
-    font-size: var(--font-xs);
+    border-radius: 8px;
+    font-size: 9px;
     font-weight: 500;
     white-space: nowrap;
-    flex-shrink: 0;
 }
 
-/* 맵핑 액션 - 성능 최적화 */
-.mappingActions {
+/* 시작키 셀 - 컴팩트 */
+.startKeyCell {
+    text-align: center;
+    padding: var(--spacing-sm) var(--spacing-xs);
+    width: 60px;
+}
+
+.startKey {
+    display: inline-block;
+    background-color: var(--primary-color);
+    color: white;
+    padding: 4px 8px;
+    border-radius: var(--border-radius);
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    font-size: 10px;
+    width: 50px;
+    text-align: center;
+}
+
+/* 키 시퀀스 셀 - 컴팩트 */
+.sequenceCell {
+    padding: var(--spacing-sm) var(--spacing-xs);
+    max-width: 150px;
+}
+
+.keySequence {
+    font-family: 'Courier New', monospace;
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 1.2;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* 상태 셀 - 컴팩트 */
+.statusCell {
+    text-align: center;
+    padding: var(--spacing-sm) var(--spacing-xs);
+    width: 50px;
+}
+
+.status {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 9px;
+    font-weight: 500;
+    width: 40px;
+    text-align: center;
+}
+
+.status.enabled {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: var(--success-color);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status.disabled {
+    background-color: rgba(107, 114, 128, 0.1);
+    color: var(--text-muted);
+    border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* 액션 셀 - 컴팩트 */
+.actionsCell {
+    text-align: center;
+    padding: var(--spacing-sm) var(--spacing-xs);
+    width: 90px;
+}
+
+.actionButtons {
     display: flex;
-    gap: var(--spacing-xs);
-    flex-shrink: 0;
-    align-items: flex-start;
+    gap: 2px;
+    justify-content: center;
+    align-items: center;
 }
 
 .actionButton {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 26px;
+    height: 26px;
     border: none;
     border-radius: var(--border-radius);
     cursor: pointer;
     background-color: var(--highlight);
     color: var(--text-secondary);
+    transition: all var(--transition-speed);
     flex-shrink: 0;
-
-    /* 성능 최적화 */
-    contain: layout style paint;
-    transition: background-color var(--transition-speed),
-                color var(--transition-speed);
 }
 
 .actionButton:hover:not(:disabled) {
-    background-color: var(--border-color);
-    color: var(--text-primary);
+    color: white;
+    transform: translateY(-1px);
 }
 
 .actionButton:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+    transform: none;
 }
 
 .actionButton:focus {
@@ -384,22 +423,25 @@
     box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.3);
 }
 
+/* 액션 버튼 개별 스타일 - 일관된 색상 적용 */
 .toggleButton:hover:not(:disabled) {
+    background-color: var(--primary-color);
+}
+
+.toggleButton.active {
     background-color: var(--primary-color);
     color: white;
 }
 
 .editButton:hover:not(:disabled) {
-    background-color: var(--warning-color);
-    color: white;
+    background-color: var(--primary-color);
 }
 
 .deleteButton:hover:not(:disabled) {
     background-color: var(--danger-color);
-    color: white;
 }
 
-/* 스피너 최적화 */
+/* 스피너 */
 .spinner {
     width: 16px;
     height: 16px;
@@ -414,69 +456,22 @@
     100% { transform: rotate(360deg); }
 }
 
-/* 키 시퀀스 - 오버플로우 최적화 */
-.keySequence {
-    margin-bottom: var(--spacing-sm);
-    padding: var(--spacing-sm);
-    background-color: var(--highlight);
-    border-radius: var(--border-radius);
-    border: 1px solid var(--border-color);
-    width: 100%;
-    box-sizing: border-box;
-    overflow: hidden; /* 스크롤 제거, 텍스트 숨김 */
+/* 스크롤바 스타일 */
+.tableContainer::-webkit-scrollbar {
+    height: 8px;
 }
 
-.sequenceLabel {
-    font-size: var(--font-sm);
-    color: var(--text-secondary);
-    margin-right: var(--spacing-sm);
-    flex-shrink: 0;
-}
-
-.sequenceValue {
-    font-family: 'Courier New', monospace;
-    font-size: var(--font-sm);
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: block;
-}
-
-/* 맵핑 메타 정보 최적화 */
-.mappingMeta {
-    display: flex;
-    gap: var(--spacing-md);
-    font-size: var(--font-xs);
-    color: var(--text-muted);
-    border-top: 1px solid var(--border-color);
-    padding-top: var(--spacing-sm);
-    flex-wrap: wrap;
-}
-
-.mappingMeta span {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-}
-
-/* 스크롤바 원래 디자인으로 복원 */
-.mappingsList::-webkit-scrollbar {
-    width: 8px;
-}
-
-.mappingsList::-webkit-scrollbar-track {
+.tableContainer::-webkit-scrollbar-track {
     background: var(--card-bg);
     border-radius: 4px;
 }
 
-.mappingsList::-webkit-scrollbar-thumb {
+.tableContainer::-webkit-scrollbar-thumb {
     background-color: var(--border-color);
     border-radius: 4px;
 }
 
-.mappingsList::-webkit-scrollbar-thumb:hover {
+.tableContainer::-webkit-scrollbar-thumb:hover {
     background-color: var(--text-muted);
 }
 
@@ -494,7 +489,7 @@
     border-radius: 3px;
 }
 
-/* 반응형 디자인 - 최적화 */
+/* 반응형 디자인 */
 @media (max-width: 768px) {
     .statsGrid {
         grid-template-columns: repeat(2, 1fr);
@@ -506,53 +501,79 @@
         gap: var(--spacing-sm);
     }
 
-    .mappingHeader {
-        flex-direction: column;
-        gap: var(--spacing-sm);
-        align-items: stretch;
+    /* 테이블을 카드 형태로 변경 */
+    .tableContainer {
+        border: none;
     }
 
-    .mappingActions {
+    .mappingsTable,
+    .mappingsTable thead,
+    .mappingsTable tbody,
+    .mappingsTable th,
+    .mappingsTable td,
+    .mappingRow {
+        display: block;
+    }
+
+    .mappingsTable thead {
+        display: none;
+    }
+
+    .mappingRow {
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        margin-bottom: var(--spacing-md);
+        padding: var(--spacing-md);
+    }
+
+    .mappingRow:hover {
+        background-color: var(--highlight);
+    }
+
+    .mappingsTable td {
+        border: none;
+        padding: var(--spacing-xs) 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .mappingsTable td:before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: var(--text-secondary);
+        font-size: var(--font-xs);
+        min-width: 80px;
+    }
+
+    .nameCell:before { content: "이름: "; }
+    .startKeyCell:before { content: "시작키: "; }
+    .sequenceCell:before { content: "시퀀스: "; }
+    .statusCell:before { content: "상태: "; }
+    .actionsCell:before { content: "작업: "; }
+
+    .nameContainer {
+        align-items: flex-end;
+    }
+
+    .keySequence {
+        max-width: 200px;
+        font-size: var(--font-xs);
+    }
+
+    .actionButtons {
         justify-content: flex-end;
         gap: var(--spacing-sm);
     }
 
     .actionButton {
-        width: 40px;
-        height: 40px;
-    }
-
-    .mappingDetails {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: var(--spacing-sm);
-    }
-
-    .mappingMeta {
-        flex-direction: column;
-        gap: var(--spacing-xs);
-    }
-
-    .mappingID {
-        font-size: 10px;
-        padding: 2px 4px;
-        max-width: 120px;
-    }
-
-    .mappingID code {
-        font-size: 10px;
+        width: 36px;
+        height: 36px;
     }
 
     .duplicateInfoSection {
-        max-height: 150px; /* 모바일에서 더 작게 */
-    }
-
-    .keySequence {
-        padding: var(--spacing-xs);
-    }
-
-    .sequenceValue {
-        font-size: var(--font-xs);
+        max-height: 150px;
     }
 }
 
@@ -561,7 +582,7 @@
         gap: var(--spacing-sm);
     }
 
-    .mappingItem {
+    .mappingRow {
         padding: var(--spacing-sm);
         margin-bottom: var(--spacing-sm);
     }
@@ -570,45 +591,44 @@
         grid-template-columns: 1fr;
     }
 
-    .mappingName {
-        font-size: var(--font-base);
-    }
-
     .duplicateBadge,
     .comboKeyBadge {
-        font-size: 10px;
-        padding: 2px 4px;
-    }
-
-    .mappingID {
         font-size: 9px;
-        padding: 1px 3px;
-        max-width: 100px;
+        padding: 1px 4px;
     }
 
     .duplicateInfoSection {
         max-height: 120px;
         padding: var(--spacing-sm);
     }
+
+    .keySequence {
+        max-width: 150px;
+        font-size: 10px;
+    }
+
+    .startKey {
+        padding: 4px 8px;
+        font-size: var(--font-xs);
+        min-width: 50px;
+    }
 }
 
-/* 성능 최적화 - GPU 가속 및 레이어 분리 */
-.mappingItem,
+/* 성능 최적화 */
+.mappingRow,
 .actionButton,
 .duplicateInfoSection {
     transform: translateZ(0);
     backface-visibility: hidden;
 }
 
-/* 메모리 사용량 최적화 */
-.mappingsList {
-    /* 큰 목록에서 렌더링 최적화 */
+.mappingsTable {
     contain: layout style paint;
 }
 
 /* 애니메이션 성능 최적화 */
 @media (prefers-reduced-motion: reduce) {
-    .mappingItem,
+    .mappingRow,
     .actionButton,
     .spinner {
         transition: none;
@@ -618,8 +638,8 @@
 
 /* 고해상도 화면 최적화 */
 @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx) {
-    .mappingID code,
-    .sequenceValue {
+    .keySequence,
+    .startKey {
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }

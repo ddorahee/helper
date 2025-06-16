@@ -1,4 +1,4 @@
-// keymapping/manager.go - 딜레이 없는 초고속 키 맵핑 시스템
+// keymapping/manager.go - 불필요한 딜레이 제거로 초고속 키 맵핑 시스템
 package keymapping
 
 import (
@@ -31,7 +31,7 @@ type MappedKey struct {
 	Delay int    `json:"delay"` // 딜레이 (ms) - 사용자 설정만 사용
 }
 
-// KeyMappingManager 구조체 - 키 상태 추적 추가
+// KeyMappingManager 구조체 - 초고속 키 상태 추적
 type KeyMappingManager struct {
 	// 핵심 데이터 (읽기 최적화)
 	mappings   map[string][]*KeyMapping
@@ -55,7 +55,7 @@ type KeyMappingManager struct {
 	allowedKeys map[uint16]string
 }
 
-// NewKeyMappingManager 새로운 키 상태 추적 키 맵핑 매니저 생성
+// NewKeyMappingManager 새로운 초고속 키 맵핑 매니저 생성
 func NewKeyMappingManager(configDir string) *KeyMappingManager {
 	configFile := filepath.Join(configDir, "keymappings.json")
 
@@ -64,7 +64,7 @@ func NewKeyMappingManager(configDir string) *KeyMappingManager {
 		activeKeys: make(map[uint16]*KeyMapping),
 		configFile: configFile,
 		stopChan:   make(chan struct{}),
-		keyStates:  make(map[uint16]bool), // 키 상태 추적 맵 초기화
+		keyStates:  make(map[uint16]bool),
 		allowedKeys: map[uint16]string{
 			46: "delete", // Delete 키
 			35: "end",    // End 키
@@ -108,7 +108,7 @@ func (km *KeyMappingManager) Start() error {
 	km.stopChan = make(chan struct{})
 	go km.runUltraFastKeyHook()
 
-	log.Println("초고속 키 맵핑 시스템 시작 (딜레이 없음)")
+	log.Println("초고속 키 맵핑 시스템 시작 (딜레이 제거)")
 	return nil
 }
 
@@ -129,7 +129,7 @@ func (km *KeyMappingManager) IsRunning() bool {
 	return atomic.LoadInt32(&km.running) == 1
 }
 
-// runUltraFastKeyHook 키 상태 추적 키 훅 실행
+// runUltraFastKeyHook 딜레이 제거된 초고속 키 훅 실행
 func (km *KeyMappingManager) runUltraFastKeyHook() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -156,7 +156,7 @@ func (km *KeyMappingManager) runUltraFastKeyHook() {
 	}
 }
 
-// handleKeyDown 키 눌림 처리 (중복 방지 시간 초극한 단축)
+// handleKeyDown 키 눌림 처리 (딜레이 제거로 최대 속도)
 func (km *KeyMappingManager) handleKeyDown(rawKeycode uint16) {
 	// 1. 빠른 상태 체크
 	if atomic.LoadInt32(&km.running) == 0 {
@@ -172,9 +172,9 @@ func (km *KeyMappingManager) handleKeyDown(rawKeycode uint16) {
 	km.keyStates[rawKeycode] = true // 키 눌림 상태로 설정
 	km.stateMutex.Unlock()
 
-	// 3. 중복 방지 시간 초극한 단축 (100ms → 50ms)
+	// 3. 중복 방지 시간 최소화 (10ms)
 	now := time.Now().UnixNano()
-	if now-atomic.LoadInt64(&km.lastTrigger) < 50000000 { // 50ms
+	if now-atomic.LoadInt64(&km.lastTrigger) < 10000000 { // 10ms
 		return
 	}
 	atomic.StoreInt64(&km.lastTrigger, now)
@@ -188,7 +188,7 @@ func (km *KeyMappingManager) handleKeyDown(rawKeycode uint16) {
 		return
 	}
 
-	// 5. 동기 실행 (순서 보장)
+	// 5. 동기 실행 (순서 보장) - 딜레이 제거
 	log.Printf("키 맵핑 시작: %s", mapping.Name)
 	km.executeInstantKeySequence(mapping)
 
@@ -197,11 +197,8 @@ func (km *KeyMappingManager) handleKeyDown(rawKeycode uint16) {
 	km.keyStates[rawKeycode] = false
 	km.stateMutex.Unlock()
 
-	// 7. 다음 실행을 위한 초극한 최소 대기 (20ms → 10ms 후 다시 가능)
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		atomic.StoreInt64(&km.lastTrigger, 0) // 트리거 시간 초기화
-	}()
+	// 7. 다음 실행을 위한 최소 대기 (즉시 가능)
+	atomic.StoreInt64(&km.lastTrigger, 0) // 트리거 시간 즉시 초기화
 }
 
 // handleKeyUp 키 놓음 처리 (상태 초기화)
@@ -212,7 +209,7 @@ func (km *KeyMappingManager) handleKeyUp(rawKeycode uint16) {
 	km.stateMutex.Unlock()
 }
 
-// executeInstantKeySequence 초극한 고속 키 시퀀스 실행 (딜레이 초극한 최소화)
+// executeInstantKeySequence 딜레이 제거된 초고속 키 시퀀스 실행
 func (km *KeyMappingManager) executeInstantKeySequence(mapping *KeyMapping) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -223,62 +220,62 @@ func (km *KeyMappingManager) executeInstantKeySequence(mapping *KeyMapping) {
 
 	log.Printf("키 시퀀스 실행: %s (%d개 키)", mapping.Name, len(mapping.Keys))
 
-	// 시작 딜레이 초극한 최소화 (30ms → 10ms)
-	time.Sleep(10 * time.Millisecond)
+	// 시작 딜레이 제거 - 즉시 실행
 
 	for i, key := range mapping.Keys {
 		if atomic.LoadInt32(&km.running) == 0 {
 			return
 		}
 
-		// 키 입력 실행
-		if err := km.sendSequentialKey(key.Key); err != nil {
+		// 키 입력 실행 (딜레이 제거)
+		if err := km.sendInstantKey(key.Key); err != nil {
 			log.Printf("키 입력 실패: %v", err)
 			continue
 		}
 
-		// 키 간격 처리 (초극한 최소화)
+		// 키 간격 처리 - 사용자 설정 딜레이만 적용
 		if i < len(mapping.Keys)-1 {
 			if key.Delay > 0 {
-				// 사용자 설정 딜레이 적용
+				// 사용자 설정 딜레이만 적용
 				time.Sleep(time.Duration(key.Delay) * time.Millisecond)
-			} else {
-				// 기본 간격 초극한 최소화 (8ms → 2ms)
-				time.Sleep(2 * time.Millisecond)
 			}
+			// 기본 간격 딜레이 제거 - 즉시 다음 키 실행
+		}
+
+		// 계속 실행 중인지 확인
+		if !km.IsRunning() {
+			break
 		}
 	}
 }
 
-// sendSequentialKey 초극한 고속 키 입력 전송 (딜레이 초극한 최소화)
-func (km *KeyMappingManager) sendSequentialKey(key string) error {
+// sendInstantKey 딜레이 제거된 초고속 키 입력 전송
+func (km *KeyMappingManager) sendInstantKey(key string) error {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("키 입력 패닉 복구: %v", r)
 		}
 	}()
 
-	// 키 입력 전 딜레이 초극한 최소화 (3ms → 1ms)
-	time.Sleep(1 * time.Millisecond)
+	// 키 입력 전 딜레이 제거 - 즉시 실행
 
 	if km.isComboKey(key) {
-		return km.sendSequentialComboKey(key)
+		return km.sendInstantComboKey(key)
 	}
 
-	// 일반 키 처리
+	// 일반 키 처리 - 즉시 실행
 	robotgo.KeyTap(key)
 	return nil
 }
 
-// sendSequentialComboKey 초극한 고속 조합키 전송 (딜레이 초극한 최소화)
-func (km *KeyMappingManager) sendSequentialComboKey(comboKey string) error {
+// sendInstantComboKey 딜레이 제거된 초고속 조합키 전송
+func (km *KeyMappingManager) sendInstantComboKey(comboKey string) error {
 	modifiers, mainKey := km.parseComboKey(comboKey)
 	if mainKey == "" {
 		return fmt.Errorf("잘못된 조합키: %s", comboKey)
 	}
 
-	// 조합키 입력 전 딜레이 초극한 최소화 (5ms → 2ms)
-	time.Sleep(2 * time.Millisecond)
+	// 조합키 입력 전 딜레이 제거 - 즉시 실행
 
 	// 메모리 풀 사용으로 GC 압박 감소
 	modifierSlice := km.keyPool.Get().([]interface{})
@@ -288,7 +285,7 @@ func (km *KeyMappingManager) sendSequentialComboKey(comboKey string) error {
 		modifierSlice = append(modifierSlice, modifier)
 	}
 
-	// 조합키 입력
+	// 조합키 즉시 입력
 	robotgo.KeyTap(mainKey, modifierSlice...)
 
 	// 메모리 풀 반환
@@ -346,7 +343,7 @@ func (km *KeyMappingManager) AddMapping(name, startKey string, keys []MappedKey)
 		return fmt.Errorf("설정 저장 실패: %v", err)
 	}
 
-	log.Printf("초고속 키 맵핑 추가: %s (딜레이 없음)", name)
+	log.Printf("초고속 키 맵핑 추가: %s (딜레이 제거)", name)
 	return nil
 }
 
@@ -468,7 +465,7 @@ func (km *KeyMappingManager) ToggleMappingByID(mappingID string) error {
 		status = "활성화"
 	}
 
-	log.Printf("ID 기반 키 맵핑 %s: %s (ID: %s)", status, targetMapping.Name, mappingID)
+	log.Printf("ID 기반 초고속 키 맵핑 %s: %s (ID: %s)", status, targetMapping.Name, mappingID)
 	return nil
 }
 
@@ -588,7 +585,7 @@ func (km *KeyMappingManager) validateKeys(startKey string, keys []MappedKey) err
 	return nil
 }
 
-// validateComboKey 조합키 유효성 검사 (누락 메서드 추가)
+// validateComboKey 조합키 유효성 검사
 func (km *KeyMappingManager) validateComboKey(comboKey string) error {
 	key := strings.ToLower(comboKey)
 
@@ -724,7 +721,7 @@ func (km *KeyMappingManager) UpdateMappingByID(mappingID, newName, newStartKey s
 		return fmt.Errorf("설정 저장 실패: %v", err)
 	}
 
-	log.Printf("ID 기반 키 맵핑 수정: %s (ID: %s)", newName, mappingID)
+	log.Printf("ID 기반 초고속 키 맵핑 수정: %s (ID: %s)", newName, mappingID)
 	return nil
 }
 

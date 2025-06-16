@@ -1,6 +1,6 @@
-// KeyMappingPage.jsx - 성능 최적화 및 메모리 최적화
+// KeyMappingPage.jsx - 테이블 형태로 개선
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Plus, Edit, Trash2, Play, Square, ToggleLeft, ToggleRight, Copy, Users } from 'lucide-react'
+import { Plus, Edit, Trash2, Play, Square, ToggleLeft, ToggleRight, Copy, Users, Keyboard } from 'lucide-react'
 import { useApp } from '@/contexts/AppContext'
 import { keyMappingService } from '@services/keyMappingService'
 import { useNotification } from '@hooks/useNotification'
@@ -9,8 +9,8 @@ import Button from '@components/Common/Button'
 import KeyMappingModal from '@components/KeyMapping/KeyMappingModal'
 import styles from './KeyMappingPage.module.css'
 
-// 메모화된 맵핑 아이템 컴포넌트
-const MappingItem = React.memo(({
+// 메모화된 맵핑 아이템 컴포넌트 - 테이블 행 형태
+const MappingRow = React.memo(({
     mappingID,
     mapping,
     onToggle,
@@ -18,23 +18,13 @@ const MappingItem = React.memo(({
     onDelete,
     updating
 }) => {
-    // 중복 그룹 정보 계산 (메모화)
-    const duplicateGroup = useMemo(() => {
-        if (!mapping.is_duplicate) return null
-        return {
-            current: mapping.duplicate_index + 1,
-            total: mapping.total_duplicates,
-            isActive: mapping.enabled
-        }
-    }, [mapping.is_duplicate, mapping.duplicate_index, mapping.total_duplicates, mapping.enabled])
-
     // 키 시퀀스 포맷팅 (메모화)
     const formattedKeySequence = useMemo(() => {
         if (!mapping.keys || mapping.keys.length === 0) return ''
         return mapping.keys.map(key => {
             const keyDisplay = isComboKey(key.key) ? key.key.toUpperCase() : key.key.toUpperCase()
-            return `${keyDisplay}(${key.delay}ms)`
-        }).join(', ')
+            return key.delay === 0 ? `${keyDisplay}(즉시)` : `${keyDisplay}(${key.delay}ms)`
+        }).join(' → ')
     }, [mapping.keys])
 
     // 조합키 확인 (메모화)
@@ -56,52 +46,49 @@ const MappingItem = React.memo(({
     }, [mappingID, mapping, onDelete])
 
     return (
-        <div className={styles.mappingItem}>
-            <div className={styles.mappingHeader}>
-                <div className={styles.mappingInfo}>
-                    <div className={styles.mappingTitleRow}>
-                        <h3 className={styles.mappingName}>
-                            <span>{mapping.name}</span>
-                            {duplicateGroup && (
-                                <span className={styles.duplicateBadge}>
-                                    <Users size={12} />
-                                    {duplicateGroup.current}/{duplicateGroup.total}
-                                </span>
-                            )}
-                            {hasComboKey && (
-                                <span className={styles.comboKeyBadge}>조합키</span>
-                            )}
-                        </h3>
-                    </div>
-                    <div className={styles.mappingDetails}>
-                        <span className={styles.startKey}>
-                            시작키: <strong>{mapping.start_key?.toUpperCase()}</strong>
-                        </span>
-                        <span className={styles.mappingID}>
-                            ID: <code>{mapping.id}</code>
-                        </span>
-                        <span className={styles.mappingStatus}>
-                            {mapping.enabled ? (
-                                <span className={styles.enabled}>활성화</span>
-                            ) : (
-                                <span className={styles.disabled}>비활성화</span>
-                            )}
-                        </span>
-                        {duplicateGroup && !duplicateGroup.isActive && (
-                            <span className={styles.duplicateNote}>
-                                중복키 (비활성화)
+        <tr className={`${styles.mappingRow} ${!mapping.enabled ? styles.disabled : ''}`}>
+            <td className={styles.nameCell}>
+                <div className={styles.nameContainer}>
+                    <span className={styles.mappingName}>{mapping.name}</span>
+                    <div className={styles.badges}>
+                        {mapping.is_duplicate && (
+                            <span className={styles.duplicateBadge}>
+                                <Users size={12} />
+                                {mapping.duplicate_index + 1}/{mapping.total_duplicates}
+                            </span>
+                        )}
+                        {hasComboKey && (
+                            <span className={styles.comboKeyBadge}>
+                                <Keyboard size={12} />
+                                조합
                             </span>
                         )}
                     </div>
                 </div>
-                <div className={styles.mappingActions}>
+            </td>
+            <td className={styles.startKeyCell}>
+                <span className={styles.startKey}>
+                    {mapping.start_key?.toUpperCase()}
+                </span>
+            </td>
+            <td className={styles.sequenceCell}>
+                <span className={styles.keySequence} title={formattedKeySequence}>
+                    {formattedKeySequence}
+                </span>
+            </td>
+            <td className={styles.statusCell}>
+                <span className={`${styles.status} ${mapping.enabled ? styles.enabled : styles.disabled}`}>
+                    {mapping.enabled ? '활성' : '비활성'}
+                </span>
+            </td>
+            <td className={styles.actionsCell}>
+                <div className={styles.actionButtons}>
                     <button
                         type="button"
-                        className={`${styles.actionButton} ${styles.toggleButton}`}
+                        className={`${styles.actionButton} ${styles.toggleButton} ${mapping.enabled ? styles.active : ''}`}
                         onClick={handleToggle}
                         disabled={updating}
                         title={mapping.enabled ? '비활성화' : '활성화'}
-                        aria-label={mapping.enabled ? '비활성화' : '활성화'}
                     >
                         {updating ? (
                             <div className={styles.spinner} />
@@ -117,7 +104,6 @@ const MappingItem = React.memo(({
                         onClick={handleEdit}
                         disabled={updating}
                         title="수정"
-                        aria-label="수정"
                     >
                         <Edit size={16} />
                     </button>
@@ -127,29 +113,16 @@ const MappingItem = React.memo(({
                         onClick={handleDelete}
                         disabled={updating}
                         title="삭제"
-                        aria-label="삭제"
                     >
                         <Trash2 size={16} />
                     </button>
                 </div>
-            </div>
-            <div className={styles.keySequence}>
-                <span className={styles.sequenceLabel}>키 시퀀스:</span>
-                <span className={styles.sequenceValue} title={formattedKeySequence}>
-                    {formattedKeySequence}
-                </span>
-            </div>
-            <div className={styles.mappingMeta}>
-                <span>생성: {new Date(mapping.created_at).toLocaleString()}</span>
-                {mapping.updated_at !== mapping.created_at && (
-                    <span>수정: {new Date(mapping.updated_at).toLocaleString()}</span>
-                )}
-            </div>
-        </div>
+            </td>
+        </tr>
     )
 })
 
-MappingItem.displayName = 'MappingItem'
+MappingRow.displayName = 'MappingRow'
 
 // 조합키 확인 함수 (외부로 분리)
 const isComboKey = (key) => {
@@ -183,7 +156,7 @@ export default function KeyMappingPage() {
 
     // 컴포넌트 마운트
     useEffect(() => {
-        console.log('KeyMappingPage 마운트됨 (최적화 버전)')
+        console.log('KeyMappingPage 마운트됨 (테이블 형태)')
         loadMappings()
         loadStatus()
 
@@ -194,13 +167,11 @@ export default function KeyMappingPage() {
 
     // 키 맵핑 목록 로드 (최적화)
     const loadMappings = useCallback(async () => {
-        // 중복 요청 방지
         if (loadingRef.current) {
             console.log('이미 로딩 중이므로 요청 무시')
             return
         }
 
-        // 연속 요청 방지 (500ms 쿨다운)
         const now = Date.now()
         if (now - lastLoadTime.current < 500) {
             console.log('너무 빠른 요청, 무시')
@@ -208,16 +179,15 @@ export default function KeyMappingPage() {
         }
 
         try {
-            console.log('키 맵핑 목록 로드 시작 (최적화)...')
+            console.log('키 맵핑 목록 로드 시작...')
             loadingRef.current = true
             setLoading(true)
             lastLoadTime.current = now
 
             const data = await keyMappingService.getMappings()
-            console.log('로드된 데이터 (최적화):', Object.keys(data.mappings || {}).length, '개')
+            console.log('로드된 데이터:', Object.keys(data.mappings || {}).length, '개')
 
             if (data.success) {
-                // 상태 업데이트를 배치로 처리
                 setMappings(data.mappings || {})
                 setStats(data.stats || {})
                 setDuplicateInfo(data.duplicate_info || {})
@@ -257,7 +227,7 @@ export default function KeyMappingPage() {
                     id: editingMapping.id,
                     ...mappingData
                 }
-                console.log('키 맵핑 수정 데이터 (최적화):', updateData.name)
+                console.log('키 맵핑 수정 데이터:', updateData.name)
                 success = await keyMappingService.updateMapping(updateData)
 
                 if (success) {
@@ -303,7 +273,7 @@ export default function KeyMappingPage() {
 
         try {
             setUpdating(true)
-            console.log('삭제 요청 (최적화):', mapping.name)
+            console.log('삭제 요청:', mapping.name)
 
             const result = await keyMappingService.deleteMappingByID(mapping.id)
 
@@ -330,7 +300,7 @@ export default function KeyMappingPage() {
 
         try {
             setUpdating(true)
-            console.log('토글 요청 (최적화):', mapping.name)
+            console.log('토글 요청:', mapping.name)
 
             const success = await keyMappingService.toggleMappingByID(mapping.id)
 
@@ -361,7 +331,7 @@ export default function KeyMappingPage() {
 
             if (success) {
                 const message = action === 'start'
-                    ? '키 맵핑 시스템이 시작되었습니다 (최적화)'
+                    ? '키 맵핑 시스템이 시작되었습니다'
                     : '키 맵핑 시스템이 중지되었습니다'
                 showNotification(message, 'success')
                 actions.addLog(message)
@@ -385,7 +355,7 @@ export default function KeyMappingPage() {
     }, [])
 
     const handleEditMapping = useCallback((mapping) => {
-        console.log('수정할 맵핑 (최적화):', mapping.name)
+        console.log('수정할 맵핑:', mapping.name)
         setEditingMapping(mapping)
         setIsModalOpen(true)
     }, [])
@@ -406,35 +376,19 @@ export default function KeyMappingPage() {
         return Array.from(startKeys)
     }, [mappings])
 
-    // 맵핑 목록 렌더링 (메모화)
+    // 맵핑 목록을 배열로 변환 (메모화)
     const mappingsList = useMemo(() => {
-        const mappingEntries = Object.entries(mappings)
-
-        if (mappingEntries.length === 0) {
-            return (
-                <div className={styles.emptyState}>
-                    <p>등록된 키 맵핑이 없습니다.</p>
-                    <p>새 맵핑을 추가해서 시작해보세요!</p>
-                </div>
-            )
-        }
-
-        return (
-            <div className={styles.mappingsList}>
-                {mappingEntries.map(([mappingID, mapping]) => (
-                    <MappingItem
-                        key={mappingID}
-                        mappingID={mappingID}
-                        mapping={mapping}
-                        onToggle={handleToggleMapping}
-                        onEdit={handleEditMapping}
-                        onDelete={handleDeleteMapping}
-                        updating={updating}
-                    />
-                ))}
-            </div>
-        )
-    }, [mappings, handleToggleMapping, handleEditMapping, handleDeleteMapping, updating])
+        return Object.entries(mappings).map(([mappingID, mapping]) => ({
+            mappingID,
+            mapping
+        })).sort((a, b) => {
+            // 활성화된 맵핑을 위로, 그 다음 이름순
+            if (a.mapping.enabled !== b.mapping.enabled) {
+                return b.mapping.enabled - a.mapping.enabled
+            }
+            return a.mapping.name.localeCompare(b.mapping.name)
+        })
+    }, [mappings])
 
     // 중복키 정보 렌더링 (메모화)
     const duplicateInfoSection = useMemo(() => {
@@ -458,7 +412,7 @@ export default function KeyMappingPage() {
         <div className={styles.keyMappingPage}>
             {/* 시스템 상태 카드 */}
             <Card
-                title="키 맵핑 시스템 상태 (최적화)"
+                title="키 맵핑 시스템 상태"
                 className={styles.statusCard}
                 headerContent={
                     <div className={styles.systemControls}>
@@ -507,7 +461,7 @@ export default function KeyMappingPage() {
                 {duplicateInfoSection}
             </Card>
 
-            {/* 키 맵핑 목록 카드 */}
+            {/* 키 맵핑 목록 카드 - 테이블 형태 */}
             <Card
                 title={`키 맵핑 목록 (${Object.keys(mappings).length}개)`}
                 className={styles.mappingsCard}
@@ -525,8 +479,38 @@ export default function KeyMappingPage() {
             >
                 {loading ? (
                     <div className={styles.loading}>키 맵핑을 불러오는 중...</div>
+                ) : mappingsList.length === 0 ? (
+                    <div className={styles.emptyState}>
+                        <p>등록된 키 맵핑이 없습니다.</p>
+                        <p>새 맵핑을 추가해서 시작해보세요!</p>
+                    </div>
                 ) : (
-                    mappingsList
+                    <div className={styles.tableContainer}>
+                        <table className={styles.mappingsTable}>
+                            <thead>
+                                <tr>
+                                    <th className={styles.nameHeader}>맵핑 이름</th>
+                                    <th className={styles.startKeyHeader}>시작키</th>
+                                    <th className={styles.sequenceHeader}>키 시퀀스</th>
+                                    <th className={styles.statusHeader}>상태</th>
+                                    <th className={styles.actionsHeader}>작업</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {mappingsList.map(({ mappingID, mapping }) => (
+                                    <MappingRow
+                                        key={mappingID}
+                                        mappingID={mappingID}
+                                        mapping={mapping}
+                                        onToggle={handleToggleMapping}
+                                        onEdit={handleEditMapping}
+                                        onDelete={handleDeleteMapping}
+                                        updating={updating}
+                                    />
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </Card>
 
