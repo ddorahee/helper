@@ -18,8 +18,8 @@ var (
 	DaeyaEnterSequence = KeySequence{
 		Name:       "대야 (입장)",
 		StartKey:   "o",
-		KeyPresses: []string{"o", "enter", "enter", "esc", "d", "x", "5"},
-		Delays:     []time.Duration{0 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second, 0 * time.Second, 0 * time.Second, 0 * time.Second},
+		KeyPresses: []string{"o", "enter", "enter", "esc", "d", "x", "0", "5"},
+		Delays:     []time.Duration{0 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second, 1 * time.Second, 0 * time.Second, 0 * time.Second, 0 * time.Second},
 	}
 
 	// 대야 모드 - 파티
