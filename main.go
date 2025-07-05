@@ -1,9 +1,9 @@
-// main.go - 키 맵핑 시스템 통합 (최종 버전)
 package main
 
 import (
 	"context"
 	"embed"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -60,7 +60,9 @@ func (app *Application) GetTelegramBot() interface{} {
 	return nil
 }
 
+// SetupAutoStop 개선된 자동 중지 설정
 func (app *Application) SetupAutoStop(mode string, hours float64) {
+	// 기존 타이머 정리
 	if app.AutoStopTimer != nil {
 		app.AutoStopTimer.Stop()
 		app.AutoStopTimer = nil
@@ -71,25 +73,48 @@ func (app *Application) SetupAutoStop(mode string, hours float64) {
 	}
 
 	duration := time.Duration(hours * float64(time.Hour))
-	app.AutoStopTimer = time.AfterFunc(duration, func() {
-		if app.TimerManager.IsRunning() {
-			modeName := utils.GetModeName(mode)
 
-			app.TimerManager.Stop()
-			app.KeyboardManager.SetRunning(false)
+	// 서버 기반 타이머에 시간 설정
+	app.TimerManager.SetDuration(duration)
 
-			if app.Config.TelegramEnabled && app.TelegramBot != nil {
-				go func() {
-					err := app.TelegramBot.SendCompletionNotification(modeName, duration)
-					if err != nil {
-						log.Printf("텔레그램 완료 알림 전송 실패: %v", err)
-					}
-				}()
-			}
+	// 타이머 완료 콜백 설정
+	app.TimerManager.SetTimeCompleteCallback(func() {
+		modeName := utils.GetModeName(mode)
 
-			log.Printf("작업 완료: %s 모드, %v 실행", modeName, duration)
+		// 작업 중지
+		app.KeyboardManager.SetRunning(false)
+
+		// 텔레그램 완료 알림
+		if app.Config.TelegramEnabled && app.TelegramBot != nil {
+			go func() {
+				err := app.TelegramBot.SendCompletionNotification(modeName, duration)
+				if err != nil {
+					log.Printf("텔레그램 완료 알림 전송 실패: %v", err)
+				}
+			}()
+		}
+
+		log.Printf("작업 완료: %s 모드, %v 실행", modeName, duration)
+
+		// WebView에 완료 알림 전송
+		if app.WebView != nil {
+			app.WebView.Dispatch(func() {
+				app.WebView.Eval("window.dispatchEvent(new CustomEvent('timerComplete', { detail: { mode: '" + modeName + "', duration: " + fmt.Sprintf("%d", int(duration.Seconds())) + " } }))")
+			})
 		}
 	})
+
+	// 시간 업데이트 콜백 설정 (WebView에 실시간 시간 전송)
+	app.TimerManager.SetTimeUpdateCallback(func(remaining time.Duration) {
+		if app.WebView != nil {
+			remainingSeconds := int(remaining.Seconds())
+			app.WebView.Dispatch(func() {
+				app.WebView.Eval(fmt.Sprintf("window.dispatchEvent(new CustomEvent('timerUpdate', { detail: { remaining: %d } }))", remainingSeconds))
+			})
+		}
+	})
+
+	log.Printf("서버 기반 자동 중지 설정: %v", duration)
 }
 
 func (app *Application) RunAutomation(mode string) {
@@ -129,7 +154,7 @@ func main() {
 
 	// 로깅 설정
 	setupLogging(app.Config)
-	log.Println("애플리케이션 시작")
+	log.Println("애플리케이션 시작 (개선된 타이머 시스템)")
 
 	// 서버 초기화
 	app.Server = server.NewServer(app.Config, webFiles)
@@ -169,7 +194,7 @@ func (app *Application) initWebView() {
 	app.WebView = webview.New(debug)
 	defer app.WebView.Destroy()
 
-	app.WebView.SetTitle("도우미 - 키 맵핑 시스템")
+	app.WebView.SetTitle("도우미 - 서버 기반 타이머")
 	app.WebView.SetSize(1024, 768, webview.HintNone)
 
 	// JavaScript API 바인딩
@@ -210,6 +235,37 @@ func (app *Application) bindJavaScriptAPI() {
 
 	app.WebView.Bind("getKeyMappingStatus", func() map[string]interface{} {
 		return app.KeyMappingManager.GetMappingStats()
+	})
+
+	// 서버 기반 타이머 API 추가
+	app.WebView.Bind("getServerTime", func() map[string]interface{} {
+		return map[string]interface{}{
+			"running":          app.TimerManager.IsRunning(),
+			"paused":           app.TimerManager.IsPaused(),
+			"remainingSeconds": app.TimerManager.GetRemainingTimeSeconds(),
+			"elapsedSeconds":   int(app.TimerManager.GetElapsedTime().Seconds()),
+			"totalSeconds":     int(app.TimerManager.TotalDuration.Seconds()),
+			"progress":         app.TimerManager.GetProgress(),
+			"remainingString":  app.TimerManager.GetRemainingTimeString(),
+			"elapsedString":    app.TimerManager.GetElapsedTimeString(),
+		}
+	})
+
+	app.WebView.Bind("startServerTimer", func(durationSeconds int) {
+		duration := time.Duration(durationSeconds) * time.Second
+		app.TimerManager.SetDuration(duration)
+		app.TimerManager.Start()
+		log.Printf("서버 타이머 시작: %v", duration)
+	})
+
+	app.WebView.Bind("stopServerTimer", func() {
+		app.TimerManager.Stop()
+		log.Printf("서버 타이머 일시정지")
+	})
+
+	app.WebView.Bind("resetServerTimer", func() {
+		app.TimerManager.Reset()
+		log.Printf("서버 타이머 리셋")
 	})
 }
 

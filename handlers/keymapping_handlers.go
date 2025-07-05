@@ -1,4 +1,4 @@
-// handlers/keymapping_handlers.go - ID 기반 처리로 수정
+// handlers/keymapping_handlers.go - Home 키 허용 추가
 package handlers
 
 import (
@@ -68,8 +68,8 @@ func (h *KeyMappingHandler) getMappings(w http.ResponseWriter, r *http.Request) 
 	duplicateInfo := make(map[string]interface{})
 
 	for startKey, mappingList := range allMappings {
-		// delete 또는 end 키만 허용
-		if strings.ToLower(startKey) != "delete" && strings.ToLower(startKey) != "end" {
+		// delete, end, home 키만 허용
+		if strings.ToLower(startKey) != "delete" && strings.ToLower(startKey) != "end" && strings.ToLower(startKey) != "home" {
 			continue
 		}
 
@@ -156,11 +156,11 @@ func (h *KeyMappingHandler) createMapping(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 시작키 검증 (delete 또는 end만 허용)
+	// 시작키 검증 (delete, end, home만 허용) - HOME 키 추가됨
 	startKeyLower := strings.ToLower(strings.TrimSpace(request.StartKey))
-	if startKeyLower != "delete" && startKeyLower != "end" {
+	if startKeyLower != "delete" && startKeyLower != "end" && startKeyLower != "home" {
 		log.Printf("허용되지 않은 시작키: %s", request.StartKey)
-		http.Error(w, "시작키는 'delete' 또는 'end'만 사용할 수 있습니다", http.StatusBadRequest)
+		http.Error(w, "시작키는 'delete', 'end', 'home'만 사용할 수 있습니다", http.StatusBadRequest)
 		return
 	}
 
@@ -228,11 +228,11 @@ func (h *KeyMappingHandler) updateMapping(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 시작키 검증
+	// 시작키 검증 (HOME 키 포함)
 	startKeyLower := strings.ToLower(strings.TrimSpace(request.StartKey))
-	if startKeyLower != "delete" && startKeyLower != "end" {
+	if startKeyLower != "delete" && startKeyLower != "end" && startKeyLower != "home" {
 		log.Printf("허용되지 않은 시작키: %s", request.StartKey)
-		http.Error(w, "시작키는 'delete' 또는 'end'만 사용할 수 있습니다", http.StatusBadRequest)
+		http.Error(w, "시작키는 'delete', 'end', 'home'만 사용할 수 있습니다", http.StatusBadRequest)
 		return
 	}
 
@@ -445,8 +445,8 @@ func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.
 			log.Printf("키 맵핑 시스템 시작 요청")
 			err = h.Manager.Start()
 			if err == nil {
-				message = "키 맵핑 시스템이 시작되었습니다 (ID 기반 처리)"
-				log.Printf("키 맵핑 시스템 시작됨 (ID 기반)")
+				message = "키 맵핑 시스템이 시작되었습니다 (DELETE, END, HOME 키 지원)"
+				log.Printf("키 맵핑 시스템 시작됨 (HOME 키 포함)")
 			}
 		}
 	case "stop":
@@ -494,6 +494,7 @@ func (h *KeyMappingHandler) HandleMappingControl(w http.ResponseWriter, r *http.
 			"id_based":       true,
 			"combo_keys":     true,
 			"duplicate_keys": true,
+			"home_key":       true, // HOME 키 지원 추가
 		},
 	}
 
@@ -517,11 +518,12 @@ func (h *KeyMappingHandler) HandleAvailableKeys(w http.ResponseWriter, r *http.R
 	response := map[string]interface{}{
 		"keys":    availableKeys,
 		"success": true,
-		"message": "허용된 시작키: delete, end | 조합키 지원: ctrl+키, alt+키, shift+키, win+키",
+		"message": "허용된 시작키: delete, end, home | 조합키 지원: ctrl+키, alt+키, shift+키, win+키",
 		"features": map[string]bool{
 			"combo_keys_supported":   true,
 			"duplicate_keys_allowed": true,
 			"id_based_operations":    true,
+			"home_key_supported":     true, // HOME 키 지원 명시
 		},
 	}
 
@@ -531,7 +533,7 @@ func (h *KeyMappingHandler) HandleAvailableKeys(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	log.Printf("사용 가능한 키 목록 반환 완료")
+	log.Printf("사용 가능한 키 목록 반환 완료 (HOME 키 포함)")
 }
 
 // HandleMappingStatus 키 맵핑 시스템 상태 반환
@@ -553,6 +555,7 @@ func (h *KeyMappingHandler) HandleMappingStatus(w http.ResponseWriter, r *http.R
 			"id_based":       true,
 			"combo_keys":     true,
 			"duplicate_keys": true,
+			"home_key":       true, // HOME 키 지원 추가
 		},
 	}
 

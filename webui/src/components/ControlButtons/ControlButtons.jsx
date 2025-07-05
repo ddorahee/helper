@@ -1,4 +1,4 @@
-// webui/src/components/ControlButtons/ControlButtons.jsx 수정
+// webui/src/components/ControlButtons/ControlButtons.jsx - 서버 타이머 연동
 import { Play, Square, RotateCcw } from 'lucide-react'
 import { useApp } from '@/contexts/AppContext'
 import { appService } from '@services/appService'
@@ -9,6 +9,56 @@ import styles from './ControlButtons.module.css'
 export default function ControlButtons() {
     const { state, actions, getApiModeName, getHoursFromTimeOption, getModeName } = useApp()
     const { showNotification } = useNotification()
+
+    // 서버 기반 타이머 시작
+    const startServerTimer = async (durationHours) => {
+        try {
+            if (window.startServerTimer && typeof window.startServerTimer === 'function') {
+                const durationSeconds = Math.floor(durationHours * 3600)
+                await window.startServerTimer(durationSeconds)
+                console.log('서버 타이머 시작:', durationSeconds, '초')
+                return true
+            } else {
+                console.warn('서버 타이머 API 없음, 클라이언트 타이머 사용')
+                // 클라이언트 fallback
+                actions.setCountdownTime(durationHours * 3600)
+                return true
+            }
+        } catch (error) {
+            console.error('서버 타이머 시작 실패:', error)
+            // 클라이언트 fallback
+            actions.setCountdownTime(durationHours * 3600)
+            return true
+        }
+    }
+
+    // 서버 기반 타이머 중지
+    const stopServerTimer = async () => {
+        try {
+            if (window.stopServerTimer && typeof window.stopServerTimer === 'function') {
+                await window.stopServerTimer()
+                console.log('서버 타이머 일시정지')
+            }
+        } catch (error) {
+            console.error('서버 타이머 중지 실패:', error)
+        }
+    }
+
+    // 서버 기반 타이머 리셋
+    const resetServerTimer = async () => {
+        try {
+            if (window.resetServerTimer && typeof window.resetServerTimer === 'function') {
+                await window.resetServerTimer()
+                console.log('서버 타이머 리셋')
+
+                // 클라이언트 상태도 리셋
+                const hours = getHoursFromTimeOption(state.currentTimeOption)
+                actions.setCountdownTime(hours * 3600)
+            }
+        } catch (error) {
+            console.error('서버 타이머 리셋 실패:', error)
+        }
+    }
 
     const handleStart = async () => {
         if (state.isRunning) {
@@ -30,29 +80,32 @@ export default function ControlButtons() {
             actions.setRunning(true)
             actions.setPaused(false)
 
-            // 서버에 시작 요청 (텔레그램 정보 포함)
+            // 서버 기반 타이머 시작 (새로 시작하는 경우에만)
+            if (!wasTimerPaused) {
+                const timerStarted = await startServerTimer(hours)
+                if (!timerStarted) {
+                    throw new Error('서버 타이머 시작 실패')
+                }
+            }
+
+            // 서버에 작업 시작 요청
             const success = await appService.startOperation(
                 apiMode,
                 hours,
                 wasTimerPaused,
-                state.settings.telegramEnabled  // 텔레그램 활성화 상태 전달
+                state.settings.telegramEnabled
             )
 
             if (success) {
-                // 클라이언트 타이머 시작
-                if (!wasTimerPaused) {
-                    actions.setCountdownTime(hours * 60 * 60)
-                }
-
                 const modeName = getModeName(state.currentMode)
                 const message = wasTimerPaused
                     ? `${modeName} 모드 작업을 재개합니다...`
-                    : `${modeName} 모드로 작업을 시작합니다...`
+                    : `${modeName} 모드로 작업을 시작합니다... (서버 기반 타이머)`
 
                 actions.addLog(message)
-                showNotification('작업이 시작되었습니다', 'success')
+                showNotification('작업이 시작되었습니다 (정확한 서버 타이머)', 'success')
 
-                // 텔레그램 시작 알림 로그 (서버에서 처리됨)
+                // 텔레그램 시작 알림 로그
                 if (!wasTimerPaused && state.settings.telegramEnabled) {
                     actions.addLog('텔레그램 시작 알림이 전송됩니다.')
                 }
@@ -60,12 +113,14 @@ export default function ControlButtons() {
                 // 실패 시 상태 복원
                 actions.setRunning(false)
                 if (wasTimerPaused) actions.setPaused(true)
+                await resetServerTimer() // 서버 타이머도 리셋
                 actions.addLog('오류: 작업을 시작할 수 없습니다.')
                 showNotification('작업 시작에 실패했습니다', 'error')
             }
         } catch (error) {
             console.error('작업 시작 오류:', error)
             actions.setRunning(false)
+            await resetServerTimer() // 서버 타이머도 리셋
             actions.addLog('작업 시작 중 오류가 발생했습니다.')
             showNotification('작업 시작 중 오류가 발생했습니다', 'error')
         }
@@ -78,12 +133,16 @@ export default function ControlButtons() {
         }
 
         try {
+            // 서버 타이머 일시정지
+            await stopServerTimer()
+
+            // 서버에 작업 중지 요청
             const success = await appService.stopOperation()
 
             if (success) {
                 actions.setRunning(false)
                 actions.setPaused(true)
-                actions.addLog('작업이 일시 중지되었습니다.')
+                actions.addLog('작업이 일시 중지되었습니다. (서버 타이머 일시정지)')
                 showNotification('작업이 중지되었습니다', 'info')
             } else {
                 actions.addLog('오류: 작업을 중지할 수 없습니다.')
@@ -103,11 +162,15 @@ export default function ControlButtons() {
         }
 
         try {
+            // 서버 타이머 리셋
+            await resetServerTimer()
+
+            // 서버에 리셋 요청
             const success = await appService.resetSettings()
 
             if (success) {
                 actions.resetAll()
-                actions.addLog('모든 설정이 초기화되었습니다.')
+                actions.addLog('모든 설정이 초기화되었습니다. (서버 타이머 리셋)')
                 showNotification('설정이 초기화되었습니다', 'success')
             } else {
                 actions.addLog('오류: 재설정 작업을 실행할 수 없습니다.')

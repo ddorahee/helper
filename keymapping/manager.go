@@ -1,4 +1,3 @@
-// keymapping/manager.go - 불필요한 딜레이 제거로 초고속 키 맵핑 시스템
 package keymapping
 
 import (
@@ -51,7 +50,7 @@ type KeyMappingManager struct {
 	keyStates  map[uint16]bool // 키 눌림 상태 추적
 	stateMutex sync.Mutex      // 키 상태 뮤텍스
 
-	// 허용된 키 코드 맵 (상수)
+	// 허용된 키 코드 맵 (Home 키 추가)
 	allowedKeys map[uint16]string
 }
 
@@ -68,6 +67,7 @@ func NewKeyMappingManager(configDir string) *KeyMappingManager {
 		allowedKeys: map[uint16]string{
 			46: "delete", // Delete 키
 			35: "end",    // End 키
+			36: "home",   // Home 키 추가
 		},
 		keyPool: sync.Pool{
 			New: func() interface{} {
@@ -108,7 +108,7 @@ func (km *KeyMappingManager) Start() error {
 	km.stopChan = make(chan struct{})
 	go km.runUltraFastKeyHook()
 
-	log.Println("초고속 키 맵핑 시스템 시작 (딜레이 제거)")
+	log.Println("초고속 키 맵핑 시스템 시작 (Home 키 포함)")
 	return nil
 }
 
@@ -575,7 +575,7 @@ func (km *KeyMappingManager) validateKeys(startKey string, keys []MappedKey) err
 	}
 
 	if !km.isValidStartKey(startKey) {
-		return fmt.Errorf("시작 키는 'delete' 또는 'end'만 사용할 수 있습니다")
+		return fmt.Errorf("시작 키는 'delete', 'end', 'home'만 사용할 수 있습니다")
 	}
 
 	if len(keys) == 0 {

@@ -27,7 +27,7 @@ export default function KeyMappingModal({
     const [isDuplicateKey, setIsDuplicateKey] = useState(false)
 
     // 시작키로 허용되는 키만 정의
-    const allowedStartKeys = ['delete', 'end']
+    const allowedStartKeys = ['delete', 'end', 'home']
 
     // 컴포넌트 마운트 시 사용 가능한 키 목록 로드
     useEffect(() => {
@@ -301,7 +301,7 @@ export default function KeyMappingModal({
         } else {
             // 허용된 시작키인지 확인
             if (!allowedStartKeys.includes(formData.start_key.toLowerCase())) {
-                newErrors.start_key = '시작 키는 DELETE 또는 END만 사용할 수 있습니다'
+                newErrors.start_key = '시작 키는 DELETE, END, HOME만 사용할 수 있습니다'
             }
         }
 
