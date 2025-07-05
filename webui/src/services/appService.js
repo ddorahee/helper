@@ -1,4 +1,4 @@
-// webui/src/services/appService.js 설정 저장 부분 수정
+// webui/src/services/appService.js - 안전한 에러 처리
 import { API_ENDPOINTS } from '@constants/appConstants'
 
 class AppService {
@@ -9,9 +9,17 @@ class AppService {
 
     async loadSettings() {
         try {
+            console.log('설정 로드 요청:', API_ENDPOINTS.SETTINGS_LOAD)
             const response = await fetch(API_ENDPOINTS.SETTINGS_LOAD)
-            if (!response.ok) throw new Error('Failed to load settings')
-            return await response.json()
+
+            if (!response.ok) {
+                console.warn('설정 로드 실패, 기본값 사용:', response.status)
+                throw new Error('Failed to load settings')
+            }
+
+            const settings = await response.json()
+            console.log('설정 로드 성공:', settings)
+            return settings
         } catch (error) {
             console.error('Failed to load settings:', error)
             return {
@@ -22,7 +30,7 @@ class AppService {
         }
     }
 
-    // 개별 설정 저장 (수정됨)
+    // 개별 설정 저장 (에러 처리 강화)
     async saveSetting(type, value) {
         try {
             console.log('설정 저장 요청:', { type, value })
@@ -52,11 +60,10 @@ class AppService {
         }
     }
 
-    // 모든 설정 한번에 저장 (새로 추가)
+    // 모든 설정 한번에 저장
     async saveAllSettings(settings) {
         try {
             const promises = Object.entries(settings).map(([key, value]) => {
-                // 설정 키 매핑
                 const settingKeyMap = {
                     darkMode: 'dark_mode',
                     autoStartup: 'auto_startup',
@@ -77,9 +84,17 @@ class AppService {
 
     async getStatus() {
         try {
+            console.log('상태 조회 요청:', API_ENDPOINTS.STATUS)
             const response = await fetch(API_ENDPOINTS.STATUS)
-            if (!response.ok) throw new Error('Failed to get status')
-            return await response.json()
+
+            if (!response.ok) {
+                console.warn('상태 조회 실패, 기본값 사용:', response.status)
+                throw new Error('Failed to get status')
+            }
+
+            const status = await response.json()
+            console.log('상태 조회 성공:', status)
+            return status
         } catch (error) {
             console.error('Failed to get status:', error)
             return { running: false, mode: 1 }
@@ -90,7 +105,16 @@ class AppService {
         try {
             console.log('작업 시작 요청:', { mode, autoStopHours, isResume, telegramEnabled })
 
-            const body = `mode=${mode}&auto_stop=${autoStopHours}${isResume ? '&resume=true' : ''}${telegramEnabled ? '&telegram_enabled=true' : ''}`
+            // 파라미터 검증
+            if (!mode || typeof mode !== 'string') {
+                throw new Error('유효하지 않은 모드입니다')
+            }
+
+            if (typeof autoStopHours !== 'number' || autoStopHours < 0) {
+                throw new Error('유효하지 않은 자동 중지 시간입니다')
+            }
+
+            const body = `mode=${encodeURIComponent(mode)}&auto_stop=${autoStopHours}${isResume ? '&resume=true' : ''}${telegramEnabled ? '&telegram_enabled=true' : ''}`
 
             console.log('전송 데이터:', body)
 
@@ -107,7 +131,18 @@ class AppService {
             if (!response.ok) {
                 const errorText = await response.text()
                 console.error('시작 요청 실패:', errorText)
-                throw new Error(`Failed to start operation: ${response.status}`)
+
+                // 구체적인 에러 메시지 생성
+                let errorMessage = '서버에서 작업 시작을 거부했습니다'
+                if (response.status === 409) {
+                    errorMessage = '이미 실행 중인 작업이 있습니다'
+                } else if (response.status === 400) {
+                    errorMessage = '잘못된 요청입니다. 설정을 확인해주세요'
+                } else if (response.status === 500) {
+                    errorMessage = '서버 내부 오류가 발생했습니다'
+                }
+
+                throw new Error(errorMessage)
             }
 
             const responseText = await response.text()
@@ -115,46 +150,99 @@ class AppService {
             return true
         } catch (error) {
             console.error('Failed to start operation:', error)
-            return false
+
+            // 네트워크 오류와 서버 오류 구분
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                throw new Error('서버에 연결할 수 없습니다. 프로그램을 다시 시작해주세요')
+            }
+
+            throw error
         }
     }
 
     async stopOperation() {
         try {
+            console.log('작업 중지 요청:', API_ENDPOINTS.STOP)
+
             const response = await fetch(API_ENDPOINTS.STOP, {
                 method: 'POST'
             })
-            if (!response.ok) throw new Error('Failed to stop operation')
+
+            console.log('중지 응답:', response.status, response.statusText)
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('중지 요청 실패:', errorText)
+
+                let errorMessage = '서버에서 작업 중지를 거부했습니다'
+                if (response.status === 409) {
+                    errorMessage = '실행 중인 작업이 없습니다'
+                }
+
+                throw new Error(errorMessage)
+            }
+
+            const responseText = await response.text()
+            console.log('중지 성공:', responseText)
             return true
         } catch (error) {
             console.error('Failed to stop operation:', error)
-            return false
+
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                throw new Error('서버에 연결할 수 없습니다')
+            }
+
+            throw error
         }
     }
 
     async resetSettings() {
         try {
+            console.log('리셋 요청:', API_ENDPOINTS.RESET)
+
             const response = await fetch(API_ENDPOINTS.RESET, {
                 method: 'POST'
             })
-            if (!response.ok) throw new Error('Failed to reset settings')
+
+            console.log('리셋 응답:', response.status, response.statusText)
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('리셋 요청 실패:', errorText)
+                throw new Error('서버에서 리셋을 거부했습니다')
+            }
+
+            const responseText = await response.text()
+            console.log('리셋 성공:', responseText)
             return true
         } catch (error) {
             console.error('Failed to reset settings:', error)
-            return false
+
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                throw new Error('서버에 연결할 수 없습니다')
+            }
+
+            throw error
         }
     }
 
     async exit() {
         try {
+            console.log('종료 요청:', API_ENDPOINTS.EXIT)
+
             const response = await fetch(API_ENDPOINTS.EXIT, {
                 method: 'POST'
             })
-            if (!response.ok) throw new Error('Failed to exit')
+
+            if (!response.ok) {
+                console.warn('종료 요청 실패, 무시:', response.status)
+            }
+
             return true
         } catch (error) {
             console.error('Failed to exit:', error)
-            return false
+            // 종료 요청은 실패해도 무시
+            return true
         }
     }
 

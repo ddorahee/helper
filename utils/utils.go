@@ -22,6 +22,7 @@ type TimerManager struct {
 	ticker         *time.Ticker
 	onTimeUpdate   func(remaining time.Duration) // 시간 업데이트 콜백
 	onTimeComplete func()                        // 시간 완료 콜백
+	isShuttingDown bool                          // 종료 중 플래그 추가
 }
 
 // NewTimerManager는 새로운 타이머 관리자를 생성합니다
@@ -35,6 +36,7 @@ func NewTimerManager() *TimerManager {
 		Mutex:          sync.Mutex{},
 		TickerStopChan: make(chan bool, 1),
 		AutoStopChan:   make(chan bool, 1),
+		isShuttingDown: false,
 	}
 }
 
@@ -73,6 +75,11 @@ func (tm *TimerManager) Start() {
 		return
 	}
 
+	if tm.isShuttingDown {
+		log.Printf("타이머가 종료 중이므로 시작할 수 없습니다")
+		return
+	}
+
 	now := time.Now()
 	tm.StartTime = now
 	tm.Running = true
@@ -98,6 +105,7 @@ func (tm *TimerManager) Stop() {
 	defer tm.Mutex.Unlock()
 
 	if !tm.Running {
+		log.Printf("타이머가 실행 중이 아님")
 		return
 	}
 
@@ -114,11 +122,8 @@ func (tm *TimerManager) Stop() {
 	tm.Paused = true
 	tm.PauseTime = time.Now()
 
-	// 타이머 정지 신호 전송
-	select {
-	case tm.TickerStopChan <- true:
-	default:
-	}
+	// 타이머 정지 신호 전송 (안전하게)
+	tm.sendStopSignal()
 
 	log.Printf("타이머 일시정지: 경과 시간 %v, 남은 시간 %v", tm.ElapsedTime, tm.RemainingTime)
 }
@@ -128,18 +133,31 @@ func (tm *TimerManager) Reset() {
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
 
-	tm.ElapsedTime = 0
-	tm.RemainingTime = tm.TotalDuration
-	tm.Running = false
-	tm.Paused = false
+	log.Printf("타이머 리셋 요청됨")
 
-	// 정지 신호 전송
-	select {
-	case tm.TickerStopChan <- true:
-	default:
+	// 실행 중이면 먼저 중지
+	if tm.Running {
+		tm.Running = false
+		tm.sendStopSignal()
+		log.Printf("실행 중인 타이머 중지됨")
 	}
 
+	tm.ElapsedTime = 0
+	tm.RemainingTime = tm.TotalDuration
+	tm.Paused = false
+
 	log.Printf("타이머 리셋: 총 시간 %v로 초기화", tm.TotalDuration)
+}
+
+// sendStopSignal은 안전하게 정지 신호를 전송합니다
+func (tm *TimerManager) sendStopSignal() {
+	// 논블로킹으로 신호 전송
+	select {
+	case tm.TickerStopChan <- true:
+		log.Printf("타이머 정지 신호 전송됨")
+	default:
+		log.Printf("타이머 정지 신호 채널이 가득참, 무시")
+	}
 }
 
 // runServerTimer는 서버에서 실행되는 정확한 타이머입니다
@@ -148,6 +166,11 @@ func (tm *TimerManager) runServerTimer() {
 		if r := recover(); r != nil {
 			log.Printf("타이머 패닉 복구: %v", r)
 		}
+
+		// 타이머 종료 시 상태 정리
+		tm.Mutex.Lock()
+		tm.Running = false
+		tm.Mutex.Unlock()
 	}()
 
 	log.Printf("서버 기반 타이머 시작")
@@ -165,7 +188,13 @@ func (tm *TimerManager) runServerTimer() {
 			log.Printf("서버 타이머 정지 신호 받음")
 			return
 		case <-ticker.C:
+			// 종료 중이면 바로 반환
 			tm.Mutex.Lock()
+			if tm.isShuttingDown {
+				tm.Mutex.Unlock()
+				log.Printf("서버 타이머 종료 중")
+				return
+			}
 
 			// 실행 중이 아니면 건너뛰기
 			if !tm.Running || tm.Paused {
@@ -186,40 +215,57 @@ func (tm *TimerManager) runServerTimer() {
 				log.Printf("타이머 완료: 총 %v 실행됨", tm.TotalDuration)
 
 				// 완료 콜백 실행
-				if tm.onTimeComplete != nil {
-					go tm.onTimeComplete()
-				}
-
+				callback := tm.onTimeComplete
 				tm.Mutex.Unlock()
+
+				if callback != nil {
+					go callback()
+				}
 				return
 			}
 
 			// 시간 업데이트 콜백 실행
-			if tm.onTimeUpdate != nil {
-				remaining := tm.RemainingTime
-				tm.Mutex.Unlock()
+			updateCallback := tm.onTimeUpdate
+			remaining := tm.RemainingTime
+			tm.Mutex.Unlock()
 
+			if updateCallback != nil {
 				// 콜백을 별도 고루틴에서 실행하여 타이머 블로킹 방지
-				go tm.onTimeUpdate(remaining)
-			} else {
-				tm.Mutex.Unlock()
+				go updateCallback(remaining)
 			}
 		}
 	}
+}
+
+// Shutdown은 타이머 매니저를 안전하게 종료합니다
+func (tm *TimerManager) Shutdown() {
+	tm.Mutex.Lock()
+	defer tm.Mutex.Unlock()
+
+	log.Printf("타이머 매니저 종료 시작")
+
+	tm.isShuttingDown = true
+
+	if tm.Running {
+		tm.Running = false
+		tm.sendStopSignal()
+	}
+
+	log.Printf("타이머 매니저 종료 완료")
 }
 
 // IsRunning은 타이머가 실행 중인지 확인합니다
 func (tm *TimerManager) IsRunning() bool {
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
-	return tm.Running && !tm.Paused
+	return tm.Running && !tm.Paused && !tm.isShuttingDown
 }
 
 // IsPaused는 타이머가 일시정지 상태인지 확인합니다
 func (tm *TimerManager) IsPaused() bool {
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
-	return tm.Paused
+	return tm.Paused && !tm.isShuttingDown
 }
 
 // GetStartTime은 타이머 시작 시간을 반환합니다
@@ -234,7 +280,7 @@ func (tm *TimerManager) GetElapsedTime() time.Duration {
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
 
-	if tm.Running && !tm.Paused {
+	if tm.Running && !tm.Paused && !tm.isShuttingDown {
 		// 실행 중인 경우 실시간 경과 시간 계산
 		return tm.ElapsedTime + time.Since(tm.StartTime)
 	}
@@ -246,7 +292,7 @@ func (tm *TimerManager) GetRemainingTime() time.Duration {
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
 
-	if tm.Running && !tm.Paused {
+	if tm.Running && !tm.Paused && !tm.isShuttingDown {
 		// 실행 중인 경우 정확한 남은 시간 계산
 		elapsed := tm.ElapsedTime + time.Since(tm.StartTime)
 		remaining := tm.TotalDuration - elapsed
@@ -290,16 +336,12 @@ func (tm *TimerManager) ForceComplete() {
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
 
-	if tm.Running {
+	if tm.Running && !tm.isShuttingDown {
 		tm.Running = false
 		tm.ElapsedTime = tm.TotalDuration
 		tm.RemainingTime = 0
 
-		// 정지 신호 전송
-		select {
-		case tm.TickerStopChan <- true:
-		default:
-		}
+		tm.sendStopSignal()
 
 		// 완료 콜백 실행
 		if tm.onTimeComplete != nil {

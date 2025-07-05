@@ -43,14 +43,17 @@ export default function Timer() {
 
                     // 클라이언트 상태와 동기화
                     if (timeData.running !== state.isRunning) {
+                        console.log('서버 상태와 클라이언트 상태 불일치, 동기화:', timeData.running)
                         actions.setRunning(timeData.running)
                     }
                     if (timeData.paused !== state.isPaused) {
+                        console.log('서버 일시정지 상태와 클라이언트 상태 불일치, 동기화:', timeData.paused)
                         actions.setPaused(timeData.paused)
                     }
 
                     // 남은 시간을 클라이언트 상태에도 반영
                     if (timeData.remainingSeconds !== state.countdownTime) {
+                        console.log('서버 시간과 클라이언트 시간 불일치, 동기화:', timeData.remainingSeconds)
                         actions.setCountdownTime(timeData.remainingSeconds)
                     }
                 }
@@ -62,6 +65,8 @@ export default function Timer() {
 
     // 정기적으로 서버 시간 폴링 (1초마다)
     useEffect(() => {
+        console.log('타이머 컴포넌트 마운트됨, 서버 시간 폴링 시작')
+
         // 초기 서버 시간 조회
         fetchServerTime()
 
@@ -73,6 +78,7 @@ export default function Timer() {
         }, 1000)
 
         return () => {
+            console.log('타이머 컴포넌트 언마운트됨, 폴링 정리')
             if (pollingIntervalRef.current) {
                 clearInterval(pollingIntervalRef.current)
                 pollingIntervalRef.current = null
@@ -83,6 +89,7 @@ export default function Timer() {
     // 서버에서 오는 실시간 타이머 이벤트 리스너
     useEffect(() => {
         const handleTimerUpdate = (event) => {
+            console.log('타이머 업데이트 이벤트 받음:', event.detail)
             if (isActiveRef.current && event.detail) {
                 const { remaining } = event.detail
                 setServerTime(prev => ({
@@ -97,8 +104,8 @@ export default function Timer() {
         }
 
         const handleTimerComplete = (event) => {
+            console.log('타이머 완료 이벤트 받음:', event.detail)
             if (isActiveRef.current) {
-                console.log('서버에서 타이머 완료 이벤트 받음:', event.detail)
                 actions.setRunning(false)
                 actions.setPaused(false)
                 actions.setCountdownTime(0)
@@ -113,17 +120,20 @@ export default function Timer() {
             }
         }
 
+        console.log('타이머 이벤트 리스너 등록')
+
         // 이벤트 리스너 등록
         window.addEventListener('timerUpdate', handleTimerUpdate)
         window.addEventListener('timerComplete', handleTimerComplete)
 
         return () => {
+            console.log('타이머 이벤트 리스너 해제')
             window.removeEventListener('timerUpdate', handleTimerUpdate)
             window.removeEventListener('timerComplete', handleTimerComplete)
         }
     }, [actions])
 
-    // 클라이언트 fallback 타이머 (서버 연결이 안될 때만 사용)
+    // 클라이언트 fallback 타이머 (서버 연결이 안될 때만 사용) - 수정
     useEffect(() => {
         let fallbackInterval = null
 
@@ -135,6 +145,7 @@ export default function Timer() {
                 if (isActiveRef.current) {
                     actions.setCountdownTime(prev => {
                         if (prev <= 0) {
+                            console.log('클라이언트 fallback 타이머 완료')
                             actions.setRunning(false)
                             actions.addLog('설정한 시간이 경과하여 자동으로 종료되었습니다.')
                             return 0
@@ -207,16 +218,15 @@ export default function Timer() {
                 </div>
             )}
 
-            {/* 디버그 정보 (개발 모드에서만) */}
-            {process.env.NODE_ENV === 'development' && (
-                <div className={styles.debugInfo}>
-                    <small>
-                        서버: {serverTime.running ? '실행중' : '중지'} |
-                        클라이언트: {state.isRunning ? '실행중' : '중지'} |
-                        {isServerTimer ? '서버 타이머' : '클라이언트 타이머'}
-                    </small>
-                </div>
-            )}
+            {/* 디버그 정보 - 항상 표시 */}
+            <div className={styles.debugInfo}>
+                <small>
+                    서버: {serverTime.running ? '실행중' : '중지'} |
+                    클라이언트: {state.isRunning ? '실행중' : '중지'} |
+                    {isServerTimer ? '서버 타이머' : '클라이언트 타이머'} |
+                    디스플레이: {displayTime}
+                </small>
+            </div>
         </Card>
     )
 }

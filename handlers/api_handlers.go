@@ -4,6 +4,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -47,30 +48,59 @@ func (h *APIHandler) HandleStart(w http.ResponseWriter, r *http.Request) {
 
 	isResume := r.FormValue("resume") == "true"
 
+	log.Printf("시작 요청 받음: mode=%s, autoStop=%.2f시간, resume=%t", mode, autoStopHours, isResume)
+
 	// 타입 어설션을 사용하여 실제 타입으로 변환
 	timerManager, ok := h.App.GetTimerManager().(TimerManagerInterface)
 	if !ok {
+		log.Printf("Timer manager interface error")
 		http.Error(w, "Timer manager interface error", http.StatusInternalServerError)
 		return
 	}
 
 	keyboardManager, ok := h.App.GetKeyboardManager().(KeyboardManagerInterface)
 	if !ok {
+		log.Printf("Keyboard manager interface error")
 		http.Error(w, "Keyboard manager interface error", http.StatusInternalServerError)
 		return
 	}
 
+	// 상태 검사 및 강제 정리
 	if timerManager.IsRunning() {
-		http.Error(w, "Already running", http.StatusConflict)
-		return
+		log.Printf("이미 실행 중인 타이머 발견, 강제 정리 시도")
+
+		// 강제로 이전 작업 정리
+		timerManager.Stop()
+		keyboardManager.SetRunning(false)
+
+		// 잠시 대기 (상태 정리 시간)
+		time.Sleep(100 * time.Millisecond)
+
+		// 다시 한번 확인
+		if timerManager.IsRunning() {
+			log.Printf("타이머 정리 실패, 409 에러 반환")
+			http.Error(w, "Already running", http.StatusConflict)
+			return
+		}
+
+		log.Printf("이전 작업 정리 완료")
+	}
+
+	// 키보드 매니저 상태도 확인
+	if keyboardManager.IsRunning() {
+		log.Printf("키보드 매니저가 실행 중, 강제 정리")
+		keyboardManager.SetRunning(false)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	// 타이머 및 키보드 매니저 시작
+	log.Printf("새 작업 시작")
 	timerManager.Start()
 	keyboardManager.SetRunning(true)
 
 	// 자동 중지 설정
 	if autoStopHours > 0 {
+		log.Printf("자동 중지 설정: %.2f시간", autoStopHours)
 		h.App.SetupAutoStop(mode, autoStopHours)
 	}
 
@@ -89,26 +119,56 @@ func (h *APIHandler) HandleStart(w http.ResponseWriter, r *http.Request) {
 
 					err := bot.SendStartNotification(modeName, duration)
 					if err != nil {
-						fmt.Printf("텔레그램 시작 알림 전송 실패: %v\n", err)
+						log.Printf("텔레그램 시작 알림 전송 실패: %v", err)
 					} else {
-						fmt.Printf("텔레그램 시작 알림 전송 성공: %s\n", modeName)
+						log.Printf("텔레그램 시작 알림 전송 성공: %s", modeName)
 					}
 				}()
 			}
 		}
 	}
 
+	log.Printf("작업 시작 완료: %s", mode)
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Started")
 }
 
-// 나머지 핸들러 메서드들은 동일...
 func (h *APIHandler) HandleStop(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	if !utils.IsLocalhost(r.Host) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	log.Printf("중지 요청 받음")
+
+	timerManager, ok := h.App.GetTimerManager().(TimerManagerInterface)
+	if !ok {
+		http.Error(w, "Timer manager interface error", http.StatusInternalServerError)
+		return
+	}
+
+	keyboardManager, ok := h.App.GetKeyboardManager().(KeyboardManagerInterface)
+	if !ok {
+		http.Error(w, "Keyboard manager interface error", http.StatusInternalServerError)
+		return
+	}
+
+	// 실행 중이 아니어도 강제로 중지 (상태 정리)
+	log.Printf("작업 중지 실행")
+	timerManager.Stop()
+	keyboardManager.SetRunning(false)
+
+	log.Printf("작업 중지 완료")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, "Stopped")
+}
+
+func (h *APIHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	if !utils.IsLocalhost(r.Host) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
@@ -126,32 +186,17 @@ func (h *APIHandler) HandleStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !timerManager.IsRunning() {
-		http.Error(w, "Not running", http.StatusConflict)
-		return
-	}
+	// 상태 동기화 체크
+	timerRunning := timerManager.IsRunning()
+	keyboardRunning := keyboardManager.IsRunning()
 
-	timerManager.Stop()
-	keyboardManager.SetRunning(false)
+	// 둘 중 하나라도 실행 중이면 실행 중으로 판단
+	isRunning := timerRunning || keyboardRunning
 
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "Stopped")
-}
-
-func (h *APIHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
-	if !utils.IsLocalhost(r.Host) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	timerManager, ok := h.App.GetTimerManager().(TimerManagerInterface)
-	if !ok {
-		http.Error(w, "Timer manager interface error", http.StatusInternalServerError)
-		return
-	}
+	log.Printf("상태 조회: timer=%t, keyboard=%t, result=%t", timerRunning, keyboardRunning, isRunning)
 
 	status := StatusResponse{
-		Running: timerManager.IsRunning(),
+		Running: isRunning,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -169,19 +214,32 @@ func (h *APIHandler) HandleReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("리셋 요청 받음")
+
 	timerManager, ok := h.App.GetTimerManager().(TimerManagerInterface)
 	if !ok {
 		http.Error(w, "Timer manager interface error", http.StatusInternalServerError)
 		return
 	}
 
-	if timerManager.IsRunning() {
-		http.Error(w, "Cannot reset while running", http.StatusConflict)
+	keyboardManager, ok := h.App.GetKeyboardManager().(KeyboardManagerInterface)
+	if !ok {
+		http.Error(w, "Keyboard manager interface error", http.StatusInternalServerError)
 		return
 	}
 
+	// 강제로 모든 것을 중지하고 리셋
+	log.Printf("강제 중지 및 리셋 실행")
+	timerManager.Stop()
+	keyboardManager.SetRunning(false)
+
+	// 잠시 대기
+	time.Sleep(100 * time.Millisecond)
+
+	// 타이머 리셋
 	timerManager.Reset()
 
+	log.Printf("리셋 완료")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Reset")
 }
@@ -196,6 +254,8 @@ func (h *APIHandler) HandleExit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
+
+	log.Printf("종료 요청 받음")
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Exiting")

@@ -60,72 +60,126 @@ func (app *Application) GetTelegramBot() interface{} {
 	return nil
 }
 
-// SetupAutoStop 개선된 자동 중지 설정
+// SetupAutoStop 개선된 자동 중지 설정 (안전한 버전)
 func (app *Application) SetupAutoStop(mode string, hours float64) {
+	log.Printf("자동 중지 설정 시작: %s 모드, %.2f시간", mode, hours)
+
 	// 기존 타이머 정리
 	if app.AutoStopTimer != nil {
 		app.AutoStopTimer.Stop()
 		app.AutoStopTimer = nil
+		log.Printf("기존 자동 중지 타이머 정리됨")
 	}
 
 	if hours <= 0 {
+		log.Printf("자동 중지 시간이 0 이하, 설정하지 않음")
 		return
 	}
 
 	duration := time.Duration(hours * float64(time.Hour))
+	log.Printf("자동 중지 시간 설정: %v", duration)
 
 	// 서버 기반 타이머에 시간 설정
-	app.TimerManager.SetDuration(duration)
+	if app.TimerManager != nil {
+		app.TimerManager.SetDuration(duration)
+		log.Printf("타이머 매니저에 시간 설정 완료")
+	}
 
 	// 타이머 완료 콜백 설정
-	app.TimerManager.SetTimeCompleteCallback(func() {
-		modeName := utils.GetModeName(mode)
+	if app.TimerManager != nil {
+		app.TimerManager.SetTimeCompleteCallback(func() {
+			log.Printf("타이머 완료 콜백 실행됨")
+			modeName := utils.GetModeName(mode)
 
-		// 작업 중지
-		app.KeyboardManager.SetRunning(false)
+			// 작업 중지
+			if app.KeyboardManager != nil {
+				app.KeyboardManager.SetRunning(false)
+				log.Printf("키보드 매니저 중지됨")
+			}
 
-		// 텔레그램 완료 알림
-		if app.Config.TelegramEnabled && app.TelegramBot != nil {
-			go func() {
-				err := app.TelegramBot.SendCompletionNotification(modeName, duration)
-				if err != nil {
-					log.Printf("텔레그램 완료 알림 전송 실패: %v", err)
-				}
-			}()
-		}
+			// 텔레그램 완료 알림
+			if app.Config.TelegramEnabled && app.TelegramBot != nil {
+				go func() {
+					err := app.TelegramBot.SendCompletionNotification(modeName, duration)
+					if err != nil {
+						log.Printf("텔레그램 완료 알림 전송 실패: %v", err)
+					} else {
+						log.Printf("텔레그램 완료 알림 전송 성공")
+					}
+				}()
+			}
 
-		log.Printf("작업 완료: %s 모드, %v 실행", modeName, duration)
+			log.Printf("작업 완료: %s 모드, %v 실행", modeName, duration)
 
-		// WebView에 완료 알림 전송
-		if app.WebView != nil {
-			app.WebView.Dispatch(func() {
-				app.WebView.Eval("window.dispatchEvent(new CustomEvent('timerComplete', { detail: { mode: '" + modeName + "', duration: " + fmt.Sprintf("%d", int(duration.Seconds())) + " } }))")
-			})
-		}
-	})
+			// WebView에 완료 알림 전송 (안전한 버전)
+			if app.WebView != nil {
+				app.WebView.Dispatch(func() {
+					jsCode := fmt.Sprintf(`
+						try {
+							window.dispatchEvent(new CustomEvent('timerComplete', {
+								detail: {
+									mode: '%s',
+									duration: %d
+								}
+							}));
+							console.log('타이머 완료 이벤트 전송됨');
+						} catch (e) {
+							console.error('타이머 완료 이벤트 전송 실패:', e);
+						}
+					`, modeName, int(duration.Seconds()))
+					app.WebView.Eval(jsCode)
+				})
+			}
+		})
+	}
 
 	// 시간 업데이트 콜백 설정 (WebView에 실시간 시간 전송)
-	app.TimerManager.SetTimeUpdateCallback(func(remaining time.Duration) {
-		if app.WebView != nil {
-			remainingSeconds := int(remaining.Seconds())
-			app.WebView.Dispatch(func() {
-				app.WebView.Eval(fmt.Sprintf("window.dispatchEvent(new CustomEvent('timerUpdate', { detail: { remaining: %d } }))", remainingSeconds))
-			})
-		}
-	})
+	if app.TimerManager != nil {
+		app.TimerManager.SetTimeUpdateCallback(func(remaining time.Duration) {
+			if app.WebView != nil {
+				remainingSeconds := int(remaining.Seconds())
+				app.WebView.Dispatch(func() {
+					jsCode := fmt.Sprintf(`
+						try {
+							window.dispatchEvent(new CustomEvent('timerUpdate', {
+								detail: {
+									remaining: %d
+								}
+							}));
+						} catch (e) {
+							console.error('타이머 업데이트 이벤트 전송 실패:', e);
+						}
+					`, remainingSeconds)
+					app.WebView.Eval(jsCode)
+				})
+			}
+		})
+	}
 
-	log.Printf("서버 기반 자동 중지 설정: %v", duration)
+	log.Printf("서버 기반 자동 중지 설정 완료: %v", duration)
 }
 
 func (app *Application) RunAutomation(mode string) {
+	log.Printf("자동화 시작: %s", mode)
+
+	// 키보드 매니저 초기화 확인
+	if app.KeyboardManager == nil {
+		log.Printf("키보드 매니저가 nil임")
+		return
+	}
+
 	switch mode {
 	case "daeya-entrance":
+		log.Printf("대야 입장 모드 실행")
 		app.KeyboardManager.DaeyaEnter()
 	case "daeya-party":
+		log.Printf("대야 파티 모드 실행")
 		app.KeyboardManager.DaeyaParty()
 	case "kanchen-entrance":
+		log.Printf("칸첸 입장 모드 실행")
 		app.KeyboardManager.KanchenEnter()
 	case "kanchen-party":
+		log.Printf("칸첸 파티 모드 실행")
 		app.KeyboardManager.KanchenParty()
 	default:
 		log.Printf("알 수 없는 모드: %s", mode)
@@ -137,6 +191,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	log.Println("애플리케이션 초기화 시작")
+
 	// 애플리케이션 초기화
 	app := &Application{
 		Config:            config.NewAppConfig(),
@@ -147,9 +203,23 @@ func main() {
 		CancelFunc:        cancel,
 	}
 
+	// 각 컴포넌트가 제대로 초기화되었는지 확인
+	if app.Config == nil {
+		log.Fatal("Config 초기화 실패")
+	}
+	if app.TimerManager == nil {
+		log.Fatal("TimerManager 초기화 실패")
+	}
+	if app.KeyboardManager == nil {
+		log.Fatal("KeyboardManager 초기화 실패")
+	}
+
+	log.Println("모든 컴포넌트 초기화 완료")
+
 	// 텔레그램 봇 초기화
 	if app.Config.TelegramEnabled && app.Config.TelegramBot != nil {
 		app.TelegramBot = app.Config.TelegramBot
+		log.Println("텔레그램 봇 초기화 완료")
 	}
 
 	// 로깅 설정
@@ -197,30 +267,41 @@ func (app *Application) initWebView() {
 	app.WebView.SetTitle("도우미 - 서버 기반 타이머")
 	app.WebView.SetSize(1024, 768, webview.HintNone)
 
-	// JavaScript API 바인딩
+	// JavaScript API 바인딩 (안전한 버전)
 	app.bindJavaScriptAPI()
 
 	// 페이지 로드
 	url := app.Server.GetURL()
+	log.Printf("WebView 페이지 로드: %s", url)
 	app.WebView.Navigate(url)
 
 	// WebView 실행 (블로킹)
+	log.Println("WebView 실행 시작")
 	app.WebView.Run()
 }
 
-// bindJavaScriptAPI는 JavaScript API를 바인딩합니다
+// bindJavaScriptAPI는 JavaScript API를 바인딩합니다 (안전한 버전)
 func (app *Application) bindJavaScriptAPI() {
+	log.Println("JavaScript API 바인딩 시작")
+
+	// 기본 API
 	app.WebView.Bind("exitApp", func() {
+		log.Println("exitApp API 호출됨")
 		app.CancelFunc()
 		app.WebView.Terminate()
 	})
 
 	app.WebView.Bind("logMessage", func(message string) {
-		log.Printf("WebView: %s", message)
+		log.Printf("WebView 로그: %s", message)
 	})
 
 	// 키 맵핑 관련 JavaScript API
 	app.WebView.Bind("startKeyMapping", func() bool {
+		log.Println("startKeyMapping API 호출됨")
+		if app.KeyMappingManager == nil {
+			log.Printf("KeyMappingManager가 nil임")
+			return false
+		}
 		err := app.KeyMappingManager.Start()
 		if err != nil {
 			log.Printf("키 맵핑 시작 실패: %v", err)
@@ -230,15 +311,36 @@ func (app *Application) bindJavaScriptAPI() {
 	})
 
 	app.WebView.Bind("stopKeyMapping", func() {
-		app.KeyMappingManager.Stop()
+		log.Println("stopKeyMapping API 호출됨")
+		if app.KeyMappingManager != nil {
+			app.KeyMappingManager.Stop()
+		}
 	})
 
 	app.WebView.Bind("getKeyMappingStatus", func() map[string]interface{} {
-		return app.KeyMappingManager.GetMappingStats()
+		log.Println("getKeyMappingStatus API 호출됨")
+		if app.KeyMappingManager != nil {
+			return app.KeyMappingManager.GetMappingStats()
+		}
+		return map[string]interface{}{"running": false}
 	})
 
-	// 서버 기반 타이머 API 추가
+	// 서버 기반 타이머 API 추가 (안전한 버전)
 	app.WebView.Bind("getServerTime", func() map[string]interface{} {
+		if app.TimerManager == nil {
+			log.Printf("TimerManager가 nil임")
+			return map[string]interface{}{
+				"running":          false,
+				"paused":           false,
+				"remainingSeconds": 0,
+				"elapsedSeconds":   0,
+				"totalSeconds":     0,
+				"progress":         0,
+				"remainingString":  "00:00:00",
+				"elapsedString":    "00:00:00",
+			}
+		}
+
 		return map[string]interface{}{
 			"running":          app.TimerManager.IsRunning(),
 			"paused":           app.TimerManager.IsPaused(),
@@ -251,22 +353,53 @@ func (app *Application) bindJavaScriptAPI() {
 		}
 	})
 
-	app.WebView.Bind("startServerTimer", func(durationSeconds int) {
+	app.WebView.Bind("startServerTimer", func(durationSeconds int) bool {
+		log.Printf("startServerTimer API 호출됨: %d초", durationSeconds)
+
+		if app.TimerManager == nil {
+			log.Printf("TimerManager가 nil임")
+			return false
+		}
+
+		if durationSeconds <= 0 {
+			log.Printf("잘못된 지속시간: %d초", durationSeconds)
+			return false
+		}
+
 		duration := time.Duration(durationSeconds) * time.Second
 		app.TimerManager.SetDuration(duration)
 		app.TimerManager.Start()
-		log.Printf("서버 타이머 시작: %v", duration)
+		log.Printf("서버 타이머 시작 성공: %v", duration)
+		return true
 	})
 
-	app.WebView.Bind("stopServerTimer", func() {
+	app.WebView.Bind("stopServerTimer", func() bool {
+		log.Println("stopServerTimer API 호출됨")
+
+		if app.TimerManager == nil {
+			log.Printf("TimerManager가 nil임")
+			return false
+		}
+
 		app.TimerManager.Stop()
-		log.Printf("서버 타이머 일시정지")
+		log.Printf("서버 타이머 일시정지 성공")
+		return true
 	})
 
-	app.WebView.Bind("resetServerTimer", func() {
+	app.WebView.Bind("resetServerTimer", func() bool {
+		log.Println("resetServerTimer API 호출됨")
+
+		if app.TimerManager == nil {
+			log.Printf("TimerManager가 nil임")
+			return false
+		}
+
 		app.TimerManager.Reset()
-		log.Printf("서버 타이머 리셋")
+		log.Printf("서버 타이머 리셋 성공")
+		return true
 	})
+
+	log.Println("JavaScript API 바인딩 완료")
 }
 
 // shutdown은 애플리케이션을 정리합니다
@@ -275,24 +408,31 @@ func (app *Application) shutdown() {
 
 	if app.Server != nil {
 		app.Server.Shutdown()
+		log.Println("서버 종료됨")
 	}
 
 	if app.TimerManager != nil && app.TimerManager.IsRunning() {
 		app.TimerManager.Stop()
+		log.Println("타이머 매니저 종료됨")
 	}
 
 	if app.KeyboardManager != nil && app.KeyboardManager.IsRunning() {
 		app.KeyboardManager.SetRunning(false)
+		log.Println("키보드 매니저 종료됨")
 	}
 
 	// 키 맵핑 시스템 정리
 	if app.KeyMappingManager != nil && app.KeyMappingManager.IsRunning() {
 		app.KeyMappingManager.Stop()
+		log.Println("키 맵핑 매니저 종료됨")
 	}
 
 	if app.AutoStopTimer != nil {
 		app.AutoStopTimer.Stop()
+		log.Println("자동 중지 타이머 종료됨")
 	}
+
+	log.Println("모든 컴포넌트 정리 완료")
 }
 
 // setupLogging은 로깅을 설정합니다
