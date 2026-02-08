@@ -277,215 +277,288 @@ body {
     font-weight: 500;
 }
 
-/* 타이머 카드 */
-.timer-card {
-    background-color: var(--card-bg);
-    border-radius: 10px;
-    padding: 1rem;
-    box-shadow: var(--shadow);
-    margin-bottom: 0.8rem;
+/* ===== 타이머 히어로 영역 ===== */
+.timer-hero {
+    background: linear-gradient(135deg, var(--card-bg) 0%, var(--bg-color) 100%);
+    border-radius: 16px;
+    padding: 2rem 1.5rem 1.5rem;
     text-align: center;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+}
+
+.timer-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 0.5rem;
 }
 
 .timer-display {
-    font-size: 2.5rem;
+    font-size: 3.5rem;
     font-weight: 700;
     font-family: 'Courier New', monospace;
     color: var(--text-primary);
-    margin: 0.8rem 0;
-    transition: all var(--transition-speed);
+    margin: 0.3rem 0;
+    transition: color var(--transition-speed);
+    line-height: 1.2;
 }
 
 .timer-display.running {
     color: var(--primary-color);
-    animation: pulse 2s infinite;
 }
 
-/* 그리드 레이아웃 */
-.settings-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+/* 프로그레스 바 */
+.timer-progress-bar {
+    width: 100%;
+    height: 4px;
+    background-color: var(--border-color);
+    border-radius: 2px;
+    margin: 1rem 0 1.2rem;
+    overflow: hidden;
+}
+
+.timer-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--primary-light));
+    border-radius: 2px;
+    transition: width 1s linear;
+}
+
+/* 히어로 컨트롤 버튼 */
+.hero-controls {
+    display: flex;
     gap: 0.8rem;
+    justify-content: center;
+    align-items: center;
+}
+
+.hero-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: none;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: 'Noto Sans KR', sans-serif;
+}
+
+.hero-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.hero-start {
+    padding: 0.8rem 2.5rem;
+    background-color: var(--success-color);
+    color: white;
+    flex: 1;
+    max-width: 200px;
+}
+
+.hero-start:hover {
+    background-color: #059669;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.hero-start.active {
+    background-color: #059669;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+.hero-stop {
+    padding: 0.8rem 2.5rem;
+    background-color: var(--card-bg);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    flex: 1;
+    max-width: 200px;
+}
+
+.hero-stop:hover {
+    background-color: var(--danger-color);
+    color: white;
+    border-color: var(--danger-color);
+    transform: translateY(-1px);
+}
+
+.hero-stop.active {
+    background-color: var(--danger-color);
+    color: white;
+    border-color: var(--danger-color);
+}
+
+.hero-reset {
+    padding: 0.8rem;
+    background-color: var(--card-bg);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+    width: 44px;
+    height: 44px;
+}
+
+.hero-reset svg {
+    width: 16px;
+    height: 16px;
+}
+
+.hero-reset:hover {
+    color: var(--warning-color);
+    border-color: var(--warning-color);
+    transform: translateY(-1px);
+}
+
+.hero-reset.active {
+    color: var(--warning-color);
+    border-color: var(--warning-color);
+}
+
+/* ===== 퀵 설정 (모드 + 시간) ===== */
+.quick-settings {
+    background-color: var(--card-bg);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+}
+
+.quick-section {
     margin-bottom: 0.8rem;
 }
 
-/* 모드 선택 스타일 */
-.modes-container {
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
+.quick-section:last-child {
+    margin-bottom: 0;
 }
 
-.mode-group {
-    margin-bottom: 0.4rem;
+.quick-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
 }
 
-.mode-options {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.6rem;
-}
-
-.mode-option input[type="radio"] {
-    display: none;
-}
-
-.mode-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--highlight);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 0.8rem;
-    cursor: pointer;
-    transition: all var(--transition-speed);
-    height: 100%;
-    text-align: center;
-}
-
-.mode-option input[type="radio"]:checked+.mode-card {
-    background-color: var(--primary-color);
-    color: white;
-    border-color: var(--primary-light);
-    transform: translateY(-2px);
-    box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1);
-}
-
-.mode-icon {
-    width: 24px;
-    height: 24px;
-    margin-bottom: 0.4rem;
-}
-
-/* 시간 설정 스타일 */
-.time-options {
+/* 모드 탭 */
+.mode-tabs {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 0.6rem;
+    gap: 0.4rem;
+    background-color: var(--bg-color);
+    border-radius: 8px;
+    padding: 3px;
 }
 
-.time-option input[type="radio"] {
+.mode-tab {
+    cursor: pointer;
+}
+
+.mode-tab input[type="radio"] {
     display: none;
 }
 
-.time-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background-color: var(--highlight);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 0.8rem 0.4rem;
-    cursor: pointer;
-    transition: all var(--transition-speed);
-    height: 100%;
+.mode-tab span {
+    display: block;
     text-align: center;
+    padding: 0.5rem 0.3rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
-.time-option input[type="radio"]:checked+.time-card {
+.mode-tab input[type="radio"]:checked + span {
     background-color: var(--primary-color);
     color: white;
-    border-color: var(--primary-light);
-    transform: translateY(-2px);
-    box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
 }
 
-.time-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-}
-
-.time-unit {
-    font-size: 0.8rem;
-}
-
-/* 컨트롤 버튼 */
-.controls-container {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.8rem;
-    margin-bottom: 0.8rem;
-}
-
-.control-button {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    padding: 0.8rem;
-    border: none;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all var(--transition-speed);
-    background-color: var(--card-bg);
+.mode-tab span:hover {
     color: var(--text-primary);
-    box-shadow: var(--shadow);
 }
 
-.control-button svg {
-    width: 20px;
-    height: 20px;
+/* 시간 탭 */
+.time-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.4rem;
+    background-color: var(--bg-color);
+    border-radius: 8px;
+    padding: 3px;
 }
 
-.start-button:hover {
-    background-color: var(--success-color);
+.time-tab {
+    cursor: pointer;
+}
+
+.time-tab input[type="radio"] {
+    display: none;
+}
+
+.time-tab span {
+    display: block;
+    text-align: center;
+    padding: 0.5rem 0.3rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+}
+
+.time-tab input[type="radio"]:checked + span {
+    background-color: var(--primary-color);
     color: white;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25);
 }
 
-.stop-button:hover {
-    background-color: var(--danger-color);
-    color: white;
+.time-tab span:hover {
+    color: var(--text-primary);
 }
 
-.reset-button:hover {
-    background-color: var(--warning-color);
-    color: white;
-}
-
-.control-button.active {
-    transform: scale(0.98);
-}
-
-.start-button.active {
-    background-color: var(--success-color);
-    color: white;
-}
-
-.stop-button.active {
-    background-color: var(--danger-color);
-    color: white;
-}
-
-.reset-button.active {
-    background-color: var(--warning-color);
-    color: white;
-}
-
-/* 미니 로그 표시 */
-.mini-log-card {
+/* ===== 상태 표시줄 ===== */
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
     background-color: var(--card-bg);
     border-radius: 10px;
-    padding: 0.8rem;
-    box-shadow: var(--shadow);
-    margin-top: 0.8rem;
-    margin-bottom: 0.8rem;
+    padding: 0.7rem 1rem;
+    border: 1px solid var(--border-color);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--text-muted);
     flex-shrink: 0;
+    transition: background-color 0.3s;
+}
+
+.status-dot.running {
+    background-color: var(--success-color);
+    animation: pulse 2s infinite;
 }
 
 .mini-log {
     color: var(--text-secondary);
-    font-size: 0.85rem;
-    line-height: 1.5;
+    font-size: 0.8rem;
+    line-height: 1.4;
     font-family: 'Courier New', monospace;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex: 1;
 }
 
 /* 설정 폼 */
@@ -1506,13 +1579,12 @@ input:checked+.slider:before {
 
 /* 작은 화면 대응 */
 @media (max-height: 768px) {
-    .timer-card {
-        padding: 0.8rem;
+    .timer-hero {
+        padding: 1.2rem 1rem 1rem;
     }
 
     .timer-display {
-        font-size: 2.2rem;
-        margin: 0.6rem 0;
+        font-size: 2.8rem;
     }
 
     .card {
@@ -1524,15 +1596,6 @@ input:checked+.slider:before {
         margin-bottom: 0.6rem;
     }
 
-    .mini-log-card {
-        padding: 0.6rem;
-        margin-top: 0.6rem;
-    }
-
-    .control-button {
-        padding: 0.6rem;
-    }
-
     .quest-section {
         padding: 15px;
         gap: 15px;
@@ -1541,12 +1604,11 @@ input:checked+.slider:before {
 
 @media (max-height: 600px) {
     .timer-display {
-        font-size: 1.8rem;
-        margin: 0.4rem 0;
+        font-size: 2.2rem;
     }
 
-    .card h2 {
-        margin-bottom: 0.4rem;
+    .timer-hero {
+        padding: 0.8rem;
     }
 
     .sidebar-header {
@@ -1565,33 +1627,32 @@ input:checked+.slider:before {
         padding: 0.4rem 0.6rem;
     }
 
-    .time-value {
-        font-size: 1.3rem;
+    .hero-btn {
+        font-size: 0.85rem;
+        padding: 0.6rem 1.5rem;
     }
 
-    .time-unit {
-        font-size: 0.7rem;
-    }
-
-    .mode-icon {
-        width: 20px;
-        height: 20px;
+    .mode-tab span,
+    .time-tab span {
+        padding: 0.4rem 0.2rem;
+        font-size: 0.75rem;
     }
 }
 
 /* 작은 화면에서 컨트롤 레이아웃 조정 */
 @media (max-width: 480px) {
-    .controls-container {
-        grid-template-columns: 1fr;
+    .mode-tabs,
+    .time-tabs {
+        grid-template-columns: repeat(2, 1fr);
     }
 
-    .settings-grid {
-        grid-template-columns: 1fr;
+    .hero-controls {
+        flex-wrap: wrap;
     }
 
-    .mode-options,
-    .time-options {
-        grid-template-columns: 1fr 1fr;
+    .hero-start,
+    .hero-stop {
+        max-width: none;
     }
 
     .telegram-actions {

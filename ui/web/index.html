@@ -93,178 +93,84 @@
         <main class="content">
             <!-- 메인 섹션 -->
             <section id="main-section" class="content-section active">
-                <div class="timer-card">
-                    <h2>남은 시간</h2>
-                    <div id="timer-display" class="timer-display">03:00:00</div>
+                <!-- 타이머 + 컨트롤 통합 영역 -->
+                <div class="timer-hero">
+                    <div class="timer-label">남은 시간</div>
+                    <div id="timer-display" class="timer-display">03:10:00</div>
+                    <div class="timer-progress-bar">
+                        <div id="timer-progress-fill" class="timer-progress-fill" style="width: 100%;"></div>
+                    </div>
+                    <div class="hero-controls">
+                        <button id="start-btn" class="hero-btn hero-start">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                            시작
+                        </button>
+                        <button id="stop-btn" class="hero-btn hero-stop">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                                <rect x="6" y="4" width="12" height="16" rx="1"></rect>
+                            </svg>
+                            중지
+                        </button>
+                        <button id="reset-btn" class="hero-btn hero-reset">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
 
-                <div class="settings-grid">
-                    <!-- 모드 선택 카드 -->
-                    <div class="card">
-                        <h2>모드 선택</h2>
-                        <div class="modes-container">
-                            <div class="mode-group">
-                                <h3>대야</h3>
-                                <div class="mode-options">
-                                    <label class="mode-option">
-                                        <input type="radio" name="mode" value="1" checked>
-                                        <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
-                                                class="mode-icon">
-                                                <path d="M15 3H21V9" stroke="currentColor" stroke-width="2"
-                                                    stroke-linecap="round" stroke-linejoin="round" />
-                                                <path
-                                                    d="M21 14V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H10"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                                <path d="M21 3L12 12" stroke="currentColor" stroke-width="2"
-                                                    stroke-linecap="round" stroke-linejoin="round" />
-                                            </svg>
-                                            <span>입장</span>
-                                        </span>
-                                    </label>
-                                    <label class="mode-option">
-                                        <input type="radio" name="mode" value="2">
-                                        <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
-                                                class="mode-icon">
-                                                <path
-                                                    d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                                <path
-                                                    d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                                <path
-                                                    d="M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                                <path
-                                                    d="M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                            </svg>
-                                            <span>파티</span>
-                                        </span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="mode-group">
-                                <h3>칸첸</h3>
-                                <div class="mode-options">
-                                    <label class="mode-option">
-                                        <input type="radio" name="mode" value="3">
-                                        <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
-                                                class="mode-icon">
-                                                <path d="M15 3H21V9" stroke="currentColor" stroke-width="2"
-                                                    stroke-linecap="round" stroke-linejoin="round" />
-                                                <path
-                                                    d="M21 14V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H10"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                                <path d="M21 3L12 12" stroke="currentColor" stroke-width="2"
-                                                    stroke-linecap="round" stroke-linejoin="round" />
-                                            </svg>
-                                            <span>입장</span>
-                                        </span>
-                                    </label>
-                                    <label class="mode-option">
-                                        <input type="radio" name="mode" value="4">
-                                        <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
-                                                class="mode-icon">
-                                                <path
-                                                    d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                                <path
-                                                    d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                                <path
-                                                    d="M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                                <path
-                                                    d="M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88"
-                                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                                    stroke-linejoin="round" />
-                                            </svg>
-                                            <span>파티</span>
-                                        </span>
-                                    </label>
-                                </div>
-                            </div>
+                <!-- 모드 + 시간 선택 통합 카드 -->
+                <div class="quick-settings">
+                    <div class="quick-section">
+                        <div class="quick-label">모드</div>
+                        <div class="mode-tabs">
+                            <label class="mode-tab">
+                                <input type="radio" name="mode" value="1" checked>
+                                <span>대야 입장</span>
+                            </label>
+                            <label class="mode-tab">
+                                <input type="radio" name="mode" value="2">
+                                <span>대야 파티</span>
+                            </label>
+                            <label class="mode-tab">
+                                <input type="radio" name="mode" value="3">
+                                <span>칸첸 입장</span>
+                            </label>
+                            <label class="mode-tab">
+                                <input type="radio" name="mode" value="4">
+                                <span>칸첸 파티</span>
+                            </label>
                         </div>
                     </div>
-
-                    <!-- 시간 설정 카드 -->
-                    <div class="card">
-                        <h2>자동 종료 시간</h2>
-                        <div class="time-options">
-                            <label class="time-option">
+                    <div class="quick-section">
+                        <div class="quick-label">시간</div>
+                        <div class="time-tabs">
+                            <label class="time-tab">
                                 <input type="radio" name="time" value="0">
-                                <span class="time-card">
-                                    <span class="time-value">1</span>
-                                    <span class="time-unit">시간</span>
-                                </span>
+                                <span>1h</span>
                             </label>
-                            <label class="time-option">
+                            <label class="time-tab">
                                 <input type="radio" name="time" value="1">
-                                <span class="time-card">
-                                    <span class="time-value">2</span>
-                                    <span class="time-unit">시간</span>
-                                </span>
+                                <span>2h</span>
                             </label>
-                            <label class="time-option">
+                            <label class="time-tab">
                                 <input type="radio" name="time" value="2" checked>
-                                <span class="time-card">
-                                    <span class="time-value">3</span>
-                                    <span class="time-unit">시간</span>
-                                </span>
+                                <span>3h</span>
                             </label>
-                            <label class="time-option">
+                            <label class="time-tab">
                                 <input type="radio" name="time" value="3">
-                                <span class="time-card">
-                                    <span class="time-value">4</span>
-                                    <span class="time-unit">시간</span>
-                                </span>
+                                <span>4h</span>
                             </label>
                         </div>
                     </div>
                 </div>
 
-                <!-- 컨트롤 버튼 -->
-                <div class="controls-container">
-                    <button id="start-btn" class="control-button start-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                        </svg>
-                        시작
-                    </button>
-                    <button id="stop-btn" class="control-button stop-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="6" y="4" width="12" height="16"></rect>
-                        </svg>
-                        중지
-                    </button>
-                    <button id="reset-btn" class="control-button reset-button">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="23 4 23 10 17 10"></polyline>
-                            <polyline points="1 20 1 14 7 14"></polyline>
-                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                        </svg>
-                        재설정
-                    </button>
-                </div>
-
-                <!-- 로그 간략 표시 -->
-                <div class="mini-log-card">
+                <!-- 상태 표시줄 -->
+                <div class="status-bar">
+                    <div class="status-dot" id="status-dot"></div>
                     <div id="mini-log" class="mini-log">프로그램이 시작되었습니다.</div>
                 </div>
             </section>

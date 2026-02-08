@@ -14,7 +14,9 @@ const TimeOption4Hour = 3;
 
 // DOM 요소 참조
 const timerDisplay = document.getElementById('timer-display');
+const timerProgressFill = document.getElementById('timer-progress-fill');
 const statusIndicator = document.getElementById('status-indicator');
+const statusDot = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
 const miniLog = document.getElementById('mini-log');
 const startBtn = document.getElementById('start-btn');
@@ -74,6 +76,8 @@ let telegramEnabled = false;      // 텔레그램 알림 활성화 여부
 let currentContentSection = 'main'; // 현재 표시 중인 섹션
 let countdownInterval = null;      // 카운트다운 인터벌 ID
 let countdownTime = 3 * 60 * 60;   // 카운트다운 시간 (초)
+let countdownStartTimestamp = null; // 카운트다운 시작 시점 (Date.now())
+let countdownTotalDuration = 0;    // 카운트다운 총 시간 (초)
 let statusCheckInterval = null;     // 상태 확인 인터벌 ID
 let timerPaused = false;           // 타이머 일시 정지 여부
 let serverTimerStarted = false;    // 서버 타이머 시작 여부
@@ -138,6 +142,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 퀘스트 초기화
     initializeQuests();
+
+    // 창 최소화/복귀 시 타이머 즉시 재계산
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && countdownInterval && countdownStartTimestamp) {
+            const elapsed = (Date.now() - countdownStartTimestamp) / 1000;
+            countdownTime = Math.max(0, countdownTotalDuration - elapsed);
+
+            if (countdownTime <= 0) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+                countdownTime = 0;
+                updateCountdownDisplay(0);
+                stopOperation();
+                addLogMessage("설정한 시간이 경과하여 자동으로 종료되었습니다.");
+            } else {
+                updateCountdownDisplay(countdownTime);
+            }
+        }
+    });
 });
 
 function loadSavedSettings() {
@@ -211,7 +234,8 @@ function checkApiStatus() {
                 if (!data.running && !timerPaused) {
                     isRunning = false;
                     statusText.textContent = '준비됨';
-                    statusIndicator.classList.remove('running');
+                    if (statusIndicator) statusIndicator.classList.remove('running');
+                    if (statusDot) statusDot.classList.remove('running');
                     startBtn.classList.remove('active');
                     stopBtn.classList.remove('active');
                     resetCountdown(); // 이 경우에만 타이머 리셋
@@ -221,7 +245,8 @@ function checkApiStatus() {
                     isRunning = true;
                     serverTimerStarted = true;
                     statusText.textContent = '실행 중';
-                    statusIndicator.classList.add('running');
+                    if (statusIndicator) statusIndicator.classList.add('running');
+                    if (statusDot) statusDot.classList.add('running');
                     startBtn.classList.add('active');
                     stopBtn.classList.remove('active');
 
@@ -341,7 +366,8 @@ function setupButtonListeners() {
                 // 상태 업데이트
                 isRunning = true;
                 statusText.textContent = '실행 중';
-                statusIndicator.classList.add('running');
+                if (statusIndicator) statusIndicator.classList.add('running');
+                if (statusDot) statusDot.classList.add('running');
 
             } catch (error) {
                 addLogMessage("오류 발생: 시작 작업을 실행할 수 없습니다.");
@@ -366,7 +392,8 @@ function setupButtonListeners() {
                 isRunning = false;
                 timerPaused = true;
                 statusText.textContent = '준비됨';
-                statusIndicator.classList.remove('running');
+                if (statusIndicator) statusIndicator.classList.remove('running');
+                if (statusDot) statusDot.classList.remove('running');
                 startBtn.classList.remove('active');
 
                 // 타이머 일시정지 (카운트다운 인터벌 중지, 값은 유지)
@@ -915,9 +942,16 @@ function updateCountdownDisplay(seconds) {
     const secs = Math.floor(seconds % 60);
 
     timerDisplay.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+    // 프로그레스 바 업데이트
+    if (timerProgressFill) {
+        const totalSeconds = getHoursFromOption(currentTimeOption) * 60 * 60;
+        const percent = totalSeconds > 0 ? (seconds / totalSeconds) * 100 : 100;
+        timerProgressFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    }
 }
 
-// 카운트다운 시작 - 클라이언트에서 타이머 관리
+// 카운트다운 시작 - 타임스탬프 기반으로 최소화 시에도 정확하게 동작
 function startCountdown(seconds) {
     // 이전 카운트다운이 있으면 중지
     if (countdownInterval) {
@@ -929,20 +963,27 @@ function startCountdown(seconds) {
         countdownTime = seconds;
     }
 
+    // 타임스탬프 기반 타이머 설정
+    countdownTotalDuration = countdownTime;
+    countdownStartTimestamp = Date.now();
+
     // 타이머 표시 업데이트
     updateCountdownDisplay(countdownTime);
 
     // 타이머 스타일 업데이트
     timerDisplay.classList.add('running');
 
-    // 카운트다운 시작
+    // 카운트다운 시작 - 타임스탬프 기반으로 남은 시간 계산
     countdownInterval = setInterval(() => {
-        countdownTime--;
+        const elapsed = (Date.now() - countdownStartTimestamp) / 1000;
+        countdownTime = Math.max(0, countdownTotalDuration - elapsed);
 
         if (countdownTime <= 0) {
             // 시간이 다 되면 자동 종료
             clearInterval(countdownInterval);
             countdownInterval = null;
+            countdownTime = 0;
+            updateCountdownDisplay(0);
             stopOperation();
             addLogMessage("설정한 시간이 경과하여 자동으로 종료되었습니다.");
         } else {
@@ -959,6 +1000,10 @@ function stopCountdown() {
         countdownInterval = null;
     }
 
+    // 타임스탬프 초기화
+    countdownStartTimestamp = null;
+    countdownTotalDuration = 0;
+
     // 타이머 스타일 업데이트
     timerDisplay.classList.remove('running');
 }
@@ -974,6 +1019,8 @@ function resetCountdown() {
     // 타이머 값 초기화
     const hours = getHoursFromOption(currentTimeOption);
     countdownTime = hours * 60 * 60;
+    countdownStartTimestamp = null;
+    countdownTotalDuration = 0;
     updateCountdownDisplay(countdownTime);
 
     // 타이머 스타일 업데이트
@@ -1003,7 +1050,8 @@ window.dispatchAppEvent = function (event) {
                         isRunning = true;
                         serverTimerStarted = true;
                         statusText.textContent = '실행 중';
-                        statusIndicator.classList.add('running');
+                        if (statusIndicator) statusIndicator.classList.add('running');
+                        if (statusDot) statusDot.classList.add('running');
                         startBtn.classList.add('active');
 
                         // 타이머 시작 (일시정지 상태가 아니면)
@@ -1016,7 +1064,8 @@ window.dispatchAppEvent = function (event) {
                     if (isRunning && !timerPaused) {
                         isRunning = false;
                         statusText.textContent = '준비됨';
-                        statusIndicator.classList.remove('running');
+                        if (statusIndicator) statusIndicator.classList.remove('running');
+                        if (statusDot) statusDot.classList.remove('running');
                         startBtn.classList.remove('active');
                         stopBtn.classList.remove('active');
 
@@ -1139,7 +1188,8 @@ function startOperation(wasTimerPaused) {
             // 상태 복원
             isRunning = false;
             statusText.textContent = '준비됨';
-            statusIndicator.classList.remove('running');
+            if (statusIndicator) statusIndicator.classList.remove('running');
+            if (statusDot) statusDot.classList.remove('running');
 
             // 일시정지 상태였다면 복원
             if (wasTimerPaused) {
