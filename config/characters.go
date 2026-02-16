@@ -40,10 +40,20 @@ type GameUICoordinates struct {
 	ConfirmButtonY     int `json:"confirmButtonY"`     // 확인 대화창 "확인" 버튼 Y
 }
 
+// OCRRegionConfig OCR 이름 영역 좌표 설정
+type OCRRegionConfig struct {
+	NameRegionX      int  `json:"nameRegionX"`      // 크롭 시작 X (0 = 자동계산: 오른쪽 위)
+	NameRegionY      int  `json:"nameRegionY"`      // 크롭 시작 Y
+	NameRegionWidth  int  `json:"nameRegionWidth"`  // 크롭 너비
+	NameRegionHeight int  `json:"nameRegionHeight"` // 크롭 높이
+	Enabled          bool `json:"enabled"`          // OCR 자동 감지 사용 여부
+}
+
 // CharacterData JSON 저장 구조
 type CharacterData struct {
 	Characters  []CharacterProfile `json:"characters"`
 	Coordinates GameUICoordinates  `json:"coordinates"`
+	OCRConfig   OCRRegionConfig    `json:"ocrConfig"`
 }
 
 // CharacterStore 캐릭터 저장소
@@ -68,6 +78,13 @@ func NewCharacterStore() *CharacterStore {
 				DropdownFirstItemY: 340,
 				StartButtonX:       250,
 				StartButtonY:       500,
+			},
+			OCRConfig: OCRRegionConfig{
+				NameRegionX:      0,
+				NameRegionY:      5,
+				NameRegionWidth:  180,
+				NameRegionHeight: 25,
+				Enabled:          true,
 			},
 		},
 	}
@@ -258,4 +275,18 @@ func (cs *CharacterStore) ClearAllAssignments() {
 		cs.data.Characters[i].WindowHWND = 0
 		cs.data.Characters[i].Assigned = false
 	}
+}
+
+// GetOCRConfig OCR 설정 반환
+func (cs *CharacterStore) GetOCRConfig() OCRRegionConfig {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return cs.data.OCRConfig
+}
+
+// SetOCRConfig OCR 설정 업데이트
+func (cs *CharacterStore) SetOCRConfig(cfg OCRRegionConfig) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.data.OCRConfig = cfg
 }

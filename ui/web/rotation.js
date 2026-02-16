@@ -38,6 +38,8 @@
         setupRotationListeners();
         loadCharacters();
         loadCoordinates();
+        loadOCRConfig();
+        checkOCRAvailability();
     });
 
     function setupRotationListeners() {
@@ -51,6 +53,10 @@
         if (rotationStartBtn) rotationStartBtn.addEventListener('click', startRotation);
         if (rotationStopBtn) rotationStopBtn.addEventListener('click', stopRotation);
         if (saveCoordsBtn) saveCoordsBtn.addEventListener('click', saveCoordinates);
+        const ocrSelectBtn = document.getElementById('ocr-select-region-btn');
+        if (ocrSelectBtn) ocrSelectBtn.addEventListener('click', openOCRRegionSelector);
+        const ocrTestBtn = document.getElementById('ocr-test-btn');
+        if (ocrTestBtn) ocrTestBtn.addEventListener('click', testOCR);
     }
 
     // === 캐릭터 CRUD ===
@@ -203,34 +209,81 @@
 
     // === 윈도우 감지 & 할당 ===
 
-    function detectWindows() {
+    async function detectWindows() {
         detectWindowsBtn.textContent = '감지 중...';
         detectWindowsBtn.disabled = true;
 
-        fetch('/api/rotation/windows')
-            .then(r => r.json())
-            .then(data => {
-                detectedWindows = data || [];
-                screenshotCache = {}; // 새 감지이므로 캐시 초기화
-                renderWindows();
-                addRotationLog(`${detectedWindows.length}개의 게임 창 감지됨`);
+        try {
+            let useOCR = false;
+            let data;
 
-                // 캐릭터가 있으면 자동 할당
-                if (characters.length > 0 && detectedWindows.length > 0) {
-                    autoAssign();
-                    addRotationLog('캐릭터를 감지된 창에 자동 할당했습니다.');
+            // OCR 감지 먼저 시도
+            try {
+                const r = await fetch('/api/rotation/detect-with-ocr');
+                if (r.ok) {
+                    data = await r.json();
+                    useOCR = true;
                 }
+            } catch (e) {
+                // OCR 실패 시 기존 방식 fallback
+            }
 
-                // 스크린샷 순차 로드
-                loadScreenshotsSequential(0);
-            })
-            .catch(() => {
-                windowList.innerHTML = '<p class="empty-placeholder">창 감지에 실패했습니다.</p>';
-            })
-            .finally(() => {
-                detectWindowsBtn.textContent = '감지';
-                detectWindowsBtn.disabled = false;
-            });
+            // OCR 실패 시 기존 방식
+            if (!useOCR) {
+                const r = await fetch('/api/rotation/windows');
+                data = await r.json();
+            }
+
+            detectedWindows = data || [];
+            screenshotCache = {};
+            addRotationLog(`${detectedWindows.length}개의 게임 창 감지됨`);
+
+            if (useOCR && characters.length > 0) {
+                ocrAutoAssign(data);
+            } else if (characters.length > 0 && detectedWindows.length > 0) {
+                autoAssign();
+                addRotationLog('캐릭터를 감지된 창에 자동 할당했습니다.');
+            }
+
+            renderWindows();
+            loadScreenshotsSequential(0);
+        } catch (e) {
+            windowList.innerHTML = '<p class="empty-placeholder">창 감지에 실패했습니다.</p>';
+        } finally {
+            detectWindowsBtn.textContent = '감지';
+            detectWindowsBtn.disabled = false;
+        }
+    }
+
+    function ocrAutoAssign(ocrResults) {
+        const assignments = [];
+        windowAssignments = {};
+
+        for (const win of ocrResults) {
+            if (win.matchedId && win.confidence !== 'none') {
+                assignments.push({
+                    characterId: win.matchedId,
+                    windowHwnd: win.hwnd
+                });
+                windowAssignments[win.matchedId] = win.hwnd;
+                const matchType = win.confidence === 'exact' ? '정확' : win.confidence === 'remaining' ? '소거법' : '부분';
+                addRotationLog(`OCR: "${win.detectedName || '(미인식)'}" → ${win.matchedName} (${matchType} 일치)`);
+            }
+        }
+
+        if (assignments.length > 0) {
+            sendAssignments(assignments);
+            addRotationLog(`OCR로 ${assignments.length}개 캐릭터 자동 할당 완료`);
+        }
+
+        // 매칭 실패한 캐릭터 안내
+        const matchedCharIds = new Set(assignments.map(a => a.characterId));
+        const unmatchedChars = characters.filter(c => !matchedCharIds.has(c.id));
+        if (unmatchedChars.length > 0) {
+            addRotationLog(`${unmatchedChars.length}개 캐릭터 OCR 매칭 실패 - 수동 할당 필요`);
+        }
+
+        syncCharacterEnabled();
     }
 
     async function loadScreenshotsSequential(idx) {
@@ -272,6 +325,16 @@
                 `<option value="${c.id}" ${windowAssignments[c.id] == w.hwnd ? 'selected' : ''}>${escapeHtml(c.name)}</option>`
             ).join('');
 
+            // OCR 감지 이름 표시
+            const detectedName = w.detectedName || '';
+            const confidence = w.confidence || '';
+            let ocrBadge = '';
+            if (detectedName) {
+                ocrBadge = `<span class="ocr-badge ${confidence}">${escapeHtml(detectedName)}</span>`;
+            } else if (w.confidence === 'none') {
+                ocrBadge = '<span class="ocr-badge none">OCR 미감지</span>';
+            }
+
             return `
                 <div class="window-item-card ${isExcluded ? 'excluded' : ''}" data-hwnd="${w.hwnd}">
                     <div class="window-item-header">
@@ -281,6 +344,7 @@
                         <div class="window-order">${idx + 1}</div>
                         <div class="window-info">
                             <div class="window-title">${escapeHtml(w.title)}</div>
+                            ${ocrBadge ? `<div class="window-ocr-name">${ocrBadge}</div>` : ''}
                         </div>
                         <select class="window-assign-select" data-hwnd="${w.hwnd}" ${isExcluded ? 'disabled' : ''} onchange="rotationWindowAssignChanged()">
                             <option value="">-- 미할당 --</option>
@@ -759,6 +823,302 @@
         const div = document.createElement('div');
         div.textContent = text || '';
         return div.innerHTML;
+    }
+
+    // === OCR 설정 ===
+
+    let ocrScreenshotData = null; // 원본 스크린샷 데이터
+    let ocrImageWidth = 0;
+    let ocrImageHeight = 0;
+
+    function loadOCRConfig() {
+        fetch('/api/rotation/ocr/config')
+            .then(r => r.json())
+            .then(data => {
+                if (data) {
+                    setCoordValue('ocr-region-x', data.nameRegionX);
+                    setCoordValue('ocr-region-y', data.nameRegionY);
+                    setCoordValue('ocr-region-w', data.nameRegionWidth);
+                    setCoordValue('ocr-region-h', data.nameRegionHeight);
+                    updateOCRRegionDisplay();
+                }
+            })
+            .catch(() => {});
+    }
+
+    function updateOCRRegionDisplay() {
+        const x = getCoordValue('ocr-region-x');
+        const y = getCoordValue('ocr-region-y');
+        const w = getCoordValue('ocr-region-w');
+        const h = getCoordValue('ocr-region-h');
+        const el = document.getElementById('ocr-region-display');
+        if (el) {
+            if (w > 0 && h > 0) {
+                const posText = x === 0 ? '자동(오른쪽 위)' : `X:${x}`;
+                el.textContent = `${posText}, Y:${y}, ${w}x${h}px`;
+                el.style.color = 'var(--success-color)';
+            } else {
+                el.textContent = '미설정';
+                el.style.color = 'var(--text-muted)';
+            }
+        }
+    }
+
+    function saveOCRConfig() {
+        const cfg = {
+            nameRegionX: getCoordValue('ocr-region-x'),
+            nameRegionY: getCoordValue('ocr-region-y'),
+            nameRegionWidth: getCoordValue('ocr-region-w'),
+            nameRegionHeight: getCoordValue('ocr-region-h'),
+            enabled: true
+        };
+
+        return fetch('/api/rotation/ocr/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cfg)
+        })
+        .then(r => {
+            if (r.ok) {
+                addRotationLog('OCR 설정 저장됨');
+                updateOCRRegionDisplay();
+            }
+        });
+    }
+
+    function checkOCRAvailability() {
+        fetch('/api/rotation/ocr/check')
+            .then(r => r.json())
+            .then(data => {
+                const el = document.getElementById('ocr-lang-status');
+                if (el) {
+                    if (data.available) {
+                        el.textContent = '사용 가능';
+                        el.style.color = 'var(--success-color)';
+                    } else {
+                        el.textContent = '한국어 언어 팩 미설치';
+                        el.style.color = 'var(--danger-color)';
+                    }
+                }
+            })
+            .catch(() => {});
+    }
+
+    // === OCR 영역 선택 모달 ===
+
+    async function openOCRRegionSelector() {
+        const hwnd = getFirstAssignedHwnd();
+        if (!hwnd) {
+            addRotationLog('먼저 윈도우를 감지해주세요.');
+            return;
+        }
+
+        const btn = document.getElementById('ocr-select-region-btn');
+        if (btn) { btn.textContent = '스크린샷 촬영 중...'; btn.disabled = true; }
+
+        try {
+            const r = await fetch('/api/rotation/screenshot/full?hwnd=' + hwnd);
+            const data = await r.json();
+            if (!data.image) throw new Error('스크린샷 없음');
+
+            ocrScreenshotData = data.image;
+            ocrImageWidth = data.width;
+            ocrImageHeight = data.height;
+
+            showOCRRegionModal();
+        } catch (e) {
+            addRotationLog('스크린샷 촬영 실패: ' + e.message);
+        } finally {
+            if (btn) { btn.textContent = '스크린샷에서 영역 선택'; btn.disabled = false; }
+        }
+    }
+
+    function showOCRRegionModal() {
+        const modal = document.getElementById('ocr-region-modal');
+        const canvas = document.getElementById('ocr-region-canvas');
+        const wrap = document.getElementById('ocr-region-canvas-wrap');
+        const selection = document.getElementById('ocr-region-selection');
+        const coordsDisplay = document.getElementById('ocr-region-coords-display');
+        const saveBtn = document.getElementById('ocr-region-save-btn');
+        const cancelBtn = document.getElementById('ocr-region-cancel-btn');
+        const closeBtn = document.getElementById('ocr-region-modal-close');
+
+        if (!modal || !canvas) return;
+
+        modal.style.display = 'flex';
+        saveBtn.disabled = true;
+        selection.style.display = 'none';
+        coordsDisplay.textContent = '영역을 드래그하세요';
+
+        const img = new Image();
+        img.onload = function() {
+            // 캔버스 크기를 wrap 너비에 맞춤
+            const maxW = wrap.clientWidth - 4;
+            const scale = maxW / img.width;
+            const dispW = Math.floor(img.width * scale);
+            const dispH = Math.floor(img.height * scale);
+
+            canvas.width = dispW;
+            canvas.height = dispH;
+            wrap.style.height = dispH + 'px';
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, dispW, dispH);
+
+            // 기존 설정 표시
+            const curX = getCoordValue('ocr-region-x');
+            const curY = getCoordValue('ocr-region-y');
+            const curW = getCoordValue('ocr-region-w');
+            const curH = getCoordValue('ocr-region-h');
+            if (curW > 0 && curH > 0) {
+                let drawX = curX === 0 ? (ocrImageWidth - curW - 10) : curX;
+                showSelection(drawX * scale, curY * scale, curW * scale, curH * scale);
+            }
+
+            // 드래그 이벤트
+            let dragging = false;
+            let startX = 0, startY = 0;
+            let selRect = { x: 0, y: 0, w: 0, h: 0 };
+
+            function getCanvasPos(e) {
+                const rect = canvas.getBoundingClientRect();
+                return {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
+            }
+
+            function showSelection(x, y, w, h) {
+                selection.style.display = 'block';
+                selection.style.left = x + 'px';
+                selection.style.top = y + 'px';
+                selection.style.width = w + 'px';
+                selection.style.height = h + 'px';
+            }
+
+            canvas.onmousedown = function(e) {
+                dragging = true;
+                const pos = getCanvasPos(e);
+                startX = pos.x;
+                startY = pos.y;
+                selection.style.display = 'none';
+                e.preventDefault();
+            };
+
+            canvas.onmousemove = function(e) {
+                if (!dragging) return;
+                const pos = getCanvasPos(e);
+                const x = Math.min(startX, pos.x);
+                const y = Math.min(startY, pos.y);
+                const w = Math.abs(pos.x - startX);
+                const h = Math.abs(pos.y - startY);
+                showSelection(x, y, w, h);
+                selRect = { x, y, w, h };
+
+                // 원본 좌표로 변환하여 표시
+                const origX = Math.round(x / scale);
+                const origY = Math.round(y / scale);
+                const origW = Math.round(w / scale);
+                const origH = Math.round(h / scale);
+                coordsDisplay.textContent = `X:${origX}, Y:${origY}, ${origW}x${origH}px`;
+            };
+
+            canvas.onmouseup = function(e) {
+                if (!dragging) return;
+                dragging = false;
+                if (selRect.w > 5 && selRect.h > 5) {
+                    saveBtn.disabled = false;
+                }
+            };
+
+            canvas.onmouseleave = function() {
+                if (dragging) {
+                    dragging = false;
+                    if (selRect.w > 5 && selRect.h > 5) {
+                        saveBtn.disabled = false;
+                    }
+                }
+            };
+
+            // 저장 버튼
+            saveBtn.onclick = function() {
+                const origX = Math.round(selRect.x / scale);
+                const origY = Math.round(selRect.y / scale);
+                const origW = Math.round(selRect.w / scale);
+                const origH = Math.round(selRect.h / scale);
+
+                setCoordValue('ocr-region-x', origX);
+                setCoordValue('ocr-region-y', origY);
+                setCoordValue('ocr-region-w', origW);
+                setCoordValue('ocr-region-h', origH);
+
+                saveOCRConfig();
+                modal.style.display = 'none';
+                canvas.onmousedown = null;
+                canvas.onmousemove = null;
+                canvas.onmouseup = null;
+                canvas.onmouseleave = null;
+                addRotationLog(`OCR 영역 설정: X:${origX}, Y:${origY}, ${origW}x${origH}px`);
+            };
+
+            // 취소/닫기
+            function closeModal() {
+                modal.style.display = 'none';
+                canvas.onmousedown = null;
+                canvas.onmousemove = null;
+                canvas.onmouseup = null;
+                canvas.onmouseleave = null;
+            }
+            cancelBtn.onclick = closeModal;
+            closeBtn.onclick = closeModal;
+        };
+        img.src = ocrScreenshotData;
+    }
+
+    // OCR 테스트
+    async function testOCR() {
+        if (!detectedWindows || detectedWindows.length === 0) {
+            addRotationLog('먼저 윈도우를 감지해주세요.');
+            return;
+        }
+
+        const btn = document.getElementById('ocr-test-btn');
+        const resultEl = document.getElementById('ocr-test-result');
+        if (btn) { btn.textContent = 'OCR 인식 중...'; btn.disabled = true; }
+
+        try {
+            const r = await fetch('/api/rotation/detect-with-ocr');
+            const data = await r.json();
+
+            if (resultEl && data && data.length > 0) {
+                resultEl.style.display = 'block';
+
+                // 각 창의 크롭 이미지도 가져오기
+                const cropPromises = data.map(w =>
+                    fetch('/api/rotation/ocr/debug-crop?hwnd=' + w.hwnd)
+                        .then(r => r.json())
+                        .catch(() => null)
+                );
+                const crops = await Promise.all(cropPromises);
+
+                resultEl.innerHTML = data.map((w, i) => {
+                    let nameText = w.detectedName || '(인식 실패)';
+                    let errorText = w.error ? `<div class="ocr-test-error">${escapeHtml(w.error)}</div>` : '';
+                    let cropImg = crops[i] && crops[i].image
+                        ? `<div class="ocr-crop-preview"><img src="${crops[i].image}" alt="크롭 영역" style="max-width:100%;height:auto;border:1px solid var(--border-color);margin-top:4px;image-rendering:pixelated;"></div>`
+                        : '';
+                    return `<div class="ocr-test-item">` +
+                        `<span class="ocr-test-name">${escapeHtml(nameText)}</span>` +
+                        (w.matchedName ? `<span class="ocr-badge ${w.confidence}">${escapeHtml(w.matchedName)}</span>` : '') +
+                        `</div>` + errorText + cropImg;
+                }).join('');
+                addRotationLog('OCR 테스트 완료');
+            }
+        } catch (e) {
+            addRotationLog('OCR 테스트 실패: ' + e.message);
+        } finally {
+            if (btn) { btn.textContent = 'OCR 테스트'; btn.disabled = false; }
+        }
     }
 
 })();

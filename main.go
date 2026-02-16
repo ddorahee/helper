@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image/jpeg"
+	"image/png"
 	"log"
 	"net/http"
 	"os"
@@ -48,6 +52,7 @@ type Application struct {
 	WindowManager    *automation.WindowManager
 	MouseAutomation  *automation.MouseAutomation
 	RotationManager  *automation.RotationManager
+	OCRManager       *automation.OCRManager
 	CharacterStore    *config.CharacterStore
 	KeyMappingStore   *config.KeyMappingStore
 	KeyMappingMgr     *keymapping.KeyMappingManager
@@ -90,6 +95,41 @@ type ModePayload struct {
 type VersionPayload struct {
 	Version   string `json:"version"`
 	BuildDate string `json:"buildDate"`
+}
+
+// levenshtein 두 rune 슬라이스 간의 편집 거리 계산
+func levenshtein(a, b []rune) int {
+	la, lb := len(a), len(b)
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+	dp := make([][]int, la+1)
+	for i := range dp {
+		dp[i] = make([]int, lb+1)
+		dp[i][0] = i
+	}
+	for j := 0; j <= lb; j++ {
+		dp[0][j] = j
+	}
+	for i := 1; i <= la; i++ {
+		for j := 1; j <= lb; j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			dp[i][j] = dp[i-1][j] + 1 // 삭제
+			if dp[i][j-1]+1 < dp[i][j] {
+				dp[i][j] = dp[i][j-1] + 1 // 삽입
+			}
+			if dp[i-1][j-1]+cost < dp[i][j] {
+				dp[i][j] = dp[i-1][j-1] + cost // 대체
+			}
+		}
+	}
+	return dp[la][lb]
 }
 
 func main() {
@@ -138,6 +178,17 @@ func main() {
 
 	windowManager := automation.NewWindowManager()
 	app.WindowManager = windowManager
+
+	// OCR 매니저 초기화
+	ocrManager := automation.NewOCRManager(windowManager)
+	ocrCfg := characterStore.GetOCRConfig()
+	ocrManager.SetConfig(automation.OCRConfig{
+		NameRegionX:      ocrCfg.NameRegionX,
+		NameRegionY:      ocrCfg.NameRegionY,
+		NameRegionWidth:  ocrCfg.NameRegionWidth,
+		NameRegionHeight: ocrCfg.NameRegionHeight,
+	})
+	app.OCRManager = ocrManager
 
 	mouseAutomation := automation.NewMouseAutomation(windowManager)
 	app.MouseAutomation = mouseAutomation
@@ -663,6 +714,246 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"image": screenshot})
+	})
+
+	// 창 스크린샷 캡처 (원본 해상도 - OCR 영역 설정용)
+	http.HandleFunc("/api/rotation/screenshot/full", func(w http.ResponseWriter, r *http.Request) {
+		hwndStr := r.URL.Query().Get("hwnd")
+		if hwndStr == "" {
+			http.Error(w, "hwnd 필요", http.StatusBadRequest)
+			return
+		}
+		var hwnd uint64
+		fmt.Sscanf(hwndStr, "%d", &hwnd)
+
+		img, _, err := app.WindowManager.CaptureWindowRaw(hwnd)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("스크린샷 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// 원본 크기 JPEG 인코딩
+		var buf bytes.Buffer
+		if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 80}); err != nil {
+			http.Error(w, fmt.Sprintf("JPEG 인코딩 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"image":  "data:image/jpeg;base64," + b64,
+			"width":  img.Bounds().Dx(),
+			"height": img.Bounds().Dy(),
+		})
+	})
+
+	// OCR 한국어 지원 확인
+	http.HandleFunc("/api/rotation/ocr/check", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		available, err := app.OCRManager.CheckKoreanOCRAvailable()
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"available": false,
+				"error":     err.Error(),
+			})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"available": available,
+		})
+	})
+
+	// OCR 설정 조회/수정
+	http.HandleFunc("/api/rotation/ocr/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.Method {
+		case http.MethodGet:
+			cfg := app.CharacterStore.GetOCRConfig()
+			json.NewEncoder(w).Encode(cfg)
+
+		case http.MethodPost:
+			var cfg config.OCRRegionConfig
+			if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+				http.Error(w, "잘못된 데이터", http.StatusBadRequest)
+				return
+			}
+			app.CharacterStore.SetOCRConfig(cfg)
+			if err := app.CharacterStore.Save(); err != nil {
+				http.Error(w, "저장 실패", http.StatusInternalServerError)
+				return
+			}
+			app.OCRManager.SetConfig(automation.OCRConfig{
+				NameRegionX:      cfg.NameRegionX,
+				NameRegionY:      cfg.NameRegionY,
+				NameRegionWidth:  cfg.NameRegionWidth,
+				NameRegionHeight: cfg.NameRegionHeight,
+			})
+			json.NewEncoder(w).Encode(cfg)
+
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// OCR 크롭 이미지 디버그 - 실제 크롭 영역 확인용
+	http.HandleFunc("/api/rotation/ocr/debug-crop", func(w http.ResponseWriter, r *http.Request) {
+		hwndStr := r.URL.Query().Get("hwnd")
+		if hwndStr == "" {
+			http.Error(w, "hwnd 필요", http.StatusBadRequest)
+			return
+		}
+		var hwnd uint64
+		fmt.Sscanf(hwndStr, "%d", &hwnd)
+
+		img, err := app.OCRManager.CaptureNameRegion(hwnd)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("크롭 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// PNG로 인코딩하여 반환
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			http.Error(w, fmt.Sprintf("PNG 인코딩 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"image":  "data:image/png;base64," + b64,
+			"width":  img.Bounds().Dx(),
+			"height": img.Bounds().Dy(),
+			"config": app.OCRManager.GetConfig(),
+		})
+	})
+
+	// 윈도우 감지 + OCR 자동 매칭
+	http.HandleFunc("/api/rotation/detect-with-ocr", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		// 1. 게임 창 감지
+		windows, err := app.WindowManager.FindGameWindows()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("창 감지 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// 2. 등록된 캐릭터 목록
+		chars := app.CharacterStore.GetByOrder()
+
+		// 3. 각 창에 대해 OCR 실행 및 매칭
+		type WindowOCRResult struct {
+			HWND         uint64 `json:"hwnd"`
+			Title        string `json:"title"`
+			PID          uint32 `json:"pid"`
+			DetectedName string `json:"detectedName"`
+			MatchedID    string `json:"matchedId,omitempty"`
+			MatchedName  string `json:"matchedName,omitempty"`
+			Confidence   string `json:"confidence"`
+			Error        string `json:"error,omitempty"`
+		}
+
+		var results []WindowOCRResult
+		for _, win := range windows {
+			result := WindowOCRResult{
+				HWND:       win.HWND,
+				Title:      win.Title,
+				PID:        win.PID,
+				Confidence: "none",
+			}
+
+			name, err := app.OCRManager.DetectCharacterName(win.HWND)
+			if err != nil {
+				log.Printf("[OCR] 실패 (hwnd=%d): %v", win.HWND, err)
+				result.DetectedName = ""
+				result.Error = err.Error()
+			} else {
+				log.Printf("[OCR] 감지 (hwnd=%d): '%s'", win.HWND, name)
+				result.DetectedName = name
+				// 등록된 캐릭터와 매칭 (빈 문자열이면 매칭 안 함)
+				if name != "" {
+					bestDist := 999
+					nameRunes := []rune(name)
+
+					for _, c := range chars {
+						charRunes := []rune(c.Name)
+						charLen := len(charRunes)
+
+						// 1. 정확 일치
+						if c.Name == name {
+							result.MatchedID = c.ID
+							result.MatchedName = c.Name
+							result.Confidence = "exact"
+							bestDist = 0
+							break
+						}
+
+						// 2. 전체 문자열 편집 거리
+						dist := levenshtein(nameRunes, charRunes)
+						if dist <= 2 && dist < bestDist {
+							bestDist = dist
+							result.MatchedID = c.ID
+							result.MatchedName = c.Name
+							result.Confidence = "partial"
+						}
+
+						// 3. 부분 문자열 매칭: OCR 결과가 더 길 때
+						//    OCR 결과 내에서 캐릭터 이름 길이만큼의 윈도우를 슬라이딩하며 최소 거리 탐색
+						if len(nameRunes) > charLen {
+							for start := 0; start <= len(nameRunes)-charLen; start++ {
+								sub := nameRunes[start : start+charLen]
+								d := levenshtein(sub, charRunes)
+								if d <= 1 && d < bestDist {
+									bestDist = d
+									result.MatchedID = c.ID
+									result.MatchedName = c.Name
+									result.Confidence = "partial"
+								}
+							}
+						}
+					}
+					if bestDist > 0 && bestDist <= 2 && result.MatchedID != "" {
+						log.Printf("[OCR] 유사도 매칭: '%s' ≈ '%s' (거리=%d)", name, result.MatchedName, bestDist)
+					}
+				}
+			}
+
+			results = append(results, result)
+		}
+
+		// 소거법: 미매칭 창이 있고 미매칭 캐릭터가 있으면 자동 배정
+		matchedIDs := make(map[string]bool)
+		for _, res := range results {
+			if res.MatchedID != "" {
+				matchedIDs[res.MatchedID] = true
+			}
+		}
+		var unmatchedChars []struct{ ID, Name string }
+		for _, c := range chars {
+			if !matchedIDs[c.ID] {
+				unmatchedChars = append(unmatchedChars, struct{ ID, Name string }{c.ID, c.Name})
+			}
+		}
+		var unmatchedIdxs []int
+		for i, res := range results {
+			if res.MatchedID == "" {
+				unmatchedIdxs = append(unmatchedIdxs, i)
+			}
+		}
+		// 미매칭 창 수와 미매칭 캐릭터 수가 같으면 순서대로 배정
+		if len(unmatchedIdxs) > 0 && len(unmatchedIdxs) == len(unmatchedChars) {
+			for j, idx := range unmatchedIdxs {
+				results[idx].MatchedID = unmatchedChars[j].ID
+				results[idx].MatchedName = unmatchedChars[j].Name
+				results[idx].Confidence = "remaining"
+				log.Printf("[OCR] 소거법 매칭: hwnd=%d → '%s'", results[idx].HWND, unmatchedChars[j].Name)
+			}
+		}
+
+		json.NewEncoder(w).Encode(results)
 	})
 
 	// 창-캐릭터 매핑

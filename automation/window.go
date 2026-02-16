@@ -170,9 +170,9 @@ func (wm *WindowManager) IsWindowValid(hwnd uint64) bool {
 	return ret != 0
 }
 
-// CaptureWindow 창 스크린샷을 JPEG base64 문자열로 반환
+// CaptureWindowRaw 창의 원본 RGBA 이미지를 캡처하여 반환
 // 창을 앞으로 가져온 후 화면 DC에서 캡처 (DirectX 게임 대응)
-func (wm *WindowManager) CaptureWindow(hwnd uint64) (string, error) {
+func (wm *WindowManager) CaptureWindowRaw(hwnd uint64) (*image.RGBA, WindowRect, error) {
 	// 창을 앞으로 가져오기 (게임은 전면에 있어야 캡처 가능)
 	wm.ActivateWindow(hwnd)
 	time.Sleep(300 * time.Millisecond)
@@ -180,25 +180,25 @@ func (wm *WindowManager) CaptureWindow(hwnd uint64) (string, error) {
 	// 창 크기/위치 가져오기 (활성화 후 다시)
 	rect, err := wm.GetWindowRect(hwnd)
 	if err != nil {
-		return "", err
+		return nil, rect, err
 	}
 	width := int(rect.Right - rect.Left)
 	height := int(rect.Bottom - rect.Top)
 	if width <= 0 || height <= 0 {
-		return "", fmt.Errorf("유효하지 않은 창 크기: %dx%d", width, height)
+		return nil, rect, fmt.Errorf("유효하지 않은 창 크기: %dx%d", width, height)
 	}
 
 	// 화면 전체 DC (NULL = 전체 화면)
 	screenDC, _, _ := procGetDC.Call(0)
 	if screenDC == 0 {
-		return "", fmt.Errorf("GetDC(screen) 실패")
+		return nil, rect, fmt.Errorf("GetDC(screen) 실패")
 	}
 	defer procReleaseDC.Call(0, screenDC)
 
 	// 호환 DC 생성
 	memDC, _, _ := procCreateCompatibleDC.Call(screenDC)
 	if memDC == 0 {
-		return "", fmt.Errorf("CreateCompatibleDC 실패")
+		return nil, rect, fmt.Errorf("CreateCompatibleDC 실패")
 	}
 	defer procDeleteDC.Call(memDC)
 
@@ -220,7 +220,7 @@ func (wm *WindowManager) CaptureWindow(hwnd uint64) (string, error) {
 		0, 0,
 	)
 	if hBitmap == 0 {
-		return "", fmt.Errorf("CreateDIBSection 실패")
+		return nil, rect, fmt.Errorf("CreateDIBSection 실패")
 	}
 	defer procDeleteObject.Call(hBitmap)
 
@@ -244,6 +244,19 @@ func (wm *WindowManager) CaptureWindow(hwnd uint64) (string, error) {
 		img.Pix[i+2] = data[i+0] // B ← R
 		img.Pix[i+3] = 255       // A
 	}
+
+	return img, rect, nil
+}
+
+// CaptureWindow 창 스크린샷을 JPEG base64 문자열로 반환
+func (wm *WindowManager) CaptureWindow(hwnd uint64) (string, error) {
+	img, _, err := wm.CaptureWindowRaw(hwnd)
+	if err != nil {
+		return "", err
+	}
+
+	width := img.Bounds().Dx()
+	height := img.Bounds().Dy()
 
 	// 썸네일 축소 (max 320px 너비)
 	thumbW := 320

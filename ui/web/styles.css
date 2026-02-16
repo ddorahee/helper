@@ -1362,6 +1362,197 @@ input:checked + .slider:before {
     color: var(--text-muted);
 }
 
+/* OCR 감지 이름 배지 */
+.window-ocr-name {
+    margin-top: 2px;
+}
+
+.ocr-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+.ocr-badge.exact {
+    background-color: var(--success-glow);
+    color: var(--success-color);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.ocr-badge.partial {
+    background-color: var(--warning-glow);
+    color: var(--warning-color);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.ocr-badge.none {
+    background-color: rgba(107, 114, 128, 0.2);
+    color: var(--text-muted);
+    border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* OCR 설정 상태 */
+.ocr-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.8rem;
+    margin-bottom: 0.5rem;
+    background-color: var(--highlight);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+}
+
+.ocr-status-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.ocr-status-value {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.ocr-region-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.8rem;
+    margin-bottom: 0.5rem;
+    background-color: var(--highlight);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+}
+
+.ocr-region-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.ocr-region-value {
+    font-weight: 600;
+}
+
+/* OCR 영역 선택 모달 */
+.ocr-region-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.ocr-region-modal-content {
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    width: 90%;
+    max-width: 900px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ocr-region-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.2rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.ocr-region-modal-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.ocr-region-modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0 0.3rem;
+    line-height: 1;
+}
+
+.ocr-region-modal-close:hover {
+    color: var(--text-primary);
+}
+
+.ocr-region-canvas-wrap {
+    position: relative;
+    overflow: auto;
+    padding: 2px;
+    max-height: 60vh;
+    cursor: crosshair;
+}
+
+.ocr-region-canvas-wrap canvas {
+    display: block;
+    border-radius: 4px;
+}
+
+.ocr-region-selection {
+    position: absolute;
+    border: 2px solid var(--primary-color);
+    background: rgba(99, 102, 241, 0.2);
+    pointer-events: none;
+    z-index: 10;
+}
+
+.ocr-region-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.8rem 1.2rem;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.ocr-region-modal-footer div {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* OCR 테스트 결과 */
+.ocr-test-result {
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.8rem;
+    background-color: var(--highlight);
+    border-radius: var(--radius-sm);
+}
+
+.ocr-test-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+    font-size: 0.85rem;
+}
+
+.ocr-test-name {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.ocr-test-error {
+    font-size: 0.7rem;
+    color: var(--danger-color);
+    padding: 0.1rem 0 0.3rem 0;
+    word-break: break-all;
+}
+
 .window-assign-select {
     padding: 0.35rem 0.5rem;
     border: 1px solid var(--border-color);
