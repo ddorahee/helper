@@ -14,6 +14,9 @@ const TimeOption4Hour = 3;
 
 // DOM 요소 참조
 const timerDisplay = document.getElementById('timer-display');
+const timerStartEl = document.getElementById('timer-start');
+const timerEndEl = document.getElementById('timer-end');
+const timerProgressFill = document.getElementById('timer-progress-fill');
 const statusIndicator = document.getElementById('status-indicator');
 const statusText = document.getElementById('status-text');
 const miniLog = document.getElementById('mini-log');
@@ -162,6 +165,13 @@ function setupInitialSelections() {
             currentMode = parseInt(e.target.value);
             setModeApi(currentMode);
             addLogMessage(`${getModeName(currentMode)} 모드 선택됨`);
+
+            // 칸첸 모드일 때만 아이템 습득 카드 표시
+            const pickupCard = document.getElementById('item-pickup-card');
+            if (pickupCard) {
+                const isKanchen = (currentMode === ModeKanchenEnter || currentMode === ModeKanchenParty);
+                pickupCard.style.display = isKanchen ? '' : 'none';
+            }
         });
     });
 
@@ -256,6 +266,9 @@ function setupButtonListeners() {
                 countdownEndTime = null;
                 countdownPausedRemaining = null;
                 updateCountdownDisplay(countdownTime);
+                timerDisplay.classList.remove('running');
+                if (timerStartEl) timerStartEl.textContent = '--:--';
+                if (timerEndEl) timerEndEl.textContent = '--:--';
 
                 setTimeout(() => {
                     resetBtn.classList.remove('active');
@@ -475,16 +488,19 @@ function updateCountdownDisplay(seconds) {
     timerDisplay.textContent =
         `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
-    // 프로그레스 링 업데이트
+    // 프로그레스 바 업데이트
     const totalSeconds = getHoursFromOption(currentTimeOption) * 60 * 60;
     const progress = totalSeconds > 0 ? (seconds / totalSeconds) : 1;
-    const progressRing = document.getElementById('timer-progress');
-    if (progressRing) {
-        const circumference = 2 * Math.PI * 120;
-        const offset = circumference * (1 - progress);
-        progressRing.style.strokeDasharray = circumference;
-        progressRing.style.strokeDashoffset = offset;
+    if (timerProgressFill) {
+        timerProgressFill.style.width = (progress * 100) + '%';
     }
+}
+
+// 시:분 포맷 헬퍼
+function formatHM(date) {
+    const h = date.getHours().toString().padStart(2, '0');
+    const m = date.getMinutes().toString().padStart(2, '0');
+    return `${h}:${m}`;
 }
 
 // BUG FIX: 카운트다운 시작 - Date.now() 기반 실제 시각 추적
@@ -501,6 +517,12 @@ function startCountdown(seconds) {
         countdownTime = seconds;
         countdownEndTime = Date.now() + (seconds * 1000);
     }
+
+    // 시작/종료 시각 표시
+    const startTime = new Date();
+    const endTime = new Date(countdownEndTime);
+    if (timerStartEl) timerStartEl.textContent = formatHM(startTime);
+    if (timerEndEl) timerEndEl.textContent = formatHM(endTime);
 
     updateCountdownDisplay(countdownTime);
     timerDisplay.classList.add('running');
@@ -549,6 +571,10 @@ function resetCountdown() {
     updateCountdownDisplay(countdownTime);
     timerDisplay.classList.remove('running');
     timerPaused = false;
+
+    // 시작/종료 시각 초기화
+    if (timerStartEl) timerStartEl.textContent = '--:--';
+    if (timerEndEl) timerEndEl.textContent = '--:--';
 }
 
 // 이벤트 수신 함수
@@ -733,6 +759,287 @@ function setAutoStartupApi(enabled) {
         body: `type=auto_startup&value=${enabled ? 1 : 0}`
     }).catch(() => {});
 }
+
+// === 아이템 자동 습득 설정 (다중 아이템) ===
+(function() {
+    const pickupCard = document.getElementById('item-pickup-card');
+    const pickupToggle = document.getElementById('item-pickup-toggle');
+    const pickupList = document.getElementById('item-pickup-list');
+    const pickupAddBtn = document.getElementById('item-pickup-add-btn');
+    const pickupInterval = document.getElementById('item-pickup-interval');
+    const pickupIntervalDisplay = document.getElementById('item-pickup-interval-display');
+    const pickupTileW = document.getElementById('item-pickup-tile-w');
+    const pickupTileH = document.getElementById('item-pickup-tile-h');
+    const pickupOriginX = document.getElementById('item-pickup-origin-x');
+    const pickupOriginY = document.getElementById('item-pickup-origin-y');
+    const pickupTargetMap = document.getElementById('item-pickup-target-map');
+    const pickupWrongMap = document.getElementById('item-pickup-wrong-map');
+    const pickupSkillKeys = document.getElementById('item-pickup-skill-keys');
+    const pickupSaveBtn = document.getElementById('item-pickup-save-btn');
+    const pickupTestBtn = document.getElementById('item-pickup-test-btn');
+    const pickupTestResult = document.getElementById('item-pickup-test-result');
+
+    // 아이템 리스트 데이터
+    let itemList = [];
+
+    // 아이템 행 렌더링
+    function renderItemList() {
+        if (!pickupList) return;
+        pickupList.innerHTML = '';
+        itemList.forEach((item, idx) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:0.3rem;align-items:center';
+            // 이름 입력
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.value = item.name;
+            nameInput.placeholder = '아이템 이름';
+            nameInput.style.cssText = 'flex:1;padding:0.3rem 0.5rem;font-size:0.8rem;min-width:0;border:1px solid var(--border-color);border-radius:var(--radius-sm);background:var(--bg-color);color:var(--text-primary)';
+            nameInput.addEventListener('input', () => { itemList[idx].name = nameInput.value; });
+            // 색상 배지 버튼
+            const colorBtn = document.createElement('button');
+            colorBtn.style.cssText = 'padding:0.2rem 0.5rem;font-size:0.7rem;font-weight:600;border-radius:4px;border:1px solid;cursor:pointer;white-space:nowrap;min-width:40px;text-align:center';
+            function updateColorBtn() {
+                if (item.color === 'yellow') {
+                    colorBtn.textContent = '노랑';
+                    colorBtn.style.background = 'rgba(245,158,11,0.2)';
+                    colorBtn.style.color = '#f59e0b';
+                    colorBtn.style.borderColor = 'rgba(245,158,11,0.4)';
+                } else {
+                    colorBtn.textContent = '초록';
+                    colorBtn.style.background = 'rgba(34,197,94,0.2)';
+                    colorBtn.style.color = '#22c55e';
+                    colorBtn.style.borderColor = 'rgba(34,197,94,0.4)';
+                }
+            }
+            updateColorBtn();
+            colorBtn.addEventListener('click', () => {
+                itemList[idx].color = item.color === 'green' ? 'yellow' : 'green';
+                item.color = itemList[idx].color;
+                updateColorBtn();
+            });
+            // 삭제 버튼
+            const delBtn = document.createElement('button');
+            delBtn.textContent = 'X';
+            delBtn.style.cssText = 'padding:0.2rem 0.4rem;font-size:0.7rem;border:1px solid var(--border-color);border-radius:4px;background:none;color:var(--text-muted);cursor:pointer';
+            delBtn.addEventListener('click', () => {
+                itemList.splice(idx, 1);
+                renderItemList();
+            });
+            row.appendChild(nameInput);
+            row.appendChild(colorBtn);
+            row.appendChild(delBtn);
+            pickupList.appendChild(row);
+        });
+    }
+
+    // 아이템 추가 버튼
+    if (pickupAddBtn) {
+        pickupAddBtn.addEventListener('click', () => {
+            itemList.push({ name: '', color: 'green' });
+            renderItemList();
+        });
+    }
+
+    // 슬라이더 값 실시간 표시
+    if (pickupInterval) {
+        pickupInterval.addEventListener('input', () => {
+            if (pickupIntervalDisplay) pickupIntervalDisplay.textContent = pickupInterval.value;
+        });
+    }
+
+    // 복귀좌표 입력 제한: 숫자만, 3자리 max (0~999)
+    [pickupOriginX, pickupOriginY].forEach(el => {
+        if (!el) return;
+        el.addEventListener('input', () => {
+            el.value = el.value.replace(/[^0-9]/g, '').slice(0, 3);
+        });
+        el.addEventListener('blur', () => {
+            let v = parseInt(el.value) || 0;
+            if (v > 999) v = 999;
+            if (v < 0) v = 0;
+            el.value = v;
+        });
+    });
+
+    // 초기 로드 시 설정 불러오기
+    async function loadItemPickupConfig() {
+        try {
+            const res = await fetch('/api/item-pickup/config');
+            if (!res.ok) return;
+            const data = await res.json();
+            if (pickupToggle) pickupToggle.checked = data.enabled || false;
+            // Items 배열 로드
+            if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+                itemList = data.items.map(it => ({ name: it.name || '', color: it.color || 'green' }));
+            } else {
+                // 기본 아이템
+                itemList = [
+                    { name: '설산의보석', color: 'green' },
+                    { name: '찬란한설산의보석', color: 'green' },
+                    { name: '찬란한아그니의적영', color: 'yellow' },
+                ];
+            }
+            renderItemList();
+            if (pickupInterval && data.scanInterval) {
+                pickupInterval.value = data.scanInterval;
+                if (pickupIntervalDisplay) pickupIntervalDisplay.textContent = data.scanInterval;
+            }
+            if (pickupTileW && data.tilePixelW) pickupTileW.value = data.tilePixelW;
+            if (pickupTileH && data.tilePixelH) pickupTileH.value = data.tilePixelH;
+            if (pickupOriginX) pickupOriginX.value = data.originX || 0;
+            if (pickupOriginY) pickupOriginY.value = data.originY || 0;
+            if (pickupTargetMap) pickupTargetMap.value = data.targetMap || '';
+            if (pickupWrongMap) pickupWrongMap.value = data.wrongMap || '';
+            if (pickupSkillKeys) pickupSkillKeys.value = (data.skillKeys && data.skillKeys.length > 0) ? data.skillKeys.join(',') : '';
+        } catch(e) {}
+    }
+
+    // UI에서 아이템 리스트 수집
+    function collectItems() {
+        return itemList.filter(it => it.name.trim() !== '').map(it => ({
+            name: it.name.trim(),
+            color: it.color || 'green'
+        }));
+    }
+
+    // 설정 저장
+    if (pickupSaveBtn) {
+        pickupSaveBtn.addEventListener('click', async () => {
+            const items = collectItems();
+            if (items.length === 0) {
+                addLogMessage('감지할 아이템을 최소 1개 입력하세요.');
+                return;
+            }
+            const cfg = {
+                enabled: pickupToggle ? pickupToggle.checked : false,
+                items: items,
+                scanInterval: pickupInterval ? parseInt(pickupInterval.value) : 1,
+                tilePixelW: pickupTileW ? parseInt(pickupTileW.value) : 48,
+                tilePixelH: pickupTileH ? parseInt(pickupTileH.value) : 48,
+                originX: pickupOriginX ? parseInt(pickupOriginX.value) || 0 : 0,
+                originY: pickupOriginY ? parseInt(pickupOriginY.value) || 0 : 0,
+                targetMap: pickupTargetMap ? pickupTargetMap.value.trim() : '',
+                wrongMap: pickupWrongMap ? pickupWrongMap.value.trim() : '',
+                skillKeys: pickupSkillKeys ? pickupSkillKeys.value.split(',').map(k => k.trim()).filter(k => k) : [],
+            };
+            try {
+                const res = await fetch('/api/item-pickup/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cfg)
+                });
+                if (res.ok) {
+                    addLogMessage('아이템 습득 설정이 저장되었습니다. (' + items.length + '개 아이템)');
+                } else {
+                    addLogMessage('아이템 습득 설정 저장 실패');
+                }
+            } catch(e) {
+                addLogMessage('아이템 습득 설정 저장 실패: ' + e.message);
+            }
+        });
+    }
+
+    // 테스트 스캔
+    if (pickupTestBtn) {
+        pickupTestBtn.addEventListener('click', async () => {
+            if (!pickupTestResult) return;
+            pickupTestResult.style.display = 'block';
+            pickupTestResult.textContent = '스캔 중...';
+            pickupTestResult.className = 'ocr-test-result';
+
+            try {
+                const res = await fetch('/api/item-pickup/test-scan');
+                const data = await res.json();
+                if (data.error) {
+                    pickupTestResult.textContent = '오류: ' + data.error;
+                    pickupTestResult.className = 'ocr-test-result error';
+                } else {
+                    let msg = data.message || '결과 없음';
+                    if (data.words && data.words.length > 0) {
+                        msg += '\n\n인식된 단어 (' + data.words.length + '개):';
+                        data.words.slice(0, 20).forEach(w => {
+                            msg += '\n  "' + w.Text + '" @ (' + Math.round(w.X) + ',' + Math.round(w.Y) + ')';
+                        });
+                        if (data.words.length > 20) {
+                            msg += '\n  ... 외 ' + (data.words.length - 20) + '개';
+                        }
+                    }
+                    pickupTestResult.innerHTML = '';
+                    pickupTestResult.className = 'ocr-test-result' + (msg.includes('발견') ? ' success' : '');
+                    if (data.markedImage) {
+                        const img = document.createElement('img');
+                        img.src = data.markedImage;
+                        img.style.cssText = 'max-width:100%;border-radius:4px;margin-bottom:0.5rem';
+                        pickupTestResult.appendChild(img);
+                    }
+                    const pre = document.createElement('pre');
+                    pre.style.cssText = 'margin:0;white-space:pre-wrap;font-size:0.85rem';
+                    pre.textContent = msg;
+                    pickupTestResult.appendChild(pre);
+                }
+            } catch(e) {
+                pickupTestResult.textContent = '테스트 실패: ' + e.message;
+                pickupTestResult.className = 'ocr-test-result error';
+            }
+        });
+    }
+
+    // 좌표 OCR 테스트
+    const pickupCoordBtn = document.getElementById('item-pickup-coord-btn');
+    if (pickupCoordBtn) {
+        pickupCoordBtn.addEventListener('click', async () => {
+            if (!pickupTestResult) return;
+            pickupTestResult.style.display = 'block';
+            pickupTestResult.textContent = '좌표 인식 중...';
+            pickupTestResult.className = 'ocr-test-result';
+
+            try {
+                const res = await fetch('/api/item-pickup/test-coords');
+                const data = await res.json();
+                pickupTestResult.innerHTML = '';
+                if (data.success) {
+                    pickupTestResult.className = 'ocr-test-result success';
+                    const msg = document.createElement('div');
+                    msg.textContent = '좌표 인식 성공: X=' + data.x + ', Y=' + data.y + ' (화면: ' + data.imgWidth + 'x' + data.imgHeight + ')';
+                    pickupTestResult.appendChild(msg);
+                } else {
+                    pickupTestResult.className = 'ocr-test-result error';
+                    const msg = document.createElement('div');
+                    msg.textContent = '좌표 인식 실패: ' + (data.error || '알 수 없음') + ' (화면: ' + (data.imgWidth||'?') + 'x' + (data.imgHeight||'?') + ')';
+                    pickupTestResult.appendChild(msg);
+                }
+                if (data.ocrResults && data.ocrResults.length > 0) {
+                    const ocrLabel = document.createElement('div');
+                    ocrLabel.textContent = 'OCR 결과:';
+                    ocrLabel.style.cssText = 'font-size:0.75rem;color:var(--text-muted);margin-top:0.3rem';
+                    pickupTestResult.appendChild(ocrLabel);
+                    data.ocrResults.forEach(r => {
+                        const line = document.createElement('div');
+                        line.textContent = r;
+                        line.style.cssText = 'font-size:0.7rem;color:var(--text-muted);font-family:monospace;padding-left:0.5rem';
+                        pickupTestResult.appendChild(line);
+                    });
+                }
+                if (data.cropImage) {
+                    const label = document.createElement('div');
+                    label.textContent = '우하단 크롭 영역:';
+                    label.style.cssText = 'font-size:0.75rem;color:var(--text-muted);margin-top:0.3rem';
+                    pickupTestResult.appendChild(label);
+                    const img = document.createElement('img');
+                    img.src = data.cropImage;
+                    img.style.cssText = 'max-width:100%;border:1px solid var(--text-muted);border-radius:4px';
+                    pickupTestResult.appendChild(img);
+                }
+            } catch(e) {
+                pickupTestResult.textContent = '좌표 테스트 실패: ' + e.message;
+                pickupTestResult.className = 'ocr-test-result error';
+            }
+        });
+    }
+
+    loadItemPickupConfig();
+})();
 
 // 키 맵핑 탭은 keymapping.js에서 처리
 

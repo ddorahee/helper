@@ -293,7 +293,7 @@ body {
 .card h2 {
     font-size: 0.85rem;
     color: var(--text-secondary);
-    margin-bottom: 0.8rem;
+    margin-bottom: 0.5rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -306,84 +306,68 @@ body {
     font-weight: 500;
 }
 
-/* ==================== 타이머 카드 (원형 프로그레스) ==================== */
+/* ==================== 타이머 카드 (테이블형) ==================== */
 .timer-card {
-    background: linear-gradient(135deg, var(--card-bg) 0%, rgba(99, 102, 241, 0.05) 100%);
+    background: linear-gradient(135deg, var(--card-bg) 0%, rgba(99, 102, 241, 0.08) 100%);
     border-radius: var(--radius-lg);
-    padding: 1.5rem 1rem;
+    padding: 0.6rem 1rem;
     border: 1px solid var(--border-color);
-    text-align: center;
-    position: relative;
-    overflow: hidden;
+    min-height: 2.2rem;
 }
 
-.timer-card h2 {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    font-weight: 600;
-    margin-bottom: 0.8rem;
-}
-
-.timer-wrapper {
-    position: relative;
-    display: inline-block;
-    width: 200px;
-    height: 200px;
-}
-
-.timer-svg {
-    width: 200px;
-    height: 200px;
-    transform: rotate(-90deg);
-}
-
-.timer-bg {
-    fill: none;
-    stroke: var(--border-color);
-    stroke-width: 4;
-}
-
-.timer-progress {
-    fill: none;
-    stroke: var(--primary-color);
-    stroke-width: 4;
-    stroke-linecap: round;
-    transition: stroke-dashoffset 1s linear;
-    filter: drop-shadow(0 0 6px var(--primary-glow));
-}
-
-.timer-display-wrapper {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+.timer-table {
     display: flex;
-    flex-direction: column;
     align-items: center;
+    gap: 0.8rem;
+    justify-content: center;
 }
 
-.timer-display {
-    font-size: 2.2rem;
-    font-weight: 700;
+.timer-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.timer-row-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.timer-row-value {
+    font-size: 0.9rem;
+    font-weight: 600;
     font-family: 'Courier New', monospace;
     color: var(--text-primary);
-    letter-spacing: 0.05em;
-    transition: color var(--transition-speed);
-    line-height: 1;
+    letter-spacing: 0.03em;
 }
 
-.timer-display.running {
+.timer-row-remaining .timer-row-value {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.timer-row-remaining .timer-row-value.running {
     color: var(--primary-light);
 }
 
-.timer-label {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    margin-top: 0.3rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
+.timer-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.timer-progress-fill {
+    height: 100%;
+    background: var(--primary-color);
+    border-radius: 2px;
+    width: 100%;
+    transition: width 1s linear;
+    box-shadow: 0 0 6px var(--primary-glow);
 }
 
 /* ==================== 설정 그리드 ==================== */
@@ -397,7 +381,7 @@ body {
 .modes-container {
     display: flex;
     flex-direction: column;
-    gap: 0.7rem;
+    gap: 0.4rem;
 }
 
 .mode-group {
@@ -422,12 +406,12 @@ body {
     background-color: var(--highlight);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    padding: 0.7rem;
+    padding: 0.5rem;
     cursor: pointer;
     transition: all var(--transition-speed) var(--transition-bounce);
     text-align: center;
     font-size: 0.85rem;
-    gap: 0.3rem;
+    gap: 0.2rem;
 }
 
 .mode-card:hover {
@@ -835,7 +819,7 @@ input:checked + .slider:before {
     background-color: var(--text-muted);
 }
 
-/* ==================== 순환 사냥 ==================== */
+/* ==================== 자동 사냥 ==================== */
 .rotation-topbar {
     display: flex;
     align-items: center;
@@ -1531,6 +1515,19 @@ input:checked + .slider:before {
     padding: 0.5rem 0.8rem;
     background-color: var(--highlight);
     border-radius: var(--radius-sm);
+    white-space: pre-wrap;
+    font-size: 0.85rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.ocr-test-result.success {
+    border-left: 3px solid var(--success-color);
+}
+
+.ocr-test-result.error {
+    border-left: 3px solid var(--danger-color);
+    color: var(--danger-color);
 }
 
 .ocr-test-item {
@@ -1801,7 +1798,7 @@ input:checked + .slider:before {
     font-style: italic;
 }
 
-/* 순환 로그 */
+/* 자동 사냥 로그 */
 .rotation-log-card {
     max-height: 200px;
 }
@@ -1879,55 +1876,59 @@ input:checked + .slider:before {
     }
 }
 
-@media (max-height: 768px) {
-    .timer-wrapper {
-        width: 160px;
-        height: 160px;
-    }
-
-    .timer-svg {
-        width: 160px;
-        height: 160px;
-    }
-
-    .timer-display {
-        font-size: 1.8rem;
-    }
-
+@media (max-height: 800px) {
     .timer-card {
-        padding: 1rem;
+        padding: 0.3rem 0.6rem;
+    }
+
+    .timer-row-value {
+        font-size: 0.8rem;
+    }
+
+    .timer-row-remaining .timer-row-value {
+        font-size: 0.9rem;
     }
 
     .card {
-        padding: 0.9rem;
+        padding: 0.7rem;
     }
 
     .control-button {
+        padding: 0.5rem;
+    }
+
+    .content-section.active {
+        gap: 0.4rem;
+    }
+
+    .content {
         padding: 0.6rem;
+    }
+
+    .settings-grid {
+        gap: 0.4rem;
     }
 }
 
 @media (max-height: 600px) {
-    .timer-wrapper {
-        width: 130px;
-        height: 130px;
-    }
-
-    .timer-svg {
-        width: 130px;
-        height: 130px;
-    }
-
-    .timer-display {
-        font-size: 1.5rem;
-    }
-
     .timer-card {
-        padding: 0.6rem;
+        padding: 0.2rem 0.5rem;
     }
 
-    .timer-card h2 {
-        margin-bottom: 0.3rem;
+    .timer-table {
+        gap: 0.5rem;
+    }
+
+    .timer-row-label {
+        font-size: 0.6rem;
+    }
+
+    .timer-row-value {
+        font-size: 0.75rem;
+    }
+
+    .timer-row-remaining .timer-row-value {
+        font-size: 0.85rem;
     }
 
     .sidebar-header { padding: 0.5rem; }

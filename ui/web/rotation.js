@@ -1,4 +1,4 @@
-// 순환 사냥 프론트엔드 로직
+// 자동 사냥 프론트엔드 로직
 
 (function() {
     'use strict';
@@ -105,6 +105,7 @@
         document.getElementById('char-dropdown-index').value = '0';
         document.getElementById('char-duration').value = '120';
         characterForm.style.display = 'block';
+        characterForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     function hideForm() {
@@ -157,6 +158,7 @@
         document.getElementById('char-dropdown-index').value = char.huntingArea?.dropdownIndex || 0;
         document.getElementById('char-duration').value = char.durationMins;
         characterForm.style.display = 'block';
+        characterForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     };
 
     window.rotationDeleteChar = function(id) {
@@ -470,6 +472,8 @@
                     setCoordValue('coord-start-y', data.startButtonY);
                     setCoordValue('coord-confirm-x', data.confirmButtonX || 0);
                     setCoordValue('coord-confirm-y', data.confirmButtonY || 0);
+                    setCoordValue('coord-alert-confirm-x', data.alertConfirmX || 0);
+                    setCoordValue('coord-alert-confirm-y', data.alertConfirmY || 0);
                     updateCoordDisplays();
                 }
             })
@@ -484,6 +488,7 @@
         const ih = getCoordValue('coord-item-height');
 
         const cx = getCoordValue('coord-confirm-x'), cy = getCoordValue('coord-confirm-y');
+        const acx = getCoordValue('coord-alert-confirm-x'), acy = getCoordValue('coord-alert-confirm-y');
 
         const swordDisp = document.getElementById('coord-sword-display');
         const dropdownDisp = document.getElementById('coord-dropdown-display');
@@ -491,6 +496,7 @@
         const firstItemDisp = document.getElementById('coord-first-item-display');
         const itemHeightDisp = document.getElementById('coord-item-height-display');
         const confirmDisp = document.getElementById('coord-confirm-display');
+        const alertConfirmDisp = document.getElementById('coord-alert-confirm-display');
 
         if (swordDisp) swordDisp.textContent = (sx || sy) ? `(${sx}, ${sy})` : '미설정';
         if (dropdownDisp) dropdownDisp.textContent = (dx || dy) ? `(${dx}, ${dy})` : '미설정';
@@ -498,6 +504,7 @@
         if (firstItemDisp) firstItemDisp.textContent = fiy > 0 ? `Y: ${fiy}` : '미설정';
         if (itemHeightDisp) itemHeightDisp.textContent = ih > 0 ? `${ih}px` : '미설정';
         if (confirmDisp) confirmDisp.textContent = (cx || cy) ? `(${cx}, ${cy})` : '미설정';
+        if (alertConfirmDisp) alertConfirmDisp.textContent = (acx || acy) ? `(${acx}, ${acy})` : '미설정';
     }
 
     function saveCoordinates() {
@@ -511,7 +518,9 @@
             startButtonX: getCoordValue('coord-start-x'),
             startButtonY: getCoordValue('coord-start-y'),
             confirmButtonX: getCoordValue('coord-confirm-x'),
-            confirmButtonY: getCoordValue('coord-confirm-y')
+            confirmButtonY: getCoordValue('coord-confirm-y'),
+            alertConfirmX: getCoordValue('coord-alert-confirm-x'),
+            alertConfirmY: getCoordValue('coord-alert-confirm-y')
         };
 
         fetch('/api/rotation/coordinates', {
@@ -537,12 +546,13 @@
     // === 클릭 캡처 모드 ===
 
     function setupCaptureBtns() {
-        document.querySelectorAll('.capture-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const target = btn.dataset.target;
-                const msg = btn.dataset.msg;
-                if (target && msg) startCapture(target, msg);
-            });
+        // 이벤트 위임: 동적/정적 버튼 모두 처리
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.capture-btn');
+            if (!btn) return;
+            const target = btn.dataset.target;
+            const msg = btn.dataset.msg;
+            if (target && msg) startCapture(target, msg);
         });
     }
 
@@ -554,7 +564,12 @@
         return 0;
     }
 
+    let captureInProgress = false;
+    let captureInterval = null;
+
     function startCapture(target, message) {
+        if (captureInProgress) return;
+
         const hwnd = getFirstAssignedHwnd();
         if (!hwnd) {
             addRotationLog('먼저 윈도우를 감지해주세요.');
@@ -567,18 +582,27 @@
 
         if (!overlay) return;
 
+        captureInProgress = true;
+
+        // 이전 interval 정리
+        if (captureInterval) {
+            clearInterval(captureInterval);
+            captureInterval = null;
+        }
+
         overlay.style.display = 'flex';
         messageEl.textContent = message;
 
         let count = 3;
         countdownEl.textContent = count;
 
-        const interval = setInterval(() => {
+        captureInterval = setInterval(() => {
             count--;
             if (count > 0) {
                 countdownEl.textContent = count;
             } else {
-                clearInterval(interval);
+                clearInterval(captureInterval);
+                captureInterval = null;
                 countdownEl.textContent = '...';
                 messageEl.textContent = '마우스 위치를 감지하는 중...';
 
@@ -601,10 +625,12 @@
                     } else if (target === 'confirm') {
                         setCoordValue('coord-confirm-x', data.x);
                         setCoordValue('coord-confirm-y', data.y);
+                    } else if (target === 'alert-confirm') {
+                        setCoordValue('coord-alert-confirm-x', data.x);
+                        setCoordValue('coord-alert-confirm-y', data.y);
                     } else if (target === 'firstitem') {
                         setCoordValue('coord-first-y', data.y);
                     } else if (target === 'seconditem') {
-                        // 두 번째 항목의 Y에서 첫 번째 항목 Y를 빼서 항목 높이 계산
                         const firstY = getCoordValue('coord-first-y');
                         if (firstY > 0) {
                             const height = data.y - firstY;
@@ -621,13 +647,14 @@
 
                     updateCoordDisplays();
                     addRotationLog(`${message.replace('를 클릭하세요', '').replace('에 마우스를 올리세요', '')} 좌표: (${data.x}, ${data.y})`);
-                    // 캡처할 때마다 자동으로 서버에 좌표 저장
                     saveCoordinates();
                     overlay.style.display = 'none';
+                    captureInProgress = false;
                 })
                 .catch(err => {
                     addRotationLog('좌표 캡처 실패: ' + err.message);
                     overlay.style.display = 'none';
+                    captureInProgress = false;
                 });
             }
         }, 1000);
@@ -638,7 +665,7 @@
         setTimeout(setupCaptureBtns, 100);
     });
 
-    // === 순환 시작/중지 ===
+    // === 자동 사냥 시작/중지 ===
 
     function startRotation() {
         // 시작 전 좌표 검증
@@ -668,7 +695,7 @@
                 if (r.ok) {
                     rotationRunning = true;
                     updateRotationUI();
-                    addRotationLog('순환 사냥 시작!');
+                    addRotationLog('자동 사냥 시작!');
                     startStatusPolling();
                 } else {
                     return r.text().then(t => { throw new Error(t); });
@@ -685,7 +712,7 @@
                 if (r.ok) {
                     rotationRunning = false;
                     updateRotationUI();
-                    addRotationLog('순환 사냥 중지');
+                    addRotationLog('자동 사냥 중지');
                     stopStatusPolling();
                 }
             });
@@ -772,7 +799,7 @@
         }
     }
 
-    // === 순환 로그 ===
+    // === 자동 사냥 로그 ===
 
     function addRotationLog(message) {
         if (!rotationLog) return;
@@ -806,7 +833,7 @@
                 rotationRunning = false;
                 updateRotationUI();
                 stopStatusPolling();
-                addRotationLog('순환 사냥 완료!');
+                addRotationLog('자동 사냥 완료!');
                 break;
             case 'rotationError':
                 if (payload && payload.message) addRotationLog('오류: ' + payload.message);

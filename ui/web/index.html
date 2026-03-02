@@ -48,7 +48,7 @@
                         <polyline points="1 20 1 14 7 14"></polyline>
                         <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                     </svg>
-                    순환 사냥
+                    자동 사냥
                 </button>
                 <button class="nav-button" data-section="logs">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -86,17 +86,22 @@
             <!-- 메인 섹션 -->
             <section id="main-section" class="content-section active">
                 <div class="timer-card">
-                    <h2>남은 시간</h2>
-                    <div class="timer-wrapper">
-                        <svg class="timer-svg" viewBox="0 0 260 260">
-                            <circle class="timer-bg" cx="130" cy="130" r="120" />
-                            <circle id="timer-progress" class="timer-progress" cx="130" cy="130" r="120"
-                                stroke-dasharray="753.98" stroke-dashoffset="0" />
-                        </svg>
-                        <div class="timer-display-wrapper">
-                            <div id="timer-display" class="timer-display">03:00:00</div>
-                            <div class="timer-label">remaining</div>
+                    <div class="timer-table">
+                        <div class="timer-row">
+                            <span class="timer-row-label">시작</span>
+                            <span class="timer-row-value" id="timer-start">--:--</span>
                         </div>
+                        <div class="timer-row">
+                            <span class="timer-row-label">종료</span>
+                            <span class="timer-row-value" id="timer-end">--:--</span>
+                        </div>
+                        <div class="timer-row timer-row-remaining">
+                            <span class="timer-row-label">남은</span>
+                            <span class="timer-row-value" id="timer-display">03:00:00</span>
+                        </div>
+                    </div>
+                    <div class="timer-progress-bar">
+                        <div class="timer-progress-fill" id="timer-progress-fill"></div>
                     </div>
                 </div>
 
@@ -198,6 +203,51 @@
                             </label>
                         </div>
                     </div>
+                </div>
+
+                <!-- 아이템 자동 습득 설정 (칸첸 모드 전용) -->
+                <div class="card" id="item-pickup-card" style="display:none">
+                    <div class="rotation-card-header" style="margin-bottom:0.5rem">
+                        <h2 style="font-size:1rem">아이템 자동 습득</h2>
+                        <label class="switch">
+                            <input type="checkbox" id="item-pickup-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <!-- 아이템 리스트 -->
+                    <div id="item-pickup-list" style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.4rem"></div>
+                    <button id="item-pickup-add-btn" class="add-btn" style="width:100%;padding:0.3rem;font-size:0.75rem;margin-bottom:0.4rem">+ 아이템 추가</button>
+                    <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem">
+                        <span style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">주기 <span id="item-pickup-interval-display">1</span>초</span>
+                        <input type="range" id="item-pickup-interval" min="1" max="15" value="1" step="1" style="flex:1">
+                    </div>
+                    <input type="hidden" id="item-pickup-tile-w" value="48">
+                    <input type="hidden" id="item-pickup-tile-h" value="24">
+                    <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem">
+                        <span style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">복귀좌표</span>
+                        <span style="font-size:0.8rem;color:var(--text-muted)">X</span>
+                        <input type="text" id="item-pickup-origin-x" placeholder="101" value="0" maxlength="3" pattern="[0-9]{1,3}" inputmode="numeric" style="width:50px;padding:0.3rem 0.4rem;font-size:0.85rem;text-align:center">
+                        <span style="font-size:0.8rem;color:var(--text-muted)">Y</span>
+                        <input type="text" id="item-pickup-origin-y" placeholder="186" value="0" maxlength="3" pattern="[0-9]{1,3}" inputmode="numeric" style="width:50px;padding:0.3rem 0.4rem;font-size:0.85rem;text-align:center">
+                        <span style="font-size:0.7rem;color:var(--text-muted);white-space:nowrap">(게임좌표)</span>
+                    </div>
+                    <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem">
+                        <span style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">스킬키</span>
+                        <input type="text" id="item-pickup-skill-keys" placeholder="1,2,8" value="" style="flex:1;padding:0.3rem 0.4rem;font-size:0.85rem">
+                        <span style="font-size:0.7rem;color:var(--text-muted);white-space:nowrap">(쉼표 구분)</span>
+                    </div>
+                    <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem">
+                        <span style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">스캔맵</span>
+                        <input type="text" id="item-pickup-target-map" placeholder="칸첸중가설산" value="" style="flex:1;padding:0.3rem 0.4rem;font-size:0.85rem">
+                        <span style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">이동맵</span>
+                        <input type="text" id="item-pickup-wrong-map" placeholder="칸첸중가설산초입" value="" style="flex:1;padding:0.3rem 0.4rem;font-size:0.85rem">
+                    </div>
+                    <div style="display:flex;gap:0.5rem">
+                        <button id="item-pickup-save-btn" class="save-btn" style="flex:1;padding:0.4rem;font-size:0.8rem">저장</button>
+                        <button id="item-pickup-test-btn" class="detect-btn" style="flex:1;padding:0.4rem;font-size:0.8rem">테스트</button>
+                        <button id="item-pickup-coord-btn" class="apply-btn" style="flex:1;padding:0.4rem;font-size:0.8rem">좌표 테스트</button>
+                    </div>
+                    <div id="item-pickup-test-result" class="ocr-test-result" style="display:none;margin-top:0.4rem"></div>
                 </div>
 
                 <!-- 컨트롤 버튼 -->
@@ -363,9 +413,9 @@
                 </div>
             </section>
 
-            <!-- 순환 사냥 섹션 -->
+            <!-- 자동 사냥 섹션 -->
             <section id="rotation-section" class="content-section">
-                <!-- 순환 상태 바 (컴팩트) -->
+                <!-- 자동 사냥 상태 바 (컴팩트) -->
                 <div class="rotation-topbar">
                     <div class="rotation-topbar-left">
                         <div class="rotation-badge" id="rotation-badge">대기</div>
@@ -394,10 +444,7 @@
                             <h2>캐릭터 관리</h2>
                             <button id="add-character-btn" class="add-btn">+ 추가</button>
                         </div>
-                        <div id="character-list" class="character-list">
-                            <p class="empty-placeholder">등록된 캐릭터가 없습니다.</p>
-                        </div>
-                        <!-- 캐릭터 추가 폼 (숨김) -->
+                        <!-- 캐릭터 추가/수정 폼 (숨김, 리스트 위에 배치) -->
                         <div id="character-form" class="character-form" style="display:none">
                             <div class="form-row">
                                 <label>캐릭터 이름</label>
@@ -420,6 +467,9 @@
                                 <button id="save-character-btn" class="save-btn">저장</button>
                                 <button id="cancel-character-btn" class="cancel-btn">취소</button>
                             </div>
+                        </div>
+                        <div id="character-list" class="character-list">
+                            <p class="empty-placeholder">등록된 캐릭터가 없습니다.</p>
                         </div>
                     </div>
 
@@ -524,6 +574,19 @@
                             </div>
                             <button class="capture-btn" data-target="confirm" data-msg="확인 버튼을 클릭하세요">위치 찾기</button>
                         </div>
+
+                        <div class="coord-capture-item">
+                            <div class="coord-label-group">
+                                <span class="coord-icon">&#9888;</span>
+                                <span>채굴 확인</span>
+                            </div>
+                            <div class="coord-value-group">
+                                <span class="coord-display" id="coord-alert-confirm-display">미설정</span>
+                                <input type="hidden" id="coord-alert-confirm-x" value="0">
+                                <input type="hidden" id="coord-alert-confirm-y" value="0">
+                            </div>
+                            <button class="capture-btn" data-target="alert-confirm" data-msg="채굴 확인 버튼을 클릭하세요">위치 찾기</button>
+                        </div>
                     </div>
                     <button id="save-coords-btn" class="save-btn" style="margin-top:0.8rem;width:100%">좌표 저장</button>
                 </div>
@@ -572,9 +635,9 @@
                     </div>
                 </div>
 
-                <!-- 순환 로그 -->
+                <!-- 자동 사냥 로그 -->
                 <div class="card rotation-log-card">
-                    <h2>순환 로그</h2>
+                    <h2>자동 사냥 로그</h2>
                     <div id="rotation-log" class="rotation-log"></div>
                 </div>
             </section>

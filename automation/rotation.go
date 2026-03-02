@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// RotationState 순환 상태
+// RotationState 자동 사냥 상태
 type RotationState int
 
 const (
@@ -19,7 +19,7 @@ const (
 	RotationComplete                        // 모든 캐릭터 완료
 )
 
-// RotationCharacter 순환에 참여하는 캐릭터 정보
+// RotationCharacter 자동 사냥에 참여하는 캐릭터 정보
 type RotationCharacter struct {
 	ID             string
 	Name           string
@@ -30,7 +30,7 @@ type RotationCharacter struct {
 	WindowHWND     uint64
 }
 
-// RotationStatus 현재 순환 상태 정보
+// RotationStatus 현재 자동 사냥 상태 정보
 type RotationStatus struct {
 	State            string `json:"state"`
 	Running          bool   `json:"running"`
@@ -52,7 +52,7 @@ type RotationEvent struct {
 // EventCallback 이벤트 콜백 함수 타입
 type EventCallback func(eventType string, payload interface{})
 
-// RotationManager 순환 사냥 관리자
+// RotationManager 자동 사냥 관리자
 type RotationManager struct {
 	mu             sync.RWMutex
 	state          RotationState
@@ -68,7 +68,7 @@ type RotationManager struct {
 	eventCallback  EventCallback
 }
 
-// NewRotationManager 새로운 순환 관리자 생성
+// NewRotationManager 새로운 자동 사냥 관리자 생성
 func NewRotationManager(wm *WindowManager, ma *MouseAutomation) *RotationManager {
 	return &RotationManager{
 		state:   RotationIdle,
@@ -92,7 +92,7 @@ func (rm *RotationManager) SetCoordinates(coords GameUICoords) {
 	rm.coords = coords
 }
 
-// Start 순환 시작
+// Start 자동 사냥 시작
 func (rm *RotationManager) Start(characters []RotationCharacter, coords GameUICoords) error {
 	rm.mu.Lock()
 
@@ -124,13 +124,13 @@ func (rm *RotationManager) Start(characters []RotationCharacter, coords GameUICo
 
 	rm.mu.Unlock()
 
-	// 순환 고루틴 시작
+	// 자동 사냥 고루틴 시작
 	go rm.runRotation()
 
 	return nil
 }
 
-// Stop 순환 중지
+// Stop 자동 사냥 중지
 func (rm *RotationManager) Stop() {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
@@ -142,7 +142,7 @@ func (rm *RotationManager) Stop() {
 	rm.running = false
 	close(rm.stopChan)
 	rm.state = RotationIdle
-	rm.emitEvent("rotationLog", map[string]string{"message": "순환 사냥이 중지되었습니다."})
+	rm.emitEvent("rotationLog", map[string]string{"message": "자동 사냥이 중지되었습니다."})
 	rm.emitEvent("rotationStatus", rm.buildStatusLocked())
 }
 
@@ -197,10 +197,10 @@ func (rm *RotationManager) stateString() string {
 	}
 }
 
-// runRotation 순환 메인 루프
+// runRotation 자동 사냥 메인 루프
 func (rm *RotationManager) runRotation() {
-	log.Println("[순환] 순환 사냥 시작")
-	rm.emitEvent("rotationLog", map[string]string{"message": "순환 사냥을 시작합니다."})
+	log.Println("[자동사냥] 자동 사냥 시작")
+	rm.emitEvent("rotationLog", map[string]string{"message": "자동 사냥을 시작합니다."})
 
 	for rm.currentIndex < len(rm.characters) {
 		rm.mu.RLock()
@@ -215,12 +215,12 @@ func (rm *RotationManager) runRotation() {
 		rm.setState(RotationActivating)
 		msg := fmt.Sprintf("[%d/%d] %s - %s 창 활성화 중...",
 			rm.currentIndex+1, len(rm.characters), char.Name, char.HuntingArea)
-		log.Printf("[순환] %s", msg)
+		log.Printf("[자동사냥] %s", msg)
 		rm.emitEvent("rotationLog", map[string]string{"message": msg})
 
 		if err := rm.window.ActivateWindow(char.WindowHWND); err != nil {
 			errMsg := fmt.Sprintf("%s 창 활성화 실패: %v", char.Name, err)
-			log.Printf("[순환] 오류: %s", errMsg)
+			log.Printf("[자동사냥] 오류: %s", errMsg)
 			rm.emitEvent("rotationError", map[string]string{"message": errMsg})
 			rm.stopWithError(errMsg)
 			return
@@ -235,15 +235,18 @@ func (rm *RotationManager) runRotation() {
 		// 2. 사냥 시작
 		rm.setState(RotationStarting)
 		msg = fmt.Sprintf("%s - 사냥 시작 중 (사냥터: %s)...", char.Name, char.HuntingArea)
-		log.Printf("[순환] %s", msg)
+		log.Printf("[자동사냥] %s", msg)
 		rm.emitEvent("rotationLog", map[string]string{"message": msg})
 
 		logFn := func(msg string) {
 			rm.emitEvent("rotationLog", map[string]string{"message": fmt.Sprintf("[%s] %s", char.Name, msg)})
 		}
-		if err := rm.mouse.StartHunting(char.WindowHWND, rm.coords, char.DropdownIndex, logFn); err != nil {
+		if err := rm.mouse.StartHunting(char.WindowHWND, rm.coords, char.DropdownIndex, logFn, rm.stopChan); err != nil {
+			if rm.isStopped() {
+				return
+			}
 			errMsg := fmt.Sprintf("%s 사냥 시작 실패: %v", char.Name, err)
-			log.Printf("[순환] 오류: %s", errMsg)
+			log.Printf("[자동사냥] 오류: %s", errMsg)
 			rm.emitEvent("rotationError", map[string]string{"message": errMsg})
 			rm.stopWithError(errMsg)
 			return
@@ -258,7 +261,7 @@ func (rm *RotationManager) runRotation() {
 		rm.setState(RotationHunting)
 		durationSecs := char.DurationMins * 60
 		msg = fmt.Sprintf("%s - 사냥 중 (%d분 대기)...", char.Name, char.DurationMins)
-		log.Printf("[순환] %s", msg)
+		log.Printf("[자동사냥] %s", msg)
 		rm.emitEvent("rotationLog", map[string]string{"message": msg})
 
 		if !rm.waitForDuration(durationSecs) {
@@ -273,7 +276,7 @@ func (rm *RotationManager) runRotation() {
 
 		msg = fmt.Sprintf("%s - 사냥 시간 완료! (%d/%d)",
 			char.Name, rm.completedCount, len(rm.characters))
-		log.Printf("[순환] %s", msg)
+		log.Printf("[자동사냥] %s", msg)
 		rm.emitEvent("rotationLog", map[string]string{"message": msg})
 
 		// 다음 캐릭터가 있으면 전환
@@ -292,7 +295,7 @@ func (rm *RotationManager) runRotation() {
 	rm.running = false
 	rm.mu.Unlock()
 
-	log.Println("[순환] 모든 캐릭터 순환 완료")
+	log.Println("[자동사냥] 모든 캐릭터 자동 사냥 완료")
 	rm.emitEvent("rotationLog", map[string]string{"message": "모든 캐릭터의 사냥이 완료되었습니다!"})
 	rm.emitEvent("rotationComplete", nil)
 	rm.emitEvent("rotationStatus", rm.GetStatus())

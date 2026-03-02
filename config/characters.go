@@ -38,22 +38,45 @@ type GameUICoordinates struct {
 	StartButtonY       int `json:"startButtonY"`
 	ConfirmButtonX     int `json:"confirmButtonX"`     // 확인 대화창 "확인" 버튼 X
 	ConfirmButtonY     int `json:"confirmButtonY"`     // 확인 대화창 "확인" 버튼 Y
+	AlertConfirmX      int `json:"alertConfirmX"`      // 채굴 확인 버튼 X (ESC 후)
+	AlertConfirmY      int `json:"alertConfirmY"`      // 채굴 확인 버튼 Y
 }
 
 // OCRRegionConfig OCR 이름 영역 좌표 설정
 type OCRRegionConfig struct {
-	NameRegionX      int  `json:"nameRegionX"`      // 크롭 시작 X (0 = 자동계산: 오른쪽 위)
+	NameRegionX      int  `json:"nameRegionX"`      // 크롭 시작 X (0 = 자동계산: 왼쪽 위)
 	NameRegionY      int  `json:"nameRegionY"`      // 크롭 시작 Y
 	NameRegionWidth  int  `json:"nameRegionWidth"`  // 크롭 너비
 	NameRegionHeight int  `json:"nameRegionHeight"` // 크롭 높이
 	Enabled          bool `json:"enabled"`          // OCR 자동 감지 사용 여부
 }
 
+// ItemPickupTargetItem 감지 대상 아이템 (영속화용)
+type ItemPickupTargetItem struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+// ItemPickupConfig 아이템 자동 습득 설정 (영속화용)
+type ItemPickupConfig struct {
+	Enabled      bool                   `json:"enabled"`
+	Items        []ItemPickupTargetItem `json:"items"`
+	ScanInterval int                    `json:"scanInterval"`
+	TilePixelW   int                    `json:"tilePixelW"`
+	TilePixelH   int                    `json:"tilePixelH"`
+	OriginX      int                    `json:"originX"`
+	OriginY      int                    `json:"originY"`
+	TargetMap    string                 `json:"targetMap"`
+	WrongMap     string                 `json:"wrongMap"`
+	SkillKeys    []string               `json:"skillKeys"`
+}
+
 // CharacterData JSON 저장 구조
 type CharacterData struct {
-	Characters  []CharacterProfile `json:"characters"`
-	Coordinates GameUICoordinates  `json:"coordinates"`
-	OCRConfig   OCRRegionConfig    `json:"ocrConfig"`
+	Characters       []CharacterProfile `json:"characters"`
+	Coordinates      GameUICoordinates  `json:"coordinates"`
+	OCRConfig        OCRRegionConfig    `json:"ocrConfig"`
+	ItemPickupConfig ItemPickupConfig   `json:"itemPickupConfig,omitempty"`
 }
 
 // CharacterStore 캐릭터 저장소
@@ -80,10 +103,10 @@ func NewCharacterStore() *CharacterStore {
 				StartButtonY:       500,
 			},
 			OCRConfig: OCRRegionConfig{
-				NameRegionX:      0,
+				NameRegionX:      0, // 자동계산: 왼쪽 위
 				NameRegionY:      5,
-				NameRegionWidth:  180,
-				NameRegionHeight: 25,
+				NameRegionWidth:  200,
+				NameRegionHeight: 30,
 				Enabled:          true,
 			},
 		},
@@ -103,7 +126,21 @@ func (cs *CharacterStore) Load() error {
 		return err
 	}
 
-	return json.Unmarshal(content, &cs.data)
+	if err := json.Unmarshal(content, &cs.data); err != nil {
+		return err
+	}
+
+	// OCR 기본값 보정 (JSON에 ocrConfig 없으면 0으로 초기화되므로)
+	if cs.data.OCRConfig.NameRegionWidth == 0 {
+		cs.data.OCRConfig.NameRegionWidth = 200
+	}
+	if cs.data.OCRConfig.NameRegionHeight == 0 {
+		cs.data.OCRConfig.NameRegionHeight = 30
+		cs.data.OCRConfig.NameRegionY = 5
+		cs.data.OCRConfig.Enabled = true
+	}
+
+	return nil
 }
 
 // Save JSON 파일로 저장
@@ -289,4 +326,18 @@ func (cs *CharacterStore) SetOCRConfig(cfg OCRRegionConfig) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	cs.data.OCRConfig = cfg
+}
+
+// GetItemPickupConfig 아이템 습득 설정 반환
+func (cs *CharacterStore) GetItemPickupConfig() ItemPickupConfig {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return cs.data.ItemPickupConfig
+}
+
+// SetItemPickupConfig 아이템 습득 설정 업데이트
+func (cs *CharacterStore) SetItemPickupConfig(cfg ItemPickupConfig) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.data.ItemPickupConfig = cfg
 }

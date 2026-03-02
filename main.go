@@ -6,8 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -53,6 +55,7 @@ type Application struct {
 	MouseAutomation  *automation.MouseAutomation
 	RotationManager  *automation.RotationManager
 	OCRManager       *automation.OCRManager
+	ItemScanner      *automation.ItemScanner
 	CharacterStore    *config.CharacterStore
 	KeyMappingStore   *config.KeyMappingStore
 	KeyMappingMgr     *keymapping.KeyMappingManager
@@ -169,7 +172,7 @@ func main() {
 		log.Println("텔레그램 봇 초기화 완료")
 	}
 
-	// 순환 사냥 관련 초기화
+	// 자동 사냥 관련 초기화
 	characterStore := config.NewCharacterStore()
 	if err := characterStore.Load(); err != nil {
 		log.Printf("캐릭터 데이터 로드 오류: %v", err)
@@ -190,8 +193,45 @@ func main() {
 	})
 	app.OCRManager = ocrManager
 
+	// 상주 PowerShell OCR 프로세스 시작
+	if err := ocrManager.StartPersistentOCR(); err != nil {
+		log.Printf("[OCR] 상주 PowerShell 시작 실패 (나중에 재시도): %v", err)
+	}
+	defer ocrManager.StopPersistentOCR()
+
 	mouseAutomation := automation.NewMouseAutomation(windowManager)
 	app.MouseAutomation = mouseAutomation
+
+	itemScanner := automation.NewItemScanner(ocrManager, keyboardManager, mouseAutomation)
+	itemScanner.SetLogFunc(func(msg string) {
+		sendEvent(app, "rotationLog", map[string]string{"message": msg})
+	})
+	// 저장된 아이템 습득 설정 불러오기
+	savedPickupCfg := characterStore.GetItemPickupConfig()
+	if len(savedPickupCfg.Items) > 0 {
+		loadedItems := make([]automation.TargetItem, len(savedPickupCfg.Items))
+		for i, it := range savedPickupCfg.Items {
+			loadedItems[i] = automation.TargetItem{Name: it.Name, Color: it.Color}
+		}
+		scanInterval := savedPickupCfg.ScanInterval
+		if scanInterval < 1 {
+			scanInterval = 1
+		}
+		itemScanner.SetConfig(automation.ItemScannerConfig{
+			Enabled:      savedPickupCfg.Enabled,
+			Items:        loadedItems,
+			ScanInterval: scanInterval,
+			TilePixelW:   savedPickupCfg.TilePixelW,
+			TilePixelH:   savedPickupCfg.TilePixelH,
+			OriginX:      savedPickupCfg.OriginX,
+			OriginY:      savedPickupCfg.OriginY,
+			TargetMap:    savedPickupCfg.TargetMap,
+			WrongMap:     savedPickupCfg.WrongMap,
+			SkillKeys:    savedPickupCfg.SkillKeys,
+		})
+		log.Printf("아이템 습득 설정 로드: %d개 아이템 (원점: %d,%d)", len(loadedItems), savedPickupCfg.OriginX, savedPickupCfg.OriginY)
+	}
+	app.ItemScanner = itemScanner
 
 	rotationManager := automation.NewRotationManager(windowManager, mouseAutomation)
 	rotationManager.SetEventCallback(func(eventType string, payload interface{}) {
@@ -216,6 +256,8 @@ func main() {
 	app.WebView = webview.New(true)
 	app.WebView.SetTitle("도우미")
 	app.WebView.SetSize(app.WindowWidth, app.WindowHeight, webview.HintNone)
+	app.WebView.SetSize(app.WindowWidth, app.WindowHeight, webview.HintMin)
+	app.WebView.SetSize(app.WindowWidth, app.WindowHeight, webview.HintMax)
 
 	// 콜백 함수 바인딩
 	bindJavaScriptCallbacks(app)
@@ -379,6 +421,13 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			}
 		}()
 
+		// 아이템 스캐너 시작 (칸첸 모드만)
+		if internalMode == ModeKanchenEnter || internalMode == ModeKanchenParty {
+			if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
+				app.ItemScanner.Start(windows[0].HWND)
+			}
+		}
+
 		// 응답 전송
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "Started")
@@ -402,6 +451,9 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 		// 키보드 매니저 중지
 		km.SetRunning(false)
+
+		// 아이템 스캐너 중지
+		app.ItemScanner.Stop()
 
 		// 상태 업데이트
 		app.RunningOperation = false
@@ -581,7 +633,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		fmt.Fprint(w, "Settings reset")
 	})
 
-	// === 순환 사냥 API ===
+	// === 자동 사냥 API ===
 
 	// 캐릭터 목록 조회 / 추가
 	http.HandleFunc("/api/rotation/characters", func(w http.ResponseWriter, r *http.Request) {
@@ -956,6 +1008,219 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		json.NewEncoder(w).Encode(results)
 	})
 
+	// 아이템 자동 습득 설정 API
+	http.HandleFunc("/api/item-pickup/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode(app.ItemScanner.GetConfig())
+		} else if r.Method == http.MethodPost {
+			var cfg automation.ItemScannerConfig
+			if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+				http.Error(w, "잘못된 요청", http.StatusBadRequest)
+				return
+			}
+			log.Printf("[아이템습득] 설정 수신: enabled=%v, items=%d개, origin=(%d,%d)",
+				cfg.Enabled, len(cfg.Items), cfg.OriginX, cfg.OriginY)
+			app.ItemScanner.SetConfig(cfg)
+			// 설정을 CharacterStore에도 영속화
+			persistItems := make([]config.ItemPickupTargetItem, len(cfg.Items))
+			for i, it := range cfg.Items {
+				persistItems[i] = config.ItemPickupTargetItem{Name: it.Name, Color: it.Color}
+			}
+			app.CharacterStore.SetItemPickupConfig(config.ItemPickupConfig{
+				Enabled:      cfg.Enabled,
+				Items:        persistItems,
+				ScanInterval: cfg.ScanInterval,
+				TilePixelW:   cfg.TilePixelW,
+				TilePixelH:   cfg.TilePixelH,
+				OriginX:      cfg.OriginX,
+				OriginY:      cfg.OriginY,
+				TargetMap:    cfg.TargetMap,
+				WrongMap:     cfg.WrongMap,
+				SkillKeys:    cfg.SkillKeys,
+			})
+			if err := app.CharacterStore.Save(); err != nil {
+				log.Printf("아이템 습득 설정 저장 실패: %v", err)
+			}
+			json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		}
+	})
+
+	// 아이템 스캔 테스트 API
+	http.HandleFunc("/api/item-pickup/test-scan", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		windows, err := app.WindowManager.FindGameWindows()
+		if err != nil || len(windows) == 0 {
+			http.Error(w, "게임 창을 찾을 수 없습니다", http.StatusNotFound)
+			return
+		}
+
+		hwnd := windows[0].HWND
+
+		// 전체 화면 캡처
+		rawImg, _, captErr := app.WindowManager.CaptureWindowRaw(hwnd)
+		if captErr != nil {
+			http.Error(w, "캡처 실패: "+captErr.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		imgW := rawImg.Bounds().Dx()
+		imgH := rawImg.Bounds().Dy()
+
+		words, msg, scanErr := app.ItemScanner.TestScan(hwnd)
+		if scanErr != nil {
+			http.Error(w, scanErr.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// 전체 화면에 아이템 감지 위치 + 화면 중심 마커를 그린 디버그 이미지 생성
+		var markedImageB64 string
+		{
+			// 원본 복사
+			marked := image.NewRGBA(image.Rect(0, 0, imgW, imgH))
+			for y := 0; y < imgH; y++ {
+				for x := 0; x < imgW; x++ {
+					marked.Set(x, y, rawImg.At(x, y))
+				}
+			}
+
+			// 화면 중심에 흰색 십자 (캐릭터 위치)
+			cx, cy := imgW/2, imgH/2
+			for d := -15; d <= 15; d++ {
+				if cx+d >= 0 && cx+d < imgW {
+					marked.Pix[(cy*imgW+(cx+d))*4+0] = 255
+					marked.Pix[(cy*imgW+(cx+d))*4+1] = 255
+					marked.Pix[(cy*imgW+(cx+d))*4+2] = 255
+				}
+				if cy+d >= 0 && cy+d < imgH {
+					marked.Pix[((cy+d)*imgW+cx)*4+0] = 255
+					marked.Pix[((cy+d)*imgW+cx)*4+1] = 255
+					marked.Pix[((cy+d)*imgW+cx)*4+2] = 255
+				}
+			}
+
+			// 감지된 아이템 위치에 색상별 십자 마커
+			scanConfig := app.ItemScanner.GetConfig()
+			for _, item := range scanConfig.Items {
+				if item.Name == "" {
+					continue
+				}
+				for _, wd := range words {
+					if automation.FuzzyMatchItemPublic(wd.Text, item.Name) {
+						ix := int(wd.X + wd.Width/2)
+						iy := int(wd.Y + wd.Height/2)
+						// 색상 결정: green→초록, yellow→노란, 기타→빨강
+						var mr, mg, mb uint8 = 255, 0, 0
+						if item.Color == "green" {
+							mr, mg, mb = 0, 255, 0
+						} else if item.Color == "yellow" {
+							mr, mg, mb = 255, 255, 0
+						}
+						for d := -20; d <= 20; d++ {
+							if ix+d >= 0 && ix+d < imgW {
+								marked.Pix[((iy)*imgW+(ix+d))*4+0] = mr
+								marked.Pix[((iy)*imgW+(ix+d))*4+1] = mg
+								marked.Pix[((iy)*imgW+(ix+d))*4+2] = mb
+							}
+							if iy+d >= 0 && iy+d < imgH {
+								marked.Pix[((iy+d)*imgW+ix)*4+0] = mr
+								marked.Pix[((iy+d)*imgW+ix)*4+1] = mg
+								marked.Pix[((iy+d)*imgW+ix)*4+2] = mb
+							}
+						}
+						break
+					}
+				}
+			}
+
+			var buf bytes.Buffer
+			if jpeg.Encode(&buf, marked, &jpeg.Options{Quality: 80}) == nil {
+				markedImageB64 = "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+			}
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message":     msg,
+			"words":       words,
+			"wordCount":   len(words),
+			"markedImage": markedImageB64,
+			"imgSize":     fmt.Sprintf("%dx%d", imgW, imgH),
+		})
+	})
+
+	// 좌표 OCR 테스트 API (디버그 이미지 포함)
+	http.HandleFunc("/api/item-pickup/test-coords", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		windows, err := app.WindowManager.FindGameWindows()
+		if err != nil || len(windows) == 0 {
+			http.Error(w, "게임 창을 찾을 수 없습니다", http.StatusNotFound)
+			return
+		}
+
+		hwnd := windows[0].HWND
+		rawImg, _, captErr := app.WindowManager.CaptureWindowRaw(hwnd)
+		if captErr != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "캡처 실패: " + captErr.Error(),
+			})
+			return
+		}
+
+		// 디버그: 우하단 크롭 이미지 생성
+		imgW := rawImg.Bounds().Dx()
+		imgH := rawImg.Bounds().Dy()
+		cropW := 200
+		cropH := 40
+		cropX := imgW - cropW - 5
+		cropY := imgH - cropH - 5
+		if cropX < 0 {
+			cropX = 0
+		}
+		if cropY < 0 {
+			cropY = 0
+		}
+		cropped := rawImg.SubImage(image.Rect(cropX, cropY, cropX+cropW, cropY+cropH))
+
+		var cropB64 string
+		var buf bytes.Buffer
+		if png.Encode(&buf, cropped) == nil {
+			cropB64 = "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+		}
+
+		// 디버그: 크롭 이미지를 testdata에 저장
+		os.MkdirAll("testdata", 0755)
+		if tf, terr := os.Create(fmt.Sprintf("testdata/crop_%d.png", time.Now().UnixMilli())); terr == nil {
+			png.Encode(tf, cropped)
+			tf.Close()
+		}
+
+		coords, debugTexts, err := app.OCRManager.ReadCoordinatesFromImage(rawImg)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success":    false,
+				"error":      err.Error(),
+				"cropImage":  cropB64,
+				"imgWidth":   imgW,
+				"imgHeight":  imgH,
+				"ocrResults": debugTexts,
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":    true,
+			"x":          coords.X,
+			"y":          coords.Y,
+			"cropImage":  cropB64,
+			"imgWidth":   imgW,
+			"imgHeight":  imgH,
+			"ocrResults": debugTexts,
+		})
+	})
+
 	// 창-캐릭터 매핑
 	http.HandleFunc("/api/rotation/assign", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -982,7 +1247,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		fmt.Fprint(w, `{"success":true}`)
 	})
 
-	// 순환 시작
+	// 자동 사냥 시작
 	http.HandleFunc("/api/rotation/start", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -996,7 +1261,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		}
 
 		if app.RotationManager.IsRunning() {
-			http.Error(w, "이미 순환 사냥이 실행 중입니다.", http.StatusConflict)
+			http.Error(w, "이미 자동 사냥이 실행 중입니다.", http.StatusConflict)
 			return
 		}
 
@@ -1042,6 +1307,8 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			StartButtonY:       coordsCfg.StartButtonY,
 			ConfirmButtonX:     coordsCfg.ConfirmButtonX,
 			ConfirmButtonY:     coordsCfg.ConfirmButtonY,
+			AlertConfirmX:      coordsCfg.AlertConfirmX,
+			AlertConfirmY:      coordsCfg.AlertConfirmY,
 		}
 
 		if err := app.RotationManager.Start(rotChars, coords); err != nil {
@@ -1053,7 +1320,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		fmt.Fprint(w, `{"success":true}`)
 	})
 
-	// 순환 중지
+	// 자동 사냥 중지
 	http.HandleFunc("/api/rotation/stop", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1066,7 +1333,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		fmt.Fprint(w, `{"success":true}`)
 	})
 
-	// 순환 상태 조회
+	// 자동 사냥 상태 조회
 	http.HandleFunc("/api/rotation/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		status := app.RotationManager.GetStatus()
@@ -1518,9 +1785,9 @@ func startOperation(app *Application) {
 		return
 	}
 
-	// 순환 사냥과 상호배제
+	// 자동 사냥과 상호배제
 	if app.RotationManager != nil && app.RotationManager.IsRunning() {
-		sendEvent(app, "log", LogPayload{Message: "순환 사냥이 실행 중입니다. 먼저 중지해주세요."})
+		sendEvent(app, "log", LogPayload{Message: "자동 사냥이 실행 중입니다. 먼저 중지해주세요."})
 		return
 	}
 
@@ -1575,6 +1842,18 @@ func startOperation(app *Application) {
 		case ModeKanchenParty:
 			go app.KeyboardManager.KanchenParty()
 		}
+
+		// 아이템 스캐너 시작 (칸첸 모드만)
+		if app.ActiveMode == ModeKanchenEnter || app.ActiveMode == ModeKanchenParty {
+			scanCfg := app.ItemScanner.GetConfig()
+			log.Printf("[시작] 아이템 스캐너 config: enabled=%v, items=%d개", scanCfg.Enabled, len(scanCfg.Items))
+			if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
+				log.Printf("[시작] 게임 창 발견: hwnd=%d, 아이템 스캐너 Start() 호출", windows[0].HWND)
+				app.ItemScanner.Start(windows[0].HWND)
+			} else {
+				log.Printf("[시작] 게임 창 미발견 — 아이템 스캐너 시작 불가")
+			}
+		}
 	}
 }
 
@@ -1600,6 +1879,11 @@ func stopOperation(app *Application) {
 	// 키보드 매니저 중지
 	if app.KeyboardManager != nil {
 		app.KeyboardManager.SetRunning(false)
+	}
+
+	// 아이템 스캐너 중지
+	if app.ItemScanner != nil {
+		app.ItemScanner.Stop()
 	}
 }
 
@@ -1699,8 +1983,9 @@ func setupLogging() {
 		return
 	}
 
-	// 표준 로그 설정
-	log.SetOutput(f)
+	// 표준 로그 설정: 파일 + 터미널(stdout) 동시 출력
+	multiWriter := io.MultiWriter(os.Stdout, f)
+	log.SetOutput(multiWriter)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 }
 

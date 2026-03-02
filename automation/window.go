@@ -7,7 +7,6 @@ import (
 	"image"
 	"image/jpeg"
 	"syscall"
-	"time"
 	"unsafe"
 
 	"golang.org/x/image/draw"
@@ -29,6 +28,8 @@ var (
 	procGetDC                    = user32.NewProc("GetDC")
 	procReleaseDC                = user32.NewProc("ReleaseDC")
 	procPrintWindow              = user32.NewProc("PrintWindow")
+	procGetClientRect            = user32.NewProc("GetClientRect")
+	procClientToScreen           = user32.NewProc("ClientToScreen")
 
 	gdi32                        = syscall.NewLazyDLL("gdi32.dll")
 	procCreateCompatibleDC       = gdi32.NewProc("CreateCompatibleDC")
@@ -170,12 +171,33 @@ func (wm *WindowManager) IsWindowValid(hwnd uint64) bool {
 	return ret != 0
 }
 
+// GetClientOffset GetWindowRect 기준 이미지에서 클라이언트 영역의 (X, Y) 오프셋 반환
+func (wm *WindowManager) GetClientOffset(hwnd uint64) (int, int, error) {
+	// 클라이언트 영역 좌상단 (0,0)을 화면 좌표로 변환
+	type POINT struct {
+		X, Y int32
+	}
+	pt := POINT{0, 0}
+	ret, _, err := procClientToScreen.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&pt)))
+	if ret == 0 {
+		return 0, 0, fmt.Errorf("ClientToScreen 실패: %v", err)
+	}
+	// 창 전체 위치
+	rect, err2 := wm.GetWindowRect(hwnd)
+	if err2 != nil {
+		return 0, 0, err2
+	}
+	// 오프셋 = 클라이언트 화면좌표 - 창 화면좌표
+	offsetX := int(pt.X) - int(rect.Left)
+	offsetY := int(pt.Y) - int(rect.Top)
+	return offsetX, offsetY, nil
+}
+
 // CaptureWindowRaw 창의 원본 RGBA 이미지를 캡처하여 반환
 // 창을 앞으로 가져온 후 화면 DC에서 캡처 (DirectX 게임 대응)
 func (wm *WindowManager) CaptureWindowRaw(hwnd uint64) (*image.RGBA, WindowRect, error) {
 	// 창을 앞으로 가져오기 (게임은 전면에 있어야 캡처 가능)
 	wm.ActivateWindow(hwnd)
-	time.Sleep(300 * time.Millisecond)
 
 	// 창 크기/위치 가져오기 (활성화 후 다시)
 	rect, err := wm.GetWindowRect(hwnd)

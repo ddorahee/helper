@@ -124,6 +124,17 @@ func (km *KeyboardManager) RunKeySequence(sequence KeySequence) {
 
 		// 각 키 처리
 		for i, key := range sequence.KeyPresses {
+			// 일시정지 상태면 재개될 때까지 대기
+			for km.IsPaused() {
+				if !km.IsRunning() {
+					return
+				}
+				select {
+				case <-km.ResumeCh:
+				case <-time.After(500 * time.Millisecond):
+				}
+			}
+
 			err := km.SendKeyPress(key)
 			if err != nil {
 				return
