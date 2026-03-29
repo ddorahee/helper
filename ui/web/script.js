@@ -6,6 +6,8 @@ const ModeDaeyaEnter = 1;
 const ModeDaeyaParty = 2;
 const ModeKanchenEnter = 3;
 const ModeKanchenParty = 4;
+const ModeTrialSolo = 5; // 시련 탭에서 별도 관리
+const ModeTrialGroup = 6;
 
 const TimeOption1Hour = 0;
 const TimeOption2Hour = 1;
@@ -172,6 +174,7 @@ function setupInitialSelections() {
                 const isKanchen = (currentMode === ModeKanchenEnter || currentMode === ModeKanchenParty);
                 pickupCard.style.display = isKanchen ? '' : 'none';
             }
+
         });
     });
 
@@ -455,6 +458,8 @@ function getModeName(mode) {
         case ModeDaeyaParty: return '대야 (파티)';
         case ModeKanchenEnter: return '칸첸 (입장)';
         case ModeKanchenParty: return '칸첸 (파티)';
+        case ModeTrialSolo: return '시련 (솔로)';
+        case ModeTrialGroup: return '시련 (그룹)';
         default: return '알 수 없음';
     }
 }
@@ -465,6 +470,8 @@ function getApiModeName(mode) {
         case ModeDaeyaParty: return 'daeya-party';
         case ModeKanchenEnter: return 'kanchen-entrance';
         case ModeKanchenParty: return 'kanchen-party';
+        case ModeTrialSolo: return 'trial-solo';
+        case ModeTrialGroup: return 'trial-group';
         default: return '';
     }
 }

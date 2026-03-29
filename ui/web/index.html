@@ -50,6 +50,12 @@
                     </svg>
                     자동 사냥
                 </button>
+                <button class="nav-button" data-section="trial">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"></path>
+                    </svg>
+                    시련
+                </button>
                 <button class="nav-button" data-section="logs">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -370,6 +376,61 @@
                             <button id="km-modal-save" class="save-btn">저장</button>
                             <button id="km-modal-cancel" class="cancel-btn">취소</button>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="trial-section" class="content-section">
+                <h1>시련</h1>
+
+                <!-- 상단: 모드 + 설정 -->
+                <div class="card">
+                    <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+                        <div style="display:flex;gap:0.5rem;align-items:center">
+                            <label style="font-size:0.85rem;margin:0;white-space:nowrap">모드</label>
+                            <label style="display:flex;align-items:center;gap:0.3rem;cursor:pointer;font-size:0.85rem">
+                                <input type="radio" name="trial-mode" value="solo" checked> 솔로
+                            </label>
+                            <label style="display:flex;align-items:center;gap:0.3rem;cursor:pointer;font-size:0.85rem">
+                                <input type="radio" name="trial-mode" value="group"> 그룹
+                            </label>
+                        </div>
+                        <div style="display:flex;gap:0.5rem;align-items:center">
+                            <label style="font-size:0.85rem;margin:0;white-space:nowrap">횟수</label>
+                            <input type="number" id="trial-max-runs" value="10" min="1" max="20" style="width:50px;padding:0.25rem;font-size:0.85rem">
+                        </div>
+                        <button id="trial-detect-btn" class="save-btn" style="padding:0.3rem 0.8rem;font-size:0.85rem">감지</button>
+                    </div>
+                </div>
+
+                <!-- 바람창 목록 -->
+                <div class="card">
+                    <h2>바람창 목록</h2>
+                    <div id="trial-window-list" style="font-size:0.85rem">
+                        <span style="opacity:0.5">감지 버튼을 눌러 바람창을 찾아주세요</span>
+                    </div>
+                </div>
+
+                <!-- 역할 선택 (감지 후 표시) -->
+                <div class="card" id="trial-role-card" style="display:none">
+                    <h2>역할 선택</h2>
+                    <div id="trial-role-select"></div>
+                </div>
+
+                <!-- 시작/중지 -->
+                <div class="card">
+                    <div style="display:flex;gap:0.5rem">
+                        <button id="trial-start-btn" class="save-btn" style="flex:1">시작</button>
+                        <button id="trial-stop-btn" class="cancel-btn" style="flex:1">중지</button>
+                    </div>
+                    <div id="trial-status" style="margin-top:0.5rem;font-size:0.85rem;opacity:0.6">대기 중</div>
+                </div>
+
+                <!-- 로그 -->
+                <div class="card">
+                    <h2>로그</h2>
+                    <div id="trial-log" style="font-size:0.8rem;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.3);border-radius:6px;padding:0.5rem;font-family:monospace">
+                        <div style="opacity:0.4">시련 로그가 여기에 표시됩니다</div>
                     </div>
                 </div>
             </section>
@@ -731,6 +792,7 @@
 
     <script src="./script.js"></script>
     <script src="./keymapping.js"></script>
+    <script src="./trial.js"></script>
     <script src="./rotation.js"></script>
 </body>
 </html>

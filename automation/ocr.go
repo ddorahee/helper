@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -345,6 +346,73 @@ func (om *OCRManager) CaptureNameRegion(hwnd uint64) (image.Image, error) {
 
 	cropped := img.SubImage(image.Rect(cropX, cropY, cropX+cropW, cropY+cropH))
 	return cropped, nil
+}
+
+// DetectCharacterNameRightTop 오른쪽 상단 패널에서 캐릭터 이름 OCR
+func (om *OCRManager) DetectCharacterNameRightTop(hwnd uint64) (string, error) {
+	// 창 활성화 후 캡처
+	om.wm.ActivateWindow(hwnd)
+	time.Sleep(500 * time.Millisecond)
+
+	img, _, err := om.wm.CaptureWindowRaw(hwnd)
+	if err != nil {
+		return "", fmt.Errorf("창 캡처 실패: %v", err)
+	}
+
+	width := img.Bounds().Dx()
+
+	clientOffX, clientOffY, offErr := om.wm.GetClientOffset(hwnd)
+	if offErr != nil {
+		clientOffX, clientOffY = 8, 31
+	}
+
+	// 오른쪽 상단 패널 — 캐릭터 닉네임 영역
+	// 1602x932 기준: 닉네임은 오른쪽 끝에서 ~155px, 상단에서 ~47px 위치, 약 120x22 크기
+	// 비율 기반으로 계산
+	clientW := width - clientOffX*2
+	cropW := clientW * 8 / 100  // 폭 ~8%
+	cropH := 22
+	cropX := width - clientOffX - clientW*10/100  // 오른쪽에서 ~10%
+	cropY := clientOffY + 15  // 타이틀바 아래 15px
+
+	if cropX < 0 {
+		cropX = 0
+	}
+	if cropX+cropW > width {
+		cropW = width - cropX
+	}
+	if cropW <= 0 || cropH <= 0 {
+		return "", fmt.Errorf("유효하지 않은 크롭 영역")
+	}
+
+	log.Printf("[OCR] 오른쪽 상단 크롭: (%d, %d) ~ (%d, %d) [%dx%d] 전체=%dx%d",
+		cropX, cropY, cropX+cropW, cropY+cropH, cropW, cropH, width, img.Bounds().Dy())
+
+	cropped := img.SubImage(image.Rect(cropX, cropY, cropX+cropW, cropY+cropH))
+
+	// 디버그: 전체 이미지 + 크롭 이미지 저장
+	debugDir := filepath.Join(os.Getenv("USERPROFILE"), "Downloads", "Temp")
+	os.MkdirAll(debugDir, 0755)
+	ts := fmt.Sprintf("%d", time.Now().UnixMilli())
+
+	fullPath := filepath.Join(debugDir, "trial-full-"+ts+".png")
+	if f, err := os.Create(fullPath); err == nil {
+		png.Encode(f, img)
+		f.Close()
+		log.Printf("[OCR] 전체 이미지: %s", fullPath)
+	}
+	cropPath := filepath.Join(debugDir, "trial-crop-"+ts+".png")
+	if f, err := os.Create(cropPath); err == nil {
+		png.Encode(f, cropped)
+		f.Close()
+		log.Printf("[OCR] 크롭 이미지: %s", cropPath)
+	}
+
+	text, err := om.RecognizeText(cropped)
+	if err != nil {
+		return "", err
+	}
+	return text, nil
 }
 
 // scaleImage 이미지를 지정 배율로 확대

@@ -35,6 +35,8 @@ const (
 	ModeDaeyaParty
 	ModeKanchenEnter
 	ModeKanchenParty
+	ModeTrialSolo
+	ModeTrialGroup
 )
 
 // 시간 설정 옵션 상수
@@ -57,6 +59,7 @@ type Application struct {
 	OCRManager       *automation.OCRManager
 	ItemScanner      *automation.ItemScanner
 	DaeyaBattle      *automation.DaeyaBattle
+	Trial            *automation.Trial
 	CharacterStore    *config.CharacterStore
 	KeyMappingStore   *config.KeyMappingStore
 	KeyMappingMgr     *keymapping.KeyMappingManager
@@ -240,6 +243,12 @@ func main() {
 	})
 	app.DaeyaBattle = daeyaBattle
 
+	trial := automation.NewTrial(ocrManager, keyboardManager, windowManager)
+	trial.SetLogFunc(func(msg string) {
+		sendEvent(app, "rotationLog", map[string]string{"message": msg})
+	})
+	app.Trial = trial
+
 	rotationManager := automation.NewRotationManager(windowManager, mouseAutomation)
 	rotationManager.SetEventCallback(func(eventType string, payload interface{}) {
 		sendEvent(app, eventType, payload)
@@ -394,6 +403,10 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			internalMode = ModeKanchenEnter
 		} else if mode == "kanchen-party" {
 			internalMode = ModeKanchenParty
+		} else if mode == "trial-solo" {
+			internalMode = ModeTrialSolo
+		} else if mode == "trial-group" {
+			internalMode = ModeTrialGroup
 		}
 
 		// 애플리케이션 설정 업데이트
@@ -431,6 +444,50 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				km.KanchenEnter()
 			case ModeKanchenParty:
 				km.KanchenParty()
+			case ModeTrialSolo:
+				// 시련 횟수 설정
+				maxRunsStr := r.FormValue("trial_max_runs")
+				if maxRunsStr != "" {
+					var maxRuns int
+					fmt.Sscanf(maxRunsStr, "%d", &maxRuns)
+					if maxRuns > 0 {
+						cfg := app.Trial.GetConfig()
+						cfg.MaxRuns = maxRuns
+						app.Trial.SetConfig(cfg)
+					}
+				}
+				// UI에서 선택한 hwnd 사용
+				hwndStr := r.FormValue("hwnd")
+				var soloHwnd uint64
+				fmt.Sscanf(hwndStr, "%d", &soloHwnd)
+				if soloHwnd == 0 {
+					// 폴백: 첫 번째 창
+					if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
+						soloHwnd = windows[0].HWND
+					}
+				}
+				if soloHwnd != 0 {
+					app.Trial.Start(soloHwnd)
+				}
+			case ModeTrialGroup:
+				// 시련 횟수 설정
+				maxRunsStr := r.FormValue("trial_max_runs")
+				if maxRunsStr != "" {
+					var maxRuns int
+					fmt.Sscanf(maxRunsStr, "%d", &maxRuns)
+					if maxRuns > 0 {
+						cfg := app.Trial.GetConfig()
+						cfg.MaxRuns = maxRuns
+						app.Trial.SetConfig(cfg)
+					}
+				}
+				// UI에서 선택한 그룹장/그룹원 hwnd
+				var leaderHwnd, memberHwnd uint64
+				fmt.Sscanf(r.FormValue("leader_hwnd"), "%d", &leaderHwnd)
+				fmt.Sscanf(r.FormValue("member_hwnd"), "%d", &memberHwnd)
+				if leaderHwnd != 0 && memberHwnd != 0 {
+					app.Trial.StartGroup(leaderHwnd, memberHwnd)
+				}
 			}
 		}()
 
@@ -470,6 +527,9 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 		// 대야전투 자동화 중지
 		app.DaeyaBattle.Stop()
+
+		// 시련 자동화 중지
+		app.Trial.Stop()
 
 		// 상태 업데이트
 		app.RunningOperation = false
@@ -1412,6 +1472,41 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		}
 	})
 
+	// === 시련 API ===
+
+	// 시련용 바람창 감지 (오른쪽 상단 OCR)
+	http.HandleFunc("/api/trial/detect", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		windows, err := app.WindowManager.FindGameWindows()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("창 감지 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		type TrialWindowResult struct {
+			HWND         uint64 `json:"hwnd"`
+			DetectedName string `json:"detectedName"`
+			Error        string `json:"error,omitempty"`
+		}
+
+		var results []TrialWindowResult
+		for _, win := range windows {
+			result := TrialWindowResult{HWND: win.HWND}
+			name, err := app.OCRManager.DetectCharacterNameRightTop(win.HWND)
+			if err != nil {
+				log.Printf("[시련OCR] 실패 (hwnd=%d): %v", win.HWND, err)
+				result.Error = err.Error()
+			} else {
+				log.Printf("[시련OCR] 감지 (hwnd=%d): '%s'", win.HWND, name)
+				result.DetectedName = name
+			}
+			results = append(results, result)
+		}
+
+		json.NewEncoder(w).Encode(results)
+	})
+
 	// === 키 매핑 시스템 API ===
 
 	// 매핑 CRUD
@@ -1915,6 +2010,11 @@ func stopOperation(app *Application) {
 	// 대야전투 자동화 중지
 	if app.DaeyaBattle != nil {
 		app.DaeyaBattle.Stop()
+	}
+
+	// 시련 자동화 중지
+	if app.Trial != nil {
+		app.Trial.Stop()
 	}
 }
 
