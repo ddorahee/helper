@@ -4,42 +4,39 @@
 - Go 언어 기반 게임 자동화 도우미 (바람의나라)
 - WebView UI + HTTP API 구조
 - OCR 기반 맵/좌표 감지, 키보드/마우스 자동화, 텔레그램 알림
+- 빌드 출력: `chrome.exe`
 
 ## 개발 브랜치
-- `claude/setup-git-RzLnU`
+- `claude/read-execute-context-xqrby`
 
-## 현재 진행 중인 작업: 대야전투 자동화 개선
+## 완료된 작업
 
-### 요구사항 (사용자 확인 완료)
-1. **맵별 동작 분기 (OCR 기반)**
-   - "대야산전투기슭" (입구맵): `o → enter → enter → esc` (사냥터 입장 시퀀스)
-   - "대야전투" (전투맵): 스킬 사용 + 좌표 이동
+### 대야전투 자동화 (구현 완료)
+- **`automation/daeya_battle.go`** 신규 생성
+- OCR 맵 감지 → 맵별 분기:
+  - "대야산전투기슭" (입구맵): `o → enter → enter → esc` (2~4초 랜덤 딜레이)
+  - "대야전투" (전투맵): 스킬 `d, x, 5` 랜덤 순서 사용 + Ctrl+D 좌표 이동 (29,32) ±1
+  - 알 수 없는 맵: 스킬만 사용
+- main.go에서 `ModeDaeyaEnter` 시 `DaeyaBattle.Start(hwnd)` 호출 (게임 창 없으면 기존 키 시퀀스 폴백)
+- 중지 시 `DaeyaBattle.Stop()` 호출 (API 중지 + 전체 중지 2곳)
 
-2. **대야전투 맵에서 스킬 랜덤 사용**
-   - 현재 고정 순서: d, x, 5
-   - 변경: 스킬 목록에서 랜덤 순서로 사용
+### 채굴 대기 시간 변경
+- `automation/mouse.go`: 채굴 확인 후 대기 30초 → **15초**로 변경
 
-3. **좌표 이동 (메인 캐릭만)**
-   - 목표 좌표: (29, 32)
-   - 허용 오차: ±1
-   - 2~3캐릭 그룹 입장하지만, 메인 캐릭 창만 활성화되어 있으므로 메인만 이동
-   - Ctrl+D 기반 좌표 이동 시스템 활용 (item_scanner.go에 이미 구현됨)
+### 빌드 설정 변경
+- `build.ps1`, `build.sh`: 출력 파일명 `main.exe` → **`chrome.exe`**로 변경
 
-### 구현 방향 (아직 미착수)
-- `automation/daeya_battle.go` 신규 파일 생성 예정
-- OCR로 현재 맵 감지 → "대야산전투기슭"이면 입장, "대야전투"이면 스킬+이동
-- item_scanner.go의 moveToOrigin, pressCtrlD 등 좌표 이동 로직 재활용
-- main.go에서 ModeDaeyaEnter 시 새 로직 호출
-
-### 기존 코드 구조 참고
+## 코드 구조
 - `automation/automation.go`: KeySequence 정의, DaeyaEnter/DaeyaParty 등 시퀀스 실행
 - `automation/keyboard.go`: KeyboardManager (RunKeySequence 무한 루프)
-- `automation/mouse.go`: MouseAutomation, GameUICoords, StartHunting
+- `automation/mouse.go`: MouseAutomation, GameUICoords, StartHunting (채굴 15초 대기)
 - `automation/rotation.go`: RotationManager (자동 사냥 캐릭터 순환)
 - `automation/item_scanner.go`: ItemScanner (OCR 맵 감지, Ctrl+D 좌표 이동, 스킬 키 입력)
-- `automation/ocr.go`: OCRManager (RecognizeText, ReadCoordinates)
+- `automation/ocr.go`: OCRManager (RecognizeText, ReadCoordinates, 상주 PowerShell OCR)
+- `automation/daeya_battle.go`: DaeyaBattle (OCR 맵 감지, 입구/전투맵 분기, 랜덤 스킬, 좌표 이동)
 - `main.go`: Application 구조체, HTTP API, 모드별 자동화 시작/중지
 
-### superpowers 플러그인
-- 설치 완료 (v5.0.6)
-- 다음 세션에서 기획/브레인스토밍에 활용 예정
+## 빌드 참고
+- Windows 전용 (WebView2 + robotgo CGO)
+- Linux 크로스 컴파일 시 MinGW + EventToken.h 수동 생성 필요
+- Windows에서: `.\build.ps1` → `build\chrome.exe` 생성
