@@ -1425,10 +1425,13 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 		case http.MethodPost:
 			var req struct {
-				Name        string                `json:"name"`
-				StartKey    string                `json:"start_key"`
-				KeySequence string                `json:"key_sequence"`
-				Keys        []keymapping.MappedKey `json:"keys"`
+				Name           string                `json:"name"`
+				StartKey       string                `json:"start_key"`
+				KeySequence    string                `json:"key_sequence"`
+				Keys           []keymapping.MappedKey `json:"keys"`
+				RandomDelay    bool                  `json:"random_delay"`
+				RandomDelayMin int                   `json:"random_delay_min"`
+				RandomDelayMax int                   `json:"random_delay_max"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, "잘못된 데이터", http.StatusBadRequest)
@@ -1444,7 +1447,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 					return
 				}
 			}
-			if err := app.KeyMappingMgr.AddMapping(req.Name, req.StartKey, keys); err != nil {
+			if err := app.KeyMappingMgr.AddMappingWithRandom(req.Name, req.StartKey, keys, req.RandomDelay, req.RandomDelayMin, req.RandomDelayMax); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -1452,11 +1455,14 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 		case http.MethodPut:
 			var req struct {
-				ID          string                `json:"id"`
-				Name        string                `json:"name"`
-				StartKey    string                `json:"start_key"`
-				KeySequence string                `json:"key_sequence"`
-				Keys        []keymapping.MappedKey `json:"keys"`
+				ID             string                `json:"id"`
+				Name           string                `json:"name"`
+				StartKey       string                `json:"start_key"`
+				KeySequence    string                `json:"key_sequence"`
+				Keys           []keymapping.MappedKey `json:"keys"`
+				RandomDelay    bool                  `json:"random_delay"`
+				RandomDelayMin int                   `json:"random_delay_min"`
+				RandomDelayMax int                   `json:"random_delay_max"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				http.Error(w, "잘못된 데이터", http.StatusBadRequest)
@@ -1471,7 +1477,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 					return
 				}
 			}
-			if err := app.KeyMappingMgr.UpdateMappingByID(req.ID, req.Name, req.StartKey, keys); err != nil {
+			if err := app.KeyMappingMgr.UpdateMappingByIDWithRandom(req.ID, req.Name, req.StartKey, keys, req.RandomDelay, req.RandomDelayMin, req.RandomDelayMax); err != nil {
 				http.Error(w, err.Error(), http.StatusNotFound)
 				return
 			}

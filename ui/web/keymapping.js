@@ -4,23 +4,30 @@
     let availableKeys = []; // 시퀀스용 키 목록 (플랫)
     let statusInterval = null;
 
+    async function apiCall(url, options) {
+        const r = await fetch(url, options);
+        const text = await r.text();
+        if (!r.ok) throw new Error(text);
+        try { return JSON.parse(text); } catch { return text; }
+    }
+
     const API = {
-        getMappings: () => fetch('/api/keymapping/mappings').then(r => r.json()),
-        createMapping: (data) => fetch('/api/keymapping/mappings', {
+        getMappings: () => apiCall('/api/keymapping/mappings'),
+        createMapping: (data) => apiCall('/api/keymapping/mappings', {
             method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
-        }).then(r => r.json()),
-        updateMapping: (data) => fetch('/api/keymapping/mappings', {
+        }),
+        updateMapping: (data) => apiCall('/api/keymapping/mappings', {
             method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
-        }).then(r => r.json()),
-        deleteMapping: (id) => fetch('/api/keymapping/mappings?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(r => r.json()),
-        toggleMapping: (id) => fetch('/api/keymapping/toggle', {
+        }),
+        deleteMapping: (id) => apiCall('/api/keymapping/mappings?id=' + encodeURIComponent(id), { method: 'DELETE' }),
+        toggleMapping: (id) => apiCall('/api/keymapping/toggle', {
             method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({id})
-        }).then(r => r.json()),
-        control: (action) => fetch('/api/keymapping/control', {
+        }),
+        control: (action) => apiCall('/api/keymapping/control', {
             method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action})
-        }).then(r => r.json()),
-        getStatus: () => fetch('/api/keymapping/status').then(r => r.json()),
-        getKeys: () => fetch('/api/keymapping/keys').then(r => r.json()),
+        }),
+        getStatus: () => apiCall('/api/keymapping/status'),
+        getKeys: () => apiCall('/api/keymapping/keys'),
     };
 
     // 초기화
@@ -40,6 +47,10 @@
         document.getElementById('km-modal-cancel')?.addEventListener('click', closeModal);
         document.getElementById('km-modal-save')?.addEventListener('click', saveMapping);
         document.getElementById('km-add-key-btn')?.addEventListener('click', addKeyRow);
+        document.getElementById('km-edit-random-delay')?.addEventListener('change', (e) => {
+            const settings = document.getElementById('km-random-delay-settings');
+            if (settings) settings.style.display = e.target.checked ? 'flex' : 'none';
+        });
 
         // 모달 바깥 클릭 닫기
         document.getElementById('km-modal')?.addEventListener('click', (e) => {
@@ -134,6 +145,7 @@
             const keysPreview = (m.keys || []).map(k =>
                 k.delay > 0 ? `${k.key}(${k.delay}ms)` : k.key
             ).join(' → ');
+            const randomTag = m.random_delay ? ` [랜덤 ${m.random_delay_min||0}~${m.random_delay_max||0}ms]` : '';
 
             return `<div class="km-mapping-item ${m.enabled ? '' : 'disabled'}">
                 <div class="km-mapping-info">
@@ -141,7 +153,7 @@
                     <div class="km-mapping-detail">
                         <span class="km-trigger-key">${escapeHtml(m.start_key)}</span>
                         <span class="km-arrow">→</span>
-                        <span class="km-sequence-preview">${escapeHtml(keysPreview || '')}</span>
+                        <span class="km-sequence-preview">${escapeHtml(keysPreview || '')}${escapeHtml(randomTag)}</span>
                     </div>
                 </div>
                 <div class="km-mapping-actions">
@@ -165,6 +177,16 @@
         document.getElementById('km-edit-name').value = '';
         document.getElementById('km-modal-title').textContent = '새 키 맵핑 추가';
 
+        // 랜덤 딜레이 초기화
+        const randomCheck = document.getElementById('km-edit-random-delay');
+        if (randomCheck) randomCheck.checked = false;
+        const randomSettings = document.getElementById('km-random-delay-settings');
+        if (randomSettings) randomSettings.style.display = 'none';
+        const randomMin = document.getElementById('km-edit-random-min');
+        if (randomMin) randomMin.value = 100;
+        const randomMax = document.getElementById('km-edit-random-max');
+        if (randomMax) randomMax.value = 500;
+
         // 트리거 키 select 초기화
         const select = document.getElementById('km-edit-startkey');
         if (select) select.value = '';
@@ -183,6 +205,12 @@
                 document.getElementById('km-modal-title').textContent = '키 맵핑 수정';
 
                 if (select) select.value = m.start_key;
+
+                // 랜덤 딜레이 복원
+                if (randomCheck) randomCheck.checked = !!m.random_delay;
+                if (randomSettings) randomSettings.style.display = m.random_delay ? 'flex' : 'none';
+                if (randomMin) randomMin.value = m.random_delay_min || 100;
+                if (randomMax) randomMax.value = m.random_delay_max || 500;
 
                 // 키 시퀀스 복원
                 if (editor) editor.innerHTML = '';
@@ -293,11 +321,16 @@
 
         if (keys.length === 0) { alert('최소 하나의 키를 추가하세요'); return; }
 
+        const randomDelay = document.getElementById('km-edit-random-delay')?.checked || false;
+        const randomDelayMin = parseInt(document.getElementById('km-edit-random-min')?.value) || 0;
+        const randomDelayMax = parseInt(document.getElementById('km-edit-random-max')?.value) || 0;
+
         try {
+            const data = { name, start_key: startKey, keys, random_delay: randomDelay, random_delay_min: randomDelayMin, random_delay_max: randomDelayMax };
             if (id) {
-                await API.updateMapping({ id, name, start_key: startKey, keys });
+                await API.updateMapping({ id, ...data });
             } else {
-                await API.createMapping({ name, start_key: startKey, keys });
+                await API.createMapping(data);
             }
             closeModal();
             refreshAll();

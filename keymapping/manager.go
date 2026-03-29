@@ -3,6 +3,7 @@ package keymapping
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -15,13 +16,16 @@ import (
 
 // KeyMapping 구조체 - 개별 키 맵핑 설정
 type KeyMapping struct {
-	ID        string      `json:"id"`
-	Name      string      `json:"name"`
-	StartKey  string      `json:"start_key"`
-	Keys      []MappedKey `json:"keys"`
-	Enabled   bool        `json:"enabled"`
-	CreatedAt time.Time   `json:"created_at"`
-	UpdatedAt time.Time   `json:"updated_at"`
+	ID             string      `json:"id"`
+	Name           string      `json:"name"`
+	StartKey       string      `json:"start_key"`
+	Keys           []MappedKey `json:"keys"`
+	Enabled        bool        `json:"enabled"`
+	RandomDelay    bool        `json:"random_delay"`
+	RandomDelayMin int         `json:"random_delay_min"` // ms
+	RandomDelayMax int         `json:"random_delay_max"` // ms
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 // MappedKey 구조체 - 개별 키와 딜레이 설정
@@ -220,9 +224,22 @@ func (km *KeyMappingManager) executeKeySequence(mapping *KeyMapping) {
 
 		km.sendKey(key.Key)
 
-		// 사용자 설정 딜레이만 적용
-		if i < len(mapping.Keys)-1 && key.Delay > 0 {
-			time.Sleep(time.Duration(key.Delay) * time.Millisecond)
+		// 딜레이 적용
+		if i < len(mapping.Keys)-1 {
+			if mapping.RandomDelay && mapping.RandomDelayMax > 0 {
+				// 랜덤 딜레이: min~max ms
+				minD := mapping.RandomDelayMin
+				maxD := mapping.RandomDelayMax
+				if minD > maxD {
+					minD, maxD = maxD, minD
+				}
+				delay := minD + rand.Intn(maxD-minD+1)
+				log.Printf("[키맵핑] '%s' → 랜덤 딜레이 %dms", key.Key, delay)
+				time.Sleep(time.Duration(delay) * time.Millisecond)
+			} else if key.Delay > 0 {
+				// 고정 딜레이
+				time.Sleep(time.Duration(key.Delay) * time.Millisecond)
+			}
 		}
 	}
 }
@@ -262,8 +279,13 @@ func (km *KeyMappingManager) sendComboKey(comboKey string) {
 	km.keyPool.Put(modifierSlice)
 }
 
-// AddMapping 키 맵핑 추가
+// AddMapping 키 맵핑 추가 (기존 호환)
 func (km *KeyMappingManager) AddMapping(name, startKey string, keys []MappedKey) error {
+	return km.AddMappingWithRandom(name, startKey, keys, false, 0, 0)
+}
+
+// AddMappingWithRandom 키 맵핑 추가 (랜덤 딜레이 포함)
+func (km *KeyMappingManager) AddMappingWithRandom(name, startKey string, keys []MappedKey, randomDelay bool, randomMin, randomMax int) error {
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
 
@@ -282,13 +304,16 @@ func (km *KeyMappingManager) AddMapping(name, startKey string, keys []MappedKey)
 	}
 
 	mapping := &KeyMapping{
-		ID:        fmt.Sprintf("%s_%d", name, time.Now().Unix()),
-		Name:      name,
-		StartKey:  startKey,
-		Keys:      keys,
-		Enabled:   !hasActiveMapping,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:             fmt.Sprintf("%s_%d", name, time.Now().Unix()),
+		Name:           name,
+		StartKey:       startKey,
+		Keys:           keys,
+		Enabled:        !hasActiveMapping,
+		RandomDelay:    randomDelay,
+		RandomDelayMin: randomMin,
+		RandomDelayMax: randomMax,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	if km.mappings[startKey] == nil {
@@ -463,8 +488,13 @@ func (km *KeyMappingManager) UpdateMapping(oldStartKey, newName, newStartKey str
 	return nil
 }
 
-// UpdateMappingByID ID로 매핑 수정
+// UpdateMappingByID ID로 매핑 수정 (기존 호환)
 func (km *KeyMappingManager) UpdateMappingByID(mappingID, newName, newStartKey string, keys []MappedKey) error {
+	return km.UpdateMappingByIDWithRandom(mappingID, newName, newStartKey, keys, false, 0, 0)
+}
+
+// UpdateMappingByIDWithRandom ID로 매핑 수정 (랜덤 딜레이 포함)
+func (km *KeyMappingManager) UpdateMappingByIDWithRandom(mappingID, newName, newStartKey string, keys []MappedKey, randomDelay bool, randomMin, randomMax int) error {
 	km.mutex.Lock()
 	defer km.mutex.Unlock()
 
@@ -514,6 +544,9 @@ func (km *KeyMappingManager) UpdateMappingByID(mappingID, newName, newStartKey s
 	targetMapping.Name = newName
 	targetMapping.StartKey = newStartKey
 	targetMapping.Keys = keys
+	targetMapping.RandomDelay = randomDelay
+	targetMapping.RandomDelayMin = randomMin
+	targetMapping.RandomDelayMax = randomMax
 	targetMapping.UpdatedAt = time.Now()
 
 	km.rebuildActiveKeys()
@@ -522,7 +555,7 @@ func (km *KeyMappingManager) UpdateMappingByID(mappingID, newName, newStartKey s
 		return fmt.Errorf("설정 저장 실패: %v", err)
 	}
 
-	log.Printf("ID 기반 키 맵핑 수정: %s (ID: %s)", newName, mappingID)
+	log.Printf("ID 기반 키 맵핑 수정: %s (ID: %s, 랜덤=%v)", newName, mappingID, randomDelay)
 	return nil
 }
 

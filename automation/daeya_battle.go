@@ -177,7 +177,7 @@ func (db *DaeyaBattle) processOnce() {
 	db.log(fmt.Sprintf("[맵감지] OCR='%s'", mapName))
 
 	// 맵별 분기
-	entranceMap := "대야산전투기슭"
+	entranceMap := "대야산기슭"
 	battleMap := "대야전투"
 
 	entranceRunes := []rune(strings.ReplaceAll(entranceMap, " ", ""))
@@ -196,8 +196,34 @@ func (db *DaeyaBattle) processOnce() {
 		battleMaxDist = 1
 	}
 
+	// 허용 오차를 50%로 상향 (짧은 맵 이름 OCR 부정확 보완)
+	entranceMaxDist = len(entranceRunes) * 50 / 100
+	if entranceMaxDist < 1 {
+		entranceMaxDist = 1
+	}
+	battleMaxDist = len(battleRunes) * 50 / 100
+	if battleMaxDist < 1 {
+		battleMaxDist = 1
+	}
+
 	entranceMatch := entranceDist <= entranceMaxDist
 	battleMatch := battleDist <= battleMaxDist
+
+	// 키워드 보조 매칭: "기슭" 포함 → 입구, "전투" 또는 "투" 포함 → 전투맵
+	if !entranceMatch && strings.Contains(mapName, "기슭") {
+		entranceMatch = true
+	}
+	if !battleMatch {
+		// "전투" 포함, 또는 "투"로 끝나고 3~5글자 (OCR이 "이현투","대현투" 등으로 인식)
+		if strings.Contains(mapName, "전투") ||
+			(strings.HasSuffix(mapName, "투") && len(mapRunes) >= 3 && len(mapRunes) <= 5 && !strings.Contains(mapName, "기슭")) {
+			battleMatch = true
+		}
+	}
+
+	db.log(fmt.Sprintf("[매칭] 입구='%s' dist=%d (max=%d, match=%v) | 전투='%s' dist=%d (max=%d, match=%v)",
+		entranceMap, entranceDist, entranceMaxDist, entranceMatch,
+		battleMap, battleDist, battleMaxDist, battleMatch))
 
 	// 둘 다 매칭되면 거리가 더 가까운 쪽 선택
 	if entranceMatch && battleMatch {
@@ -209,12 +235,12 @@ func (db *DaeyaBattle) processOnce() {
 	}
 
 	if entranceMatch {
-		db.log("[입구맵] 대야산전투기슭 감지 — 사냥터 입장 시퀀스 실행")
+		db.log("[입구맵] 대야산기슭 감지 — 사냥터 입장 시퀀스 실행")
 		db.enterBattle()
 	} else if battleMatch {
-		db.log("[전투맵] 대야전투 감지 — 스킬 사용 + 좌표 이동")
+		db.log("[전투맵] 대야전투 감지 — 스킬 사용 + 걸어서 이동")
 		db.useRandomSkills()
-		db.checkAndMoveToTarget(hwnd)
+		db.walkToTarget(hwnd)
 	} else {
 		db.log(fmt.Sprintf("[알수없는맵] '%s' — 스킬만 사용", mapName))
 		db.useRandomSkills()
@@ -253,9 +279,15 @@ func (db *DaeyaBattle) detectMapName(hwnd uint64, img *image.RGBA) string {
 	))
 
 	text, err := db.om.RecognizeText(cropped)
-	if err != nil || text == "" {
+	if err != nil {
+		db.log(fmt.Sprintf("[맵OCR] 인식 오류: %v", err))
 		return ""
 	}
+	if text == "" {
+		db.log("[맵OCR] 인식 결과 없음 (빈 문자열)")
+		return ""
+	}
+	db.log(fmt.Sprintf("[맵OCR] 원본='%s' (길이=%d)", text, len([]rune(text))))
 	return strings.TrimSpace(text)
 }
 
@@ -268,8 +300,8 @@ func (db *DaeyaBattle) enterBattle() {
 			return
 		}
 		robotgo.KeyTap(key)
-		// 2~4초 랜덤 딜레이
-		delay := 2*time.Second + time.Duration(rand.Intn(2001))*time.Millisecond
+		// 1~3초 랜덤 딜레이
+		delay := 1*time.Second + time.Duration(rand.Intn(2001))*time.Millisecond
 		db.log(fmt.Sprintf("[입장] '%s' 키 입력 (대기 %.1f초)", key, delay.Seconds()))
 		time.Sleep(delay)
 	}
@@ -302,6 +334,84 @@ func (db *DaeyaBattle) useRandomSkills() {
 		db.log(fmt.Sprintf("[스킬] '%s' 사용", key))
 		time.Sleep(300 * time.Millisecond)
 	}
+}
+
+// walkToTarget 현재 좌표를 OCR로 읽고 화살표 키로 걸어서 목표 좌표로 이동
+func (db *DaeyaBattle) walkToTarget(hwnd uint64) {
+	db.mutex.Lock()
+	targetX := db.config.TargetX
+	targetY := db.config.TargetY
+	tolerance := db.config.Tolerance
+	db.mutex.Unlock()
+
+	if targetX == 0 && targetY == 0 {
+		return
+	}
+
+	// 현재 좌표 읽기
+	coords, err := db.om.ReadCoordinates(hwnd)
+	if err != nil {
+		db.log(fmt.Sprintf("[걷기] 좌표 읽기 실패: %v", err))
+		return
+	}
+
+	diffX := targetX - coords.X
+	diffY := targetY - coords.Y
+
+	absDX := diffX
+	absDY := diffY
+	if absDX < 0 {
+		absDX = -absDX
+	}
+	if absDY < 0 {
+		absDY = -absDY
+	}
+
+	if absDX <= tolerance && absDY <= tolerance {
+		db.log(fmt.Sprintf("[걷기] 목표 범위 내: 현재=(%d,%d) 목표=(%d,%d)", coords.X, coords.Y, targetX, targetY))
+		return
+	}
+
+	db.log(fmt.Sprintf("[걷기] 현재=(%d,%d) → 목표=(%d,%d) diff=(%+d,%+d)", coords.X, coords.Y, targetX, targetY, diffX, diffY))
+
+	// 화살표 키로 걸어서 이동 (X: left/right, Y: up/down)
+	if diffX != 0 {
+		dir := "right"
+		count := diffX
+		if diffX < 0 {
+			dir = "left"
+			count = -diffX
+		}
+		for i := 0; i < count; i++ {
+			if db.isStopped() || !db.km.IsRunning() {
+				return
+			}
+			robotgo.KeyTap(dir)
+			delay := 300 + rand.Intn(200)
+			time.Sleep(time.Duration(delay) * time.Millisecond)
+		}
+	}
+
+	if diffY != 0 {
+		dir := "down"
+		count := diffY
+		if diffY < 0 {
+			dir = "up"
+			count = -diffY
+		}
+		for i := 0; i < count; i++ {
+			if db.isStopped() || !db.km.IsRunning() {
+				return
+			}
+			robotgo.KeyTap(dir)
+			delay := 300 + rand.Intn(200)
+			time.Sleep(time.Duration(delay) * time.Millisecond)
+		}
+	}
+
+	db.log(fmt.Sprintf("[걷기] 이동 완료 (%s %d칸, %s %d칸)",
+		func() string { if diffX >= 0 { return "→" }; return "←" }(), absDX,
+		func() string { if diffY >= 0 { return "↓" }; return "↑" }(), absDY))
 }
 
 // checkAndMoveToTarget 현재 좌표를 확인하고 목표 좌표로 이동

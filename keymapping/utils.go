@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -101,6 +102,12 @@ func (km *KeyMappingManager) SaveConfig() error {
 	data, err := json.MarshalIndent(km.mappings, "", "  ")
 	if err != nil {
 		return fmt.Errorf("설정 직렬화 실패: %v", err)
+	}
+
+	// 디렉토리 자동 생성
+	dir := filepath.Dir(km.configFile)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("설정 디렉토리 생성 실패: %v", err)
 	}
 
 	if err := os.WriteFile(km.configFile, data, 0644); err != nil {

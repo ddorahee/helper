@@ -347,6 +347,21 @@
                                 <button id="km-add-key-btn" class="add-btn" style="margin-top:0.5rem;font-size:0.8rem">+ 키 추가</button>
                             </div>
                             <div class="form-row">
+                                <div style="display:flex;align-items:center;gap:0.8rem;margin-bottom:0.3rem">
+                                    <label style="margin:0">랜덤 딜레이</label>
+                                    <label class="switch" style="margin:0">
+                                        <input type="checkbox" id="km-edit-random-delay">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                                <div id="km-random-delay-settings" style="display:none;gap:0.5rem;align-items:center;margin-top:0.3rem">
+                                    <input type="number" id="km-edit-random-min" value="100" min="0" max="10000" style="width:80px;padding:0.3rem;font-size:0.85rem" placeholder="최소(ms)">
+                                    <span style="font-size:0.85rem">~</span>
+                                    <input type="number" id="km-edit-random-max" value="500" min="0" max="10000" style="width:80px;padding:0.3rem;font-size:0.85rem" placeholder="최대(ms)">
+                                    <span style="font-size:0.8rem;opacity:0.6">ms</span>
+                                </div>
+                            </div>
+                            <div class="form-row">
                                 <label>미리보기</label>
                                 <div id="km-preview" class="km-preview"></div>
                             </div>
