@@ -14,7 +14,7 @@ if ($LASTEXITCODE -ne 0) {
 # 버전 정보 설정
 $version = "1.0.0"
 $buildDate = Get-Date -Format "yyyy-MM-dd"
-$outputFile = "build\main.exe"
+$outputFile = "build\chrome.exe"
 
 # 빌드 명령어 실행 (CMD 창 안 나오게 -H=windowsgui 추가)
 Write-Host "매크로 도우미 빌드 중..." -ForegroundColor Cyan

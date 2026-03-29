@@ -56,6 +56,7 @@ type Application struct {
 	RotationManager  *automation.RotationManager
 	OCRManager       *automation.OCRManager
 	ItemScanner      *automation.ItemScanner
+	DaeyaBattle      *automation.DaeyaBattle
 	CharacterStore    *config.CharacterStore
 	KeyMappingStore   *config.KeyMappingStore
 	KeyMappingMgr     *keymapping.KeyMappingManager
@@ -232,6 +233,12 @@ func main() {
 		log.Printf("아이템 습득 설정 로드: %d개 아이템 (원점: %d,%d)", len(loadedItems), savedPickupCfg.OriginX, savedPickupCfg.OriginY)
 	}
 	app.ItemScanner = itemScanner
+
+	daeyaBattle := automation.NewDaeyaBattle(ocrManager, keyboardManager, windowManager)
+	daeyaBattle.SetLogFunc(func(msg string) {
+		sendEvent(app, "rotationLog", map[string]string{"message": msg})
+	})
+	app.DaeyaBattle = daeyaBattle
 
 	rotationManager := automation.NewRotationManager(windowManager, mouseAutomation)
 	rotationManager.SetEventCallback(func(eventType string, payload interface{}) {
@@ -411,7 +418,13 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		go func() {
 			switch internalMode {
 			case ModeDaeyaEnter:
-				km.DaeyaEnter()
+				// 대야 입장: OCR 기반 맵 감지 + 스킬/좌표 이동 자동화
+				if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
+					app.DaeyaBattle.Start(windows[0].HWND)
+				} else {
+					// 게임 창 미발견 시 기존 키 시퀀스 폴백
+					km.DaeyaEnter()
+				}
 			case ModeDaeyaParty:
 				km.DaeyaParty()
 			case ModeKanchenEnter:
@@ -454,6 +467,9 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 		// 아이템 스캐너 중지
 		app.ItemScanner.Stop()
+
+		// 대야전투 자동화 중지
+		app.DaeyaBattle.Stop()
 
 		// 상태 업데이트
 		app.RunningOperation = false
@@ -1834,7 +1850,11 @@ func startOperation(app *Application) {
 		// 선택된 모드에 따라 자동화 시작
 		switch app.ActiveMode {
 		case ModeDaeyaEnter:
-			go app.KeyboardManager.DaeyaEnter()
+			if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
+				go app.DaeyaBattle.Start(windows[0].HWND)
+			} else {
+				go app.KeyboardManager.DaeyaEnter()
+			}
 		case ModeDaeyaParty:
 			go app.KeyboardManager.DaeyaParty()
 		case ModeKanchenEnter:
@@ -1884,6 +1904,11 @@ func stopOperation(app *Application) {
 	// 아이템 스캐너 중지
 	if app.ItemScanner != nil {
 		app.ItemScanner.Stop()
+	}
+
+	// 대야전투 자동화 중지
+	if app.DaeyaBattle != nil {
+		app.DaeyaBattle.Stop()
 	}
 }
 

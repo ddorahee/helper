@@ -138,9 +138,9 @@ func (ma *MouseAutomation) StartHunting(hwnd uint64, coords GameUICoords, dropdo
 		if err := ma.ClickRelative(hwnd, coords.AlertConfirmX, coords.AlertConfirmY); err != nil {
 			log.Printf("[사냥시작] 채굴 확인 버튼 클릭 실패 (무시): %v", err)
 		}
-		// 채굴 타이머 완료 대기 (30초)
-		emit("①-2 채굴 확인 후 30초 대기...")
-		if waitOrStop(30 * time.Second) {
+		// 채굴 타이머 완료 대기 (15초)
+		emit("①-2 채굴 확인 후 15초 대기...")
+		if waitOrStop(15 * time.Second) {
 			emit("=== 중단됨 ===")
 			return fmt.Errorf("중단됨")
 		}

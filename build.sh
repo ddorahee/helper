@@ -75,7 +75,7 @@ VERSION="1.0.0"
 BUILD_DATE=$(date +"%Y-%m-%d")
 
 # 플랫폼별 빌드 설정
-APP_NAME="main"
+APP_NAME="chrome"
 OUTPUT_FILE=""
 
 if [ "$PLATFORM" == "windows" ]; then
