@@ -474,6 +474,8 @@
                     setCoordValue('coord-confirm-y', data.confirmButtonY || 0);
                     setCoordValue('coord-alert-confirm-x', data.alertConfirmX || 0);
                     setCoordValue('coord-alert-confirm-y', data.alertConfirmY || 0);
+                    setCoordValue('coord-revive-x', data.reviveX || 0);
+                    setCoordValue('coord-revive-y', data.reviveY || 0);
                     updateCoordDisplays();
                 }
             })
@@ -489,6 +491,7 @@
 
         const cx = getCoordValue('coord-confirm-x'), cy = getCoordValue('coord-confirm-y');
         const acx = getCoordValue('coord-alert-confirm-x'), acy = getCoordValue('coord-alert-confirm-y');
+        const rvx = getCoordValue('coord-revive-x'), rvy = getCoordValue('coord-revive-y');
 
         const swordDisp = document.getElementById('coord-sword-display');
         const dropdownDisp = document.getElementById('coord-dropdown-display');
@@ -497,6 +500,7 @@
         const itemHeightDisp = document.getElementById('coord-item-height-display');
         const confirmDisp = document.getElementById('coord-confirm-display');
         const alertConfirmDisp = document.getElementById('coord-alert-confirm-display');
+        const reviveDisp = document.getElementById('coord-revive-display');
 
         if (swordDisp) swordDisp.textContent = (sx || sy) ? `(${sx}, ${sy})` : '미설정';
         if (dropdownDisp) dropdownDisp.textContent = (dx || dy) ? `(${dx}, ${dy})` : '미설정';
@@ -505,6 +509,7 @@
         if (itemHeightDisp) itemHeightDisp.textContent = ih > 0 ? `${ih}px` : '미설정';
         if (confirmDisp) confirmDisp.textContent = (cx || cy) ? `(${cx}, ${cy})` : '미설정';
         if (alertConfirmDisp) alertConfirmDisp.textContent = (acx || acy) ? `(${acx}, ${acy})` : '미설정';
+        if (reviveDisp) reviveDisp.textContent = (rvx || rvy) ? `(${rvx}, ${rvy})` : '미설정';
     }
 
     function saveCoordinates() {
@@ -520,7 +525,9 @@
             confirmButtonX: getCoordValue('coord-confirm-x'),
             confirmButtonY: getCoordValue('coord-confirm-y'),
             alertConfirmX: getCoordValue('coord-alert-confirm-x'),
-            alertConfirmY: getCoordValue('coord-alert-confirm-y')
+            alertConfirmY: getCoordValue('coord-alert-confirm-y'),
+            reviveX: getCoordValue('coord-revive-x'),
+            reviveY: getCoordValue('coord-revive-y')
         };
 
         fetch('/api/rotation/coordinates', {
@@ -561,7 +568,7 @@
             if (windowAssignments[charId]) return windowAssignments[charId];
         }
         if (detectedWindows.length > 0) return detectedWindows[0].hwnd;
-        return 0;
+        return 0; // 백엔드에서 자동 감지
     }
 
     let captureInProgress = false;
@@ -570,11 +577,7 @@
     function startCapture(target, message) {
         if (captureInProgress) return;
 
-        const hwnd = getFirstAssignedHwnd();
-        if (!hwnd) {
-            addRotationLog('먼저 윈도우를 감지해주세요.');
-            return;
-        }
+        const hwnd = getFirstAssignedHwnd(); // 0이면 백엔드에서 자동 감지
 
         const overlay = document.getElementById('capture-overlay');
         const countdownEl = document.getElementById('capture-countdown');
@@ -628,6 +631,9 @@
                     } else if (target === 'alert-confirm') {
                         setCoordValue('coord-alert-confirm-x', data.x);
                         setCoordValue('coord-alert-confirm-y', data.y);
+                    } else if (target === 'revive') {
+                        setCoordValue('coord-revive-x', data.x);
+                        setCoordValue('coord-revive-y', data.y);
                     } else if (target === 'firstitem') {
                         setCoordValue('coord-first-y', data.y);
                     } else if (target === 'seconditem') {

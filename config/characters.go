@@ -40,6 +40,8 @@ type GameUICoordinates struct {
 	ConfirmButtonY     int `json:"confirmButtonY"`     // 확인 대화창 "확인" 버튼 Y
 	AlertConfirmX      int `json:"alertConfirmX"`      // 채굴 확인 버튼 X (ESC 후)
 	AlertConfirmY      int `json:"alertConfirmY"`      // 채굴 확인 버튼 Y
+	ReviveX            int `json:"reviveX"`            // 부활 버튼 X
+	ReviveY            int `json:"reviveY"`            // 부활 버튼 Y
 }
 
 // OCRRegionConfig OCR 이름 영역 좌표 설정

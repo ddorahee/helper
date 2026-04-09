@@ -196,6 +196,18 @@ func (ma *MouseAutomation) StartHunting(hwnd uint64, coords GameUICoords, dropdo
 		return fmt.Errorf("중단됨")
 	}
 
+	// 4-1. 부활 버튼 클릭 (설정된 경우, 시작 직전)
+	if coords.ReviveX != 0 || coords.ReviveY != 0 {
+		emit(fmt.Sprintf("④-1 부활 버튼 클릭 (%d, %d)", coords.ReviveX, coords.ReviveY))
+		if err := ma.ClickRelative(hwnd, coords.ReviveX, coords.ReviveY); err != nil {
+			log.Printf("[사냥시작] 부활 버튼 클릭 실패 (무시): %v", err)
+		}
+		if waitOrStop(2 * time.Second) {
+			emit("=== 중단됨 ===")
+			return fmt.Errorf("중단됨")
+		}
+	}
+
 	// 5. 시작 버튼 클릭
 	if stopped() {
 		emit("=== 중단됨 ===")
@@ -274,4 +286,6 @@ type GameUICoords struct {
 	ConfirmButtonY     int // "자동사냥을 시작하시겠습니까?" 확인 버튼 Y
 	AlertConfirmX      int // 채굴 확인 버튼 X (ESC 후 나타나는 팝업)
 	AlertConfirmY      int // 채굴 확인 버튼 Y
+	ReviveX            int // 부활 버튼 X
+	ReviveY            int // 부활 버튼 Y
 }

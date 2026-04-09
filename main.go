@@ -1385,6 +1385,8 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			ConfirmButtonY:     coordsCfg.ConfirmButtonY,
 			AlertConfirmX:      coordsCfg.AlertConfirmX,
 			AlertConfirmY:      coordsCfg.AlertConfirmY,
+			ReviveX:            coordsCfg.ReviveX,
+			ReviveY:            coordsCfg.ReviveY,
 		}
 
 		if err := app.RotationManager.Start(rotChars, coords); err != nil {
@@ -1779,7 +1781,16 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			req.DelaySec = 3
 		}
 
-		relX, relY, err := app.MouseAutomation.CaptureClickPosition(req.WindowHWND, req.DelaySec)
+		// hwnd가 0이면 자동으로 첫 번째 게임 창 사용
+		hwnd := req.WindowHWND
+		if hwnd == 0 {
+			if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
+				hwnd = windows[0].HWND
+				log.Printf("[캡처] 자동 감지된 게임 창 사용: hwnd=0x%X", hwnd)
+			}
+		}
+
+		relX, relY, err := app.MouseAutomation.CaptureClickPosition(hwnd, req.DelaySec)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
