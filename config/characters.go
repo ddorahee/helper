@@ -22,6 +22,7 @@ type CharacterProfile struct {
 	DurationMins int         `json:"durationMins"`  // 사냥 시간 (분)
 	Order        int         `json:"order"`         // 순환 순서 (0부터)
 	Enabled      bool        `json:"enabled"`       // 순환에 포함할지 여부
+	PeachType    string      `json:"peachType"`     // 복숭아 타입: "" / "silla" / "king" / "india"
 	WindowHWND   uint64      `json:"-"`             // 런타임 전용 (매 실행마다 재할당)
 	Assigned     bool        `json:"-"`             // 런타임 전용
 }
@@ -42,6 +43,15 @@ type GameUICoordinates struct {
 	AlertConfirmY      int `json:"alertConfirmY"`      // 채굴 확인 버튼 Y
 	ReviveX            int `json:"reviveX"`            // 부활 버튼 X
 	ReviveY            int `json:"reviveY"`            // 부활 버튼 Y
+	SectButtonX        int `json:"sectButtonX"`        // 문파 버튼 X
+	SectButtonY        int `json:"sectButtonY"`        // 문파 버튼 Y
+	PeachReceiveX      int `json:"peachReceiveX"`      // 복숭아 받기 X
+	PeachReceiveY      int `json:"peachReceiveY"`      // 복숭아 받기 Y
+	ReceiveAcceptX     int `json:"receiveAcceptX"`     // 받기/수락 X
+	ReceiveAcceptY     int `json:"receiveAcceptY"`     // 받기/수락 Y
+
+	// 사냥 시작 후 창 최소화 (리소스 절감)
+	MinimizeAfterStart bool `json:"minimizeAfterStart"`
 }
 
 // OCRRegionConfig OCR 이름 영역 좌표 설정
@@ -213,13 +223,15 @@ func (cs *CharacterStore) Remove(id string) {
 	}
 }
 
-// Update 캐릭터 업데이트
+// Update 캐릭터 업데이트 (order는 기존 값 유지 — 수정 시 순서 변경 방지)
 func (cs *CharacterStore) Update(profile CharacterProfile) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
 	for i, c := range cs.data.Characters {
 		if c.ID == profile.ID {
+			// 기존 order 보존 (요청 측에서 잘못된 order를 보내도 순서가 유지됨)
+			profile.Order = c.Order
 			cs.data.Characters[i] = profile
 			return
 		}

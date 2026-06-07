@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -60,6 +62,7 @@ type Application struct {
 	ItemScanner      *automation.ItemScanner
 	DaeyaBattle      *automation.DaeyaBattle
 	Trial            *automation.Trial
+	RotationScheduler *automation.RotationScheduler
 	CharacterStore    *config.CharacterStore
 	KeyMappingStore   *config.KeyMappingStore
 	KeyMappingMgr     *keymapping.KeyMappingManager
@@ -105,6 +108,35 @@ type VersionPayload struct {
 }
 
 // levenshtein 두 rune 슬라이스 간의 편집 거리 계산
+// drawRect 이미지 위에 빈 사각형 (지정 두께) 그리기 — 매칭 시각화용
+func drawRect(img *image.RGBA, r image.Rectangle, c color.RGBA, thickness int) {
+	r = r.Intersect(img.Bounds())
+	if r.Empty() {
+		return
+	}
+	for t := 0; t < thickness; t++ {
+		// 위/아래
+		for x := r.Min.X; x < r.Max.X; x++ {
+			if r.Min.Y+t < img.Bounds().Max.Y {
+				img.Set(x, r.Min.Y+t, c)
+			}
+			if r.Max.Y-1-t >= img.Bounds().Min.Y {
+				img.Set(x, r.Max.Y-1-t, c)
+			}
+		}
+		// 좌/우
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			if r.Min.X+t < img.Bounds().Max.X {
+				img.Set(r.Min.X+t, y, c)
+			}
+			if r.Max.X-1-t >= img.Bounds().Min.X {
+				img.Set(r.Max.X-1-t, y, c)
+			}
+		}
+	}
+	_ = draw.Src
+}
+
 func levenshtein(a, b []rune) int {
 	la, lb := len(a), len(b)
 	if la == 0 {
@@ -254,6 +286,14 @@ func main() {
 		sendEvent(app, eventType, payload)
 	})
 	app.RotationManager = rotationManager
+
+	// 자동사냥 예약 매니저 생성
+	app.RotationScheduler = automation.NewRotationScheduler(
+		func() error { return startRotationFromScheduler(app) },
+		func(msg string) {
+			sendEvent(app, "rotationLog", map[string]string{"message": "[예약] " + msg})
+		},
+	)
 
 	// 타이머 매니저 생성
 	timerManager := utils.NewTimerManager()
@@ -1362,6 +1402,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				DurationMins:  c.DurationMins,
 				Order:         c.Order,
 				WindowHWND:    c.WindowHWND,
+				PeachType:     c.PeachType,
 			})
 		}
 
@@ -1387,6 +1428,13 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			AlertConfirmY:      coordsCfg.AlertConfirmY,
 			ReviveX:            coordsCfg.ReviveX,
 			ReviveY:            coordsCfg.ReviveY,
+			SectButtonX:        coordsCfg.SectButtonX,
+			SectButtonY:        coordsCfg.SectButtonY,
+			PeachReceiveX:      coordsCfg.PeachReceiveX,
+			PeachReceiveY:      coordsCfg.PeachReceiveY,
+			ReceiveAcceptX:     coordsCfg.ReceiveAcceptX,
+			ReceiveAcceptY:     coordsCfg.ReceiveAcceptY,
+			MinimizeAfterStart: coordsCfg.MinimizeAfterStart,
 		}
 
 		if err := app.RotationManager.Start(rotChars, coords); err != nil {
@@ -1445,6 +1493,49 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		}
 	})
 
+	// 자동사냥 예약 API
+	http.HandleFunc("/api/rotation/schedule", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			running, target, remaining := app.RotationScheduler.Status()
+			loc, locErr := time.LoadLocation("Asia/Seoul")
+			if locErr != nil {
+				loc = time.FixedZone("KST", 9*3600)
+			}
+			nowKST := time.Now().In(loc)
+			resp := map[string]interface{}{
+				"running":          running,
+				"targetTimeKST":    "",
+				"remainingSeconds": int64(0),
+				"nowKST":           nowKST.Format("15:04:05"),
+			}
+			if running {
+				resp["targetTimeKST"] = target.Format("15:04")
+				resp["remainingSeconds"] = int64(remaining.Seconds())
+			}
+			json.NewEncoder(w).Encode(resp)
+		case http.MethodPost:
+			var req struct {
+				Time string `json:"time"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "잘못된 데이터", http.StatusBadRequest)
+				return
+			}
+			if err := app.RotationScheduler.ScheduleAt(req.Time); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			fmt.Fprint(w, `{"success":true}`)
+		case http.MethodDelete:
+			app.RotationScheduler.Cancel()
+			fmt.Fprint(w, `{"success":true}`)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	// 키 맵핑 API
 	http.HandleFunc("/api/keymapping", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1472,6 +1563,163 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
+	})
+
+	// === 복숭아 캡처 API ===
+
+	// POST /api/peach/capture: 게임창 캡처 → 영역 잘라 config/peach.png 저장
+	http.HandleFunc("/api/peach/capture", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			HWND   uint64 `json:"hwnd"`
+			X      int    `json:"x"`
+			Y      int    `json:"y"`
+			Width  int    `json:"width"`
+			Height int    `json:"height"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "잘못된 데이터", http.StatusBadRequest)
+			return
+		}
+		// hwnd 0이면 첫 번째 게임 창 자동 사용
+		hwnd := req.HWND
+		if hwnd == 0 {
+			if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
+				hwnd = windows[0].HWND
+			}
+		}
+		if hwnd == 0 {
+			http.Error(w, "게임 창을 찾을 수 없습니다", http.StatusBadRequest)
+			return
+		}
+		raw, _, err := app.WindowManager.CaptureWindowRaw(hwnd)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("캡처 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if req.Width <= 0 || req.Height <= 0 {
+			http.Error(w, "유효하지 않은 영역", http.StatusBadRequest)
+			return
+		}
+		bounds := raw.Bounds()
+		x0 := bounds.Min.X + req.X
+		y0 := bounds.Min.Y + req.Y
+		x1 := x0 + req.Width
+		y1 := y0 + req.Height
+		if x0 < bounds.Min.X || y0 < bounds.Min.Y || x1 > bounds.Max.X || y1 > bounds.Max.Y {
+			http.Error(w, "영역이 화면을 벗어남", http.StatusBadRequest)
+			return
+		}
+		cropped := raw.SubImage(image.Rect(x0, y0, x1, y1))
+		os.MkdirAll("config", 0755)
+		f, err := os.Create("config/peach.png")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("저장 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer f.Close()
+		if err := png.Encode(f, cropped); err != nil {
+			http.Error(w, fmt.Sprintf("PNG 인코딩 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+		log.Printf("[복숭아] 캡처 저장: %dx%d", req.Width, req.Height)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"width":   req.Width,
+			"height":  req.Height,
+		})
+	})
+
+	// POST /api/peach/test: 게임창 캡처 → 현재 peach.png로 다중 스케일 매칭
+	// 반환: 매칭 결과 + 위치 + 매칭 위치를 빨간 박스로 그린 디버그 이미지(base64)
+	http.HandleFunc("/api/peach/test", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			HWND uint64 `json:"hwnd"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		hwnd := req.HWND
+		if hwnd == 0 {
+			if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
+				hwnd = windows[0].HWND
+			}
+		}
+		if hwnd == 0 {
+			http.Error(w, "게임 창을 찾을 수 없습니다", http.StatusBadRequest)
+			return
+		}
+		needle, err := automation.LoadPNG("config/peach.png")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("config/peach.png 로드 실패: %v — 먼저 캡처해주세요", err), http.StatusBadRequest)
+			return
+		}
+		raw, _, err := app.WindowManager.CaptureWindowRaw(hwnd)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("게임창 캡처 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+		// 다중 스케일 매칭 (현재 동작과 동일 임계값)
+		x, y, scale, found := automation.FindImageMultiScale(raw, needle, nil, 80, 0.75)
+
+		// 시각화: raw 위에 매칭 위치를 빨간 박스로 그리기
+		viz := image.NewRGBA(raw.Bounds())
+		draw.Draw(viz, viz.Bounds(), raw, raw.Bounds().Min, draw.Src)
+		nb := needle.Bounds()
+		if found {
+			ww := int(float64(nb.Dx()) * scale)
+			hh := int(float64(nb.Dy()) * scale)
+			drawRect(viz, image.Rect(x, y, x+ww, y+hh), color.RGBA{255, 0, 0, 255}, 3)
+			// 중심점 표시
+			cx, cy := x+ww/2, y+hh/2
+			drawRect(viz, image.Rect(cx-3, cy-3, cx+4, cy+4), color.RGBA{0, 255, 0, 255}, 1)
+		}
+
+		// JPEG 인코딩 (빠른 미리보기)
+		var buf bytes.Buffer
+		_ = jpeg.Encode(&buf, viz, &jpeg.Options{Quality: 70})
+		b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+
+		resp := map[string]interface{}{
+			"found":   found,
+			"x":       x,
+			"y":       y,
+			"scale":   scale,
+			"needleW": nb.Dx(),
+			"needleH": nb.Dy(),
+			"image":   "data:image/jpeg;base64," + b64,
+		}
+		if found {
+			ww := int(float64(nb.Dx()) * scale)
+			hh := int(float64(nb.Dy()) * scale)
+			resp["centerX"] = x + ww/2
+			resp["centerY"] = y + hh/2
+			resp["matchedW"] = ww
+			resp["matchedH"] = hh
+		}
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	// GET /api/peach/preview: 저장된 peach.png base64 반환
+	http.HandleFunc("/api/peach/preview", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		data, err := os.ReadFile("config/peach.png")
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"exists": false})
+			return
+		}
+		b64 := base64.StdEncoding.EncodeToString(data)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"exists": true,
+			"image":  "data:image/png;base64," + b64,
+		})
 	})
 
 	// === 시련 API ===
@@ -2027,6 +2275,74 @@ func stopOperation(app *Application) {
 	if app.Trial != nil {
 		app.Trial.Stop()
 	}
+}
+
+// startRotationFromScheduler 예약된 시각에 자동사냥 시작 (감지/할당 완료 가정)
+func startRotationFromScheduler(app *Application) error {
+	loc, _ := time.LoadLocation("Asia/Seoul")
+	if loc == nil {
+		loc = time.FixedZone("KST", 9*3600)
+	}
+	log.Printf("[예약] >>> startRotationFromScheduler 호출됨 (now KST=%s)",
+		time.Now().In(loc).Format("2006-01-02 15:04:05"))
+
+	if app.RunningOperation {
+		return fmt.Errorf("키보드 자동화가 실행 중입니다")
+	}
+	if app.RotationManager.IsRunning() {
+		return fmt.Errorf("이미 자동 사냥이 실행 중입니다")
+	}
+
+	chars := app.CharacterStore.GetByOrder()
+	if len(chars) == 0 {
+		return fmt.Errorf("등록된 캐릭터가 없습니다")
+	}
+
+	var rotChars []automation.RotationCharacter
+	for _, c := range chars {
+		if !c.Assigned || !c.Enabled {
+			continue
+		}
+		rotChars = append(rotChars, automation.RotationCharacter{
+			ID:            c.ID,
+			Name:          c.Name,
+			HuntingArea:   c.HuntingArea.Name,
+			DropdownIndex: c.HuntingArea.DropdownIndex,
+			DurationMins:  c.DurationMins,
+			Order:         c.Order,
+			WindowHWND:    c.WindowHWND,
+			PeachType:     c.PeachType,
+		})
+	}
+	if len(rotChars) == 0 {
+		return fmt.Errorf("활성화되고 윈도우가 할당된 캐릭터가 없습니다 (예약 전 감지 필요)")
+	}
+
+	coordsCfg := app.CharacterStore.GetCoordinates()
+	coords := automation.GameUICoords{
+		SwordButtonX:       coordsCfg.SwordButtonX,
+		SwordButtonY:       coordsCfg.SwordButtonY,
+		DropdownArrowX:     coordsCfg.DropdownArrowX,
+		DropdownArrowY:     coordsCfg.DropdownArrowY,
+		DropdownItemHeight: coordsCfg.DropdownItemHeight,
+		DropdownFirstItemY: coordsCfg.DropdownFirstItemY,
+		StartButtonX:       coordsCfg.StartButtonX,
+		StartButtonY:       coordsCfg.StartButtonY,
+		ConfirmButtonX:     coordsCfg.ConfirmButtonX,
+		ConfirmButtonY:     coordsCfg.ConfirmButtonY,
+		AlertConfirmX:      coordsCfg.AlertConfirmX,
+		AlertConfirmY:      coordsCfg.AlertConfirmY,
+		ReviveX:            coordsCfg.ReviveX,
+		ReviveY:            coordsCfg.ReviveY,
+		SectButtonX:        coordsCfg.SectButtonX,
+		SectButtonY:        coordsCfg.SectButtonY,
+		PeachReceiveX:      coordsCfg.PeachReceiveX,
+		PeachReceiveY:      coordsCfg.PeachReceiveY,
+		ReceiveAcceptX:     coordsCfg.ReceiveAcceptX,
+		ReceiveAcceptY:     coordsCfg.ReceiveAcceptY,
+	}
+
+	return app.RotationManager.Start(rotChars, coords)
 }
 
 // 재설정 버튼 클릭 처리

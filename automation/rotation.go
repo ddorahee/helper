@@ -28,6 +28,7 @@ type RotationCharacter struct {
 	DurationMins   int
 	Order          int
 	WindowHWND     uint64
+	PeachType      string // "" / "silla" / "king" / "india"
 }
 
 // RotationStatus 현재 자동 사냥 상태 정보
@@ -66,16 +67,39 @@ type RotationManager struct {
 	window         *WindowManager
 	stopChan       chan struct{}
 	eventCallback  EventCallback
+	watcher        *DisconnectWatcher
 }
 
 // NewRotationManager 새로운 자동 사냥 관리자 생성
 func NewRotationManager(wm *WindowManager, ma *MouseAutomation) *RotationManager {
-	return &RotationManager{
+	rm := &RotationManager{
 		state:   RotationIdle,
 		running: false,
 		window:  wm,
 		mouse:   ma,
 	}
+	rm.watcher = NewDisconnectWatcher(wm, ma)
+	rm.watcher.SetOnReconnected(func(hwnd uint64) {
+		// 재접속 후 현재 사냥 중인 캐릭터의 사냥 시퀀스 재실행
+		rm.mu.RLock()
+		coords := rm.coords
+		var dropdownIndex int
+		var peachType string
+		for _, c := range rm.characters {
+			if c.WindowHWND == hwnd {
+				dropdownIndex = c.DropdownIndex
+				peachType = c.PeachType
+				break
+			}
+		}
+		rm.mu.RUnlock()
+
+		stopChan := make(chan struct{}) // 워처용 임시 stopChan
+		_ = ma.StartHunting(hwnd, coords, dropdownIndex, peachType, func(msg string) {
+			rm.emitEvent("rotationLog", map[string]string{"message": "[재접속] " + msg})
+		}, stopChan)
+	})
+	return rm
 }
 
 // SetEventCallback 이벤트 콜백 설정
@@ -124,6 +148,18 @@ func (rm *RotationManager) Start(characters []RotationCharacter, coords GameUICo
 
 	rm.mu.Unlock()
 
+	// 팅김 감지 워처 시작 (모든 캐릭터의 hwnd 감시)
+	if rm.watcher != nil {
+		hwnds := make([]uint64, 0, len(characters))
+		for _, c := range characters {
+			hwnds = append(hwnds, c.WindowHWND)
+		}
+		rm.watcher.SetLogFunc(func(msg string) {
+			rm.emitEvent("rotationLog", map[string]string{"message": "[팅김감지] " + msg})
+		})
+		rm.watcher.Start(hwnds)
+	}
+
 	// 자동 사냥 고루틴 시작
 	go rm.runRotation()
 
@@ -144,6 +180,11 @@ func (rm *RotationManager) Stop() {
 	rm.state = RotationIdle
 	rm.emitEvent("rotationLog", map[string]string{"message": "자동 사냥이 중지되었습니다."})
 	rm.emitEvent("rotationStatus", rm.buildStatusLocked())
+
+	// 팅김 감지 워처도 함께 중지
+	if rm.watcher != nil {
+		go rm.watcher.Stop()
+	}
 }
 
 // IsRunning 실행 중 여부
@@ -202,6 +243,26 @@ func (rm *RotationManager) runRotation() {
 	log.Println("[자동사냥] 자동 사냥 시작")
 	rm.emitEvent("rotationLog", map[string]string{"message": "자동 사냥을 시작합니다."})
 
+	// 시작 시 모든 캐릭터 창을 최소화 (옵션 ON일 때만, 리소스 절감)
+	rm.mu.RLock()
+	minimizeOn := rm.coords.MinimizeAfterStart
+	allHwnds := make([]uint64, 0, len(rm.characters))
+	for _, c := range rm.characters {
+		allHwnds = append(allHwnds, c.WindowHWND)
+	}
+	rm.mu.RUnlock()
+	if minimizeOn {
+		for _, h := range allHwnds {
+			if err := rm.window.MinimizeWindow(h); err != nil {
+				log.Printf("[자동사냥] 초기 최소화 실패 (무시): %v", err)
+			}
+		}
+		rm.emitEvent("rotationLog", map[string]string{"message": fmt.Sprintf("모든 캐릭터 창 최소화 완료 (%d개)", len(allHwnds))})
+		time.Sleep(500 * time.Millisecond)
+	} else {
+		rm.emitEvent("rotationLog", map[string]string{"message": "최소화 옵션 OFF — 기존 방식으로 진행"})
+	}
+
 	for rm.currentIndex < len(rm.characters) {
 		rm.mu.RLock()
 		if !rm.running {
@@ -241,7 +302,7 @@ func (rm *RotationManager) runRotation() {
 		logFn := func(msg string) {
 			rm.emitEvent("rotationLog", map[string]string{"message": fmt.Sprintf("[%s] %s", char.Name, msg)})
 		}
-		if err := rm.mouse.StartHunting(char.WindowHWND, rm.coords, char.DropdownIndex, logFn, rm.stopChan); err != nil {
+		if err := rm.mouse.StartHunting(char.WindowHWND, rm.coords, char.DropdownIndex, char.PeachType, logFn, rm.stopChan); err != nil {
 			if rm.isStopped() {
 				return
 			}

@@ -511,6 +511,35 @@
                         </button>
                     </div>
                 </div>
+                <!-- 예약 시작 카드 -->
+                <div class="card schedule-card">
+                    <div class="rotation-card-header">
+                        <h2>예약 시작</h2>
+                        <label class="switch">
+                            <input type="checkbox" id="schedule-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <p class="coord-info-text">KST 기준 오늘 지정 시각에 자동사냥을 1회 시작합니다. 캐릭터/윈도우 할당이 미리 완료되어야 합니다.</p>
+                    <div class="schedule-row">
+                        <input type="time" id="schedule-time" value="12:00" class="schedule-time-input">
+                        <span id="schedule-status" class="schedule-status">예약 없음</span>
+                    </div>
+                    <div class="schedule-now-row">현재 KST <span id="schedule-now">--:--:--</span></div>
+                </div>
+
+                <!-- 딸깍 (최소화 모드) 카드 -->
+                <div class="card schedule-card">
+                    <div class="rotation-card-header">
+                        <h2>딸깍 (최소화 모드)</h2>
+                        <label class="switch">
+                            <input type="checkbox" id="minimize-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <p class="coord-info-text">활성화 시 자동사냥 시작 후 창을 최소화합니다 (리소스 절감). 비활성화 시 기존 방식 유지.</p>
+                </div>
+
                 <div class="rotation-queue" id="rotation-queue"></div>
 
                 <div class="rotation-grid">
@@ -538,6 +567,16 @@
                             <div class="form-row">
                                 <label>사냥 시간 (분)</label>
                                 <input type="number" id="char-duration" value="120" min="1" max="600">
+                            </div>
+                            <div class="form-row">
+                                <label>복숭아</label>
+                                <select id="char-peach-type">
+                                    <option value="">사용 안 함</option>
+                                    <option value="silla">신라</option>
+                                    <option value="king">왕들의땅</option>
+                                    <option value="india">인도</option>
+                                </select>
+                                <span class="form-hint">자동사냥 시작 직전에 복숭아 받기 시퀀스 실행</span>
                             </div>
                             <div class="form-actions">
                                 <button id="save-character-btn" class="save-btn">저장</button>
@@ -663,6 +702,45 @@
                             </div>
                             <button class="capture-btn" data-target="revive" data-msg="부활 버튼을 클릭하세요">위치 찾기</button>
                         </div>
+
+                        <div class="coord-capture-item">
+                            <div class="coord-label-group">
+                                <span class="coord-icon">&#127895;</span>
+                                <span>문파 버튼</span>
+                            </div>
+                            <div class="coord-value-group">
+                                <span class="coord-display" id="coord-sect-display">미설정</span>
+                                <input type="hidden" id="coord-sect-x" value="0">
+                                <input type="hidden" id="coord-sect-y" value="0">
+                            </div>
+                            <button class="capture-btn" data-target="sect" data-msg="문파 버튼을 클릭하세요">위치 찾기</button>
+                        </div>
+
+                        <div class="coord-capture-item">
+                            <div class="coord-label-group">
+                                <span class="coord-icon">&#127825;</span>
+                                <span>복숭아 받기</span>
+                            </div>
+                            <div class="coord-value-group">
+                                <span class="coord-display" id="coord-peach-receive-display">미설정</span>
+                                <input type="hidden" id="coord-peach-receive-x" value="0">
+                                <input type="hidden" id="coord-peach-receive-y" value="0">
+                            </div>
+                            <button class="capture-btn" data-target="peach-receive" data-msg="복숭아 받기 버튼을 클릭하세요">위치 찾기</button>
+                        </div>
+
+                        <div class="coord-capture-item">
+                            <div class="coord-label-group">
+                                <span class="coord-icon">&#10004;</span>
+                                <span>받기 / 수락</span>
+                            </div>
+                            <div class="coord-value-group">
+                                <span class="coord-display" id="coord-receive-accept-display">미설정</span>
+                                <input type="hidden" id="coord-receive-accept-x" value="0">
+                                <input type="hidden" id="coord-receive-accept-y" value="0">
+                            </div>
+                            <button class="capture-btn" data-target="receive-accept" data-msg="받기/수락 버튼을 클릭하세요">위치 찾기</button>
+                        </div>
                         <div class="coord-capture-item">
                             <div class="coord-label-group">
                                 <span class="coord-icon">&#9888;</span>
@@ -677,6 +755,48 @@
                         </div>
                     </div>
                     <button id="save-coords-btn" class="save-btn" style="margin-top:0.8rem;width:100%">좌표 저장</button>
+                </div>
+
+                <!-- 복숭아 아이콘 캡처 카드 -->
+                <div class="card peach-card">
+                    <div class="rotation-card-header">
+                        <h2>복숭아 아이콘</h2>
+                        <span class="coord-help-text">인벤토리에서 복숭아 아이콘 영역을 드래그</span>
+                    </div>
+                    <p class="coord-info-text">자동사냥 시작 시 인벤토리에서 이 이미지를 찾아 더블클릭합니다.</p>
+                    <div class="peach-row">
+                        <button id="peach-capture-btn" class="detect-btn">스크린샷에서 영역 선택</button>
+                        <button id="peach-test-btn" class="apply-btn">매칭 테스트</button>
+                        <div id="peach-preview-wrap" class="peach-preview-wrap" style="display:none">
+                            <span class="peach-preview-label">현재 등록된 아이콘</span>
+                            <img id="peach-preview-img" alt="peach" class="peach-preview-img">
+                        </div>
+                    </div>
+                    <div id="peach-test-result" class="peach-test-result" style="display:none">
+                        <div id="peach-test-summary" class="peach-test-summary"></div>
+                        <img id="peach-test-image" alt="match result" class="peach-test-image">
+                    </div>
+                </div>
+
+                <!-- 복숭아 영역 선택 모달 (OCR 모달과 동일 구조 재사용) -->
+                <div id="peach-region-modal" class="ocr-region-modal" style="display:none">
+                    <div class="ocr-region-modal-content">
+                        <div class="ocr-region-modal-header">
+                            <h3>복숭아 아이콘 영역을 드래그하세요</h3>
+                            <button class="ocr-region-modal-close" id="peach-region-modal-close">&times;</button>
+                        </div>
+                        <div id="peach-region-canvas-wrap" class="ocr-region-canvas-wrap">
+                            <canvas id="peach-region-canvas"></canvas>
+                            <div id="peach-region-selection" class="ocr-region-selection" style="display:none"></div>
+                        </div>
+                        <div class="ocr-region-modal-footer">
+                            <span id="peach-region-coords-display">영역을 드래그하세요</span>
+                            <div>
+                                <button id="peach-region-cancel-btn" class="cancel-btn">취소</button>
+                                <button id="peach-region-save-btn" class="save-btn" disabled>저장</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- OCR 캐릭터 감지 설정 카드 -->

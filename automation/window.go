@@ -42,6 +42,7 @@ var (
 
 const (
 	swRestore      = 9
+	swMinimize     = 6
 	vkMenu         = 0x12 // ALT key
 	srccopy        = 0x00CC0020
 	dibRGBColors   = 0
@@ -152,6 +153,16 @@ func (wm *WindowManager) ActivateWindow(hwnd uint64) error {
 	procSetForegroundWindow.Call(h)
 	procBringWindowToTop.Call(h)
 
+	return nil
+}
+
+// MinimizeWindow 창 최소화 (리소스 절감용 — 자동사냥 진행 중 백그라운드)
+func (wm *WindowManager) MinimizeWindow(hwnd uint64) error {
+	h := uintptr(hwnd)
+	if !wm.IsWindowValid(hwnd) {
+		return fmt.Errorf("유효하지 않은 윈도우: %d", hwnd)
+	}
+	procShowWindow.Call(h, swMinimize)
 	return nil
 }
 

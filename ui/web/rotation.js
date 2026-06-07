@@ -40,7 +40,298 @@
         loadCoordinates();
         loadOCRConfig();
         checkOCRAvailability();
+        setupScheduleControls();
+        loadScheduleStatus();
+        setInterval(loadScheduleStatus, 1000);
+        setupMinimizeToggle();
+        setupPeachCapture();
+        loadPeachPreview();
     });
+
+    // === 복숭아 아이콘 캡처 ===
+    let peachScreenshotData = null;
+    let peachImageWidth = 0;
+    let peachImageHeight = 0;
+
+    function setupPeachCapture() {
+        const btn = document.getElementById('peach-capture-btn');
+        if (btn) btn.addEventListener('click', openPeachCapture);
+        const testBtn = document.getElementById('peach-test-btn');
+        if (testBtn) testBtn.addEventListener('click', testPeachMatch);
+    }
+
+    async function testPeachMatch() {
+        const btn = document.getElementById('peach-test-btn');
+        const result = document.getElementById('peach-test-result');
+        const summary = document.getElementById('peach-test-summary');
+        const imgEl = document.getElementById('peach-test-image');
+        if (!btn || !result || !summary || !imgEl) return;
+
+        btn.disabled = true;
+        btn.textContent = '매칭 중...';
+        try {
+            let hwnd = getFirstAssignedHwnd();
+            if (!hwnd) {
+                try {
+                    const r = await fetch('/api/rotation/detect-with-ocr');
+                    const list = await r.json();
+                    if (list && list.length > 0) hwnd = list[0].hwnd;
+                } catch(e) {}
+            }
+            const res = await fetch('/api/peach/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hwnd: hwnd || 0 })
+            });
+            if (!res.ok) {
+                const txt = await res.text();
+                summary.innerHTML = `<span style="color:#ef4444">테스트 실패: ${escapeHtml(txt)}</span>`;
+                imgEl.style.display = 'none';
+                result.style.display = 'block';
+                return;
+            }
+            const data = await res.json();
+            if (data.found) {
+                summary.innerHTML = `<span style="color:#22c55e">✅ 매칭 성공</span>&nbsp; ` +
+                    `위치 (${data.x}, ${data.y}) / 중심 (${data.centerX}, ${data.centerY}) / scale ${data.scale.toFixed(2)} / ` +
+                    `매칭 크기 ${data.matchedW}×${data.matchedH}px (needle ${data.needleW}×${data.needleH}px)`;
+            } else {
+                summary.innerHTML = `<span style="color:#ef4444">❌ 매칭 실패</span> — needle을 찾지 못했습니다. ` +
+                    `복숭아 아이콘이 화면에 보이는지 확인하거나 다시 캡처해주세요.`;
+            }
+            imgEl.src = data.image;
+            imgEl.style.display = '';
+            result.style.display = 'block';
+            addRotationLog(data.found ? '복숭아 매칭 테스트 성공' : '복숭아 매칭 테스트 실패');
+        } catch (e) {
+            summary.innerHTML = `<span style="color:#ef4444">테스트 오류: ${escapeHtml(e.message)}</span>`;
+            result.style.display = 'block';
+            imgEl.style.display = 'none';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '매칭 테스트';
+        }
+    }
+
+    async function openPeachCapture() {
+        const hwnd = getFirstAssignedHwnd(); // 0이면 백엔드에서 자동 감지
+        const btn = document.getElementById('peach-capture-btn');
+        if (btn) { btn.textContent = '스크린샷 촬영 중...'; btn.disabled = true; }
+        try {
+            // hwnd 0이면 첫 게임 창을 사용. 백엔드 capture API에서 fallback 처리되지만
+            // screenshot/full 은 hwnd 필수 → 미할당 시 게임 창 자동 탐색 결과 활용
+            let useHwnd = hwnd;
+            if (!useHwnd) {
+                // 윈도우 감지 API로 첫 번째 hwnd 가져오기
+                try {
+                    const r = await fetch('/api/rotation/detect-with-ocr');
+                    const list = await r.json();
+                    if (list && list.length > 0) useHwnd = list[0].hwnd;
+                } catch (e) {}
+            }
+            if (!useHwnd) {
+                addRotationLog('게임 창을 찾을 수 없습니다. 먼저 윈도우를 감지해주세요.');
+                return;
+            }
+            const r2 = await fetch('/api/rotation/screenshot/full?hwnd=' + useHwnd);
+            const data = await r2.json();
+            if (!data.image) throw new Error('스크린샷 없음');
+            peachScreenshotData = data.image;
+            peachImageWidth = data.width;
+            peachImageHeight = data.height;
+            showPeachRegionModal(useHwnd);
+        } catch (e) {
+            addRotationLog('스크린샷 촬영 실패: ' + e.message);
+        } finally {
+            if (btn) { btn.textContent = '스크린샷에서 영역 선택'; btn.disabled = false; }
+        }
+    }
+
+    function showPeachRegionModal(hwnd) {
+        const modal = document.getElementById('peach-region-modal');
+        const canvas = document.getElementById('peach-region-canvas');
+        const wrap = document.getElementById('peach-region-canvas-wrap');
+        const selection = document.getElementById('peach-region-selection');
+        const coordsDisplay = document.getElementById('peach-region-coords-display');
+        const saveBtn = document.getElementById('peach-region-save-btn');
+        const cancelBtn = document.getElementById('peach-region-cancel-btn');
+        const closeBtn = document.getElementById('peach-region-modal-close');
+        if (!modal || !canvas) return;
+
+        modal.style.display = 'flex';
+        saveBtn.disabled = true;
+        selection.style.display = 'none';
+        coordsDisplay.textContent = '영역을 드래그하세요';
+
+        const img = new Image();
+        img.onload = function() {
+            const maxW = wrap.clientWidth - 4;
+            const scale = maxW / img.width;
+            const dispW = Math.floor(img.width * scale);
+            const dispH = Math.floor(img.height * scale);
+            canvas.width = dispW;
+            canvas.height = dispH;
+            wrap.style.height = dispH + 'px';
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, dispW, dispH);
+
+            let dragging = false;
+            let startX = 0, startY = 0;
+            let selRect = { x: 0, y: 0, w: 0, h: 0 };
+
+            function pos(e) {
+                const r = canvas.getBoundingClientRect();
+                return { x: e.clientX - r.left, y: e.clientY - r.top };
+            }
+            function showSel(x, y, w, h) {
+                selection.style.display = 'block';
+                selection.style.left = x + 'px';
+                selection.style.top = y + 'px';
+                selection.style.width = w + 'px';
+                selection.style.height = h + 'px';
+            }
+
+            canvas.onmousedown = (e) => { dragging = true; const p = pos(e); startX = p.x; startY = p.y; selection.style.display = 'none'; e.preventDefault(); };
+            canvas.onmousemove = (e) => {
+                if (!dragging) return;
+                const p = pos(e);
+                const x = Math.min(startX, p.x), y = Math.min(startY, p.y);
+                const w = Math.abs(p.x - startX), h = Math.abs(p.y - startY);
+                showSel(x, y, w, h);
+                selRect = { x, y, w, h };
+                const ox = Math.round(x / scale), oy = Math.round(y / scale);
+                const ow = Math.round(w / scale), oh = Math.round(h / scale);
+                coordsDisplay.textContent = `X:${ox}, Y:${oy}, ${ow}x${oh}px`;
+            };
+            const finishDrag = () => {
+                if (!dragging) return;
+                dragging = false;
+                if (selRect.w > 5 && selRect.h > 5) saveBtn.disabled = false;
+            };
+            canvas.onmouseup = finishDrag;
+            canvas.onmouseleave = finishDrag;
+
+            saveBtn.onclick = async () => {
+                const ox = Math.round(selRect.x / scale);
+                const oy = Math.round(selRect.y / scale);
+                const ow = Math.round(selRect.w / scale);
+                const oh = Math.round(selRect.h / scale);
+                try {
+                    const res = await fetch('/api/peach/capture', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ hwnd: hwnd, x: ox, y: oy, width: ow, height: oh })
+                    });
+                    if (!res.ok) {
+                        const txt = await res.text();
+                        alert('저장 실패: ' + txt);
+                        return;
+                    }
+                    addRotationLog(`복숭아 아이콘 저장됨 (${ow}x${oh}px)`);
+                    closeModal();
+                    loadPeachPreview();
+                } catch (e) {
+                    alert('저장 실패: ' + e.message);
+                }
+            };
+
+            function closeModal() {
+                modal.style.display = 'none';
+                canvas.onmousedown = null;
+                canvas.onmousemove = null;
+                canvas.onmouseup = null;
+                canvas.onmouseleave = null;
+            }
+            cancelBtn.onclick = closeModal;
+            closeBtn.onclick = closeModal;
+        };
+        img.src = peachScreenshotData;
+    }
+
+    async function loadPeachPreview() {
+        try {
+            const r = await fetch('/api/peach/preview');
+            const data = await r.json();
+            const wrap = document.getElementById('peach-preview-wrap');
+            const imgEl = document.getElementById('peach-preview-img');
+            if (data.exists && wrap && imgEl) {
+                imgEl.src = data.image;
+                wrap.style.display = 'flex';
+            } else if (wrap) {
+                wrap.style.display = 'none';
+            }
+        } catch (e) {}
+    }
+
+    // === 딸깍 (최소화 모드) ===
+    function setupMinimizeToggle() {
+        const t = document.getElementById('minimize-toggle');
+        if (!t) return;
+        t.addEventListener('change', () => {
+            saveCoordinates(); // 좌표 API에 함께 저장
+            addRotationLog(`딸깍 모드 ${t.checked ? 'ON' : 'OFF'} — 저장됨`);
+        });
+    }
+
+    // === 자동사냥 예약 ===
+    function setupScheduleControls() {
+        const toggle = document.getElementById('schedule-toggle');
+        const timeInput = document.getElementById('schedule-time');
+        if (!toggle || !timeInput) return;
+        toggle.addEventListener('change', async () => {
+            if (toggle.checked) {
+                const time = timeInput.value || '12:00';
+                try {
+                    const res = await fetch('/api/rotation/schedule', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ time })
+                    });
+                    if (!res.ok) {
+                        const txt = await res.text();
+                        alert('예약 실패: ' + txt);
+                        toggle.checked = false;
+                    } else {
+                        addRotationLog(`자동사냥 ${time}에 예약됨`);
+                    }
+                } catch (e) {
+                    alert('예약 실패: ' + e.message);
+                    toggle.checked = false;
+                }
+            } else {
+                await fetch('/api/rotation/schedule', { method: 'DELETE' });
+                addRotationLog('자동사냥 예약 취소됨');
+            }
+            loadScheduleStatus();
+        });
+    }
+
+    async function loadScheduleStatus() {
+        const toggle = document.getElementById('schedule-toggle');
+        const status = document.getElementById('schedule-status');
+        const nowEl = document.getElementById('schedule-now');
+        if (!toggle || !status) return;
+        try {
+            const res = await fetch('/api/rotation/schedule');
+            const data = await res.json();
+            if (nowEl && data.nowKST) nowEl.textContent = data.nowKST;
+            if (data.running) {
+                toggle.checked = true;
+                const remain = data.remainingSeconds || 0;
+                const h = Math.floor(remain / 3600);
+                const m = Math.floor((remain % 3600) / 60);
+                const s = remain % 60;
+                status.textContent = `${data.targetTimeKST}에 시작 예정 (남은 ${h}h ${m}m ${s}s)`;
+                status.style.color = '#22c55e';
+            } else {
+                if (toggle.checked) toggle.checked = false;
+                status.textContent = '예약 없음';
+                status.style.color = '';
+            }
+        } catch (e) {
+            // ignore
+        }
+    }
 
     function setupRotationListeners() {
         if (addCharacterBtn) addCharacterBtn.addEventListener('click', showAddForm);
@@ -104,6 +395,8 @@
         document.getElementById('char-area').value = '';
         document.getElementById('char-dropdown-index').value = '0';
         document.getElementById('char-duration').value = '120';
+        const peachSel = document.getElementById('char-peach-type');
+        if (peachSel) peachSel.value = '';
         characterForm.style.display = 'block';
         characterForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -118,16 +411,23 @@
         const area = document.getElementById('char-area').value.trim();
         const dropdownIndex = parseInt(document.getElementById('char-dropdown-index').value) || 0;
         const duration = parseInt(document.getElementById('char-duration').value) || 120;
+        const peachType = document.getElementById('char-peach-type')?.value || '';
 
         if (!name) { alert('캐릭터 이름을 입력해주세요.'); return; }
         if (!area) { alert('사냥터 이름을 입력해주세요.'); return; }
+
+        // 수정 모드면 기존 order/enabled 유지, 신규면 마지막 순서로
+        const existing = editingCharId ? characters.find(c => c.id === editingCharId) : null;
+        const order = existing ? existing.order : characters.length;
+        const enabled = existing ? existing.enabled : true;
 
         const profile = {
             name: name,
             huntingArea: { name: area, dropdownIndex: dropdownIndex },
             durationMins: duration,
-            order: characters.length,
-            enabled: true
+            order: order,
+            enabled: enabled,
+            peachType: peachType
         };
 
         if (editingCharId) {
@@ -157,6 +457,8 @@
         document.getElementById('char-area').value = char.huntingArea?.name || '';
         document.getElementById('char-dropdown-index').value = char.huntingArea?.dropdownIndex || 0;
         document.getElementById('char-duration').value = char.durationMins;
+        const peachSel = document.getElementById('char-peach-type');
+        if (peachSel) peachSel.value = char.peachType || '';
         characterForm.style.display = 'block';
         characterForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     };
@@ -476,6 +778,14 @@
                     setCoordValue('coord-alert-confirm-y', data.alertConfirmY || 0);
                     setCoordValue('coord-revive-x', data.reviveX || 0);
                     setCoordValue('coord-revive-y', data.reviveY || 0);
+                    setCoordValue('coord-sect-x', data.sectButtonX || 0);
+                    setCoordValue('coord-sect-y', data.sectButtonY || 0);
+                    setCoordValue('coord-peach-receive-x', data.peachReceiveX || 0);
+                    setCoordValue('coord-peach-receive-y', data.peachReceiveY || 0);
+                    setCoordValue('coord-receive-accept-x', data.receiveAcceptX || 0);
+                    setCoordValue('coord-receive-accept-y', data.receiveAcceptY || 0);
+                    const minToggle = document.getElementById('minimize-toggle');
+                    if (minToggle) minToggle.checked = !!data.minimizeAfterStart;
                     updateCoordDisplays();
                 }
             })
@@ -492,6 +802,9 @@
         const cx = getCoordValue('coord-confirm-x'), cy = getCoordValue('coord-confirm-y');
         const acx = getCoordValue('coord-alert-confirm-x'), acy = getCoordValue('coord-alert-confirm-y');
         const rvx = getCoordValue('coord-revive-x'), rvy = getCoordValue('coord-revive-y');
+        const sectX = getCoordValue('coord-sect-x'), sectY = getCoordValue('coord-sect-y');
+        const prX = getCoordValue('coord-peach-receive-x'), prY = getCoordValue('coord-peach-receive-y');
+        const raX = getCoordValue('coord-receive-accept-x'), raY = getCoordValue('coord-receive-accept-y');
 
         const swordDisp = document.getElementById('coord-sword-display');
         const dropdownDisp = document.getElementById('coord-dropdown-display');
@@ -510,6 +823,13 @@
         if (confirmDisp) confirmDisp.textContent = (cx || cy) ? `(${cx}, ${cy})` : '미설정';
         if (alertConfirmDisp) alertConfirmDisp.textContent = (acx || acy) ? `(${acx}, ${acy})` : '미설정';
         if (reviveDisp) reviveDisp.textContent = (rvx || rvy) ? `(${rvx}, ${rvy})` : '미설정';
+
+        const sectDisp = document.getElementById('coord-sect-display');
+        const peachReceiveDisp = document.getElementById('coord-peach-receive-display');
+        const receiveAcceptDisp = document.getElementById('coord-receive-accept-display');
+        if (sectDisp) sectDisp.textContent = (sectX || sectY) ? `(${sectX}, ${sectY})` : '미설정';
+        if (peachReceiveDisp) peachReceiveDisp.textContent = (prX || prY) ? `(${prX}, ${prY})` : '미설정';
+        if (receiveAcceptDisp) receiveAcceptDisp.textContent = (raX || raY) ? `(${raX}, ${raY})` : '미설정';
     }
 
     function saveCoordinates() {
@@ -527,7 +847,14 @@
             alertConfirmX: getCoordValue('coord-alert-confirm-x'),
             alertConfirmY: getCoordValue('coord-alert-confirm-y'),
             reviveX: getCoordValue('coord-revive-x'),
-            reviveY: getCoordValue('coord-revive-y')
+            reviveY: getCoordValue('coord-revive-y'),
+            sectButtonX: getCoordValue('coord-sect-x'),
+            sectButtonY: getCoordValue('coord-sect-y'),
+            peachReceiveX: getCoordValue('coord-peach-receive-x'),
+            peachReceiveY: getCoordValue('coord-peach-receive-y'),
+            receiveAcceptX: getCoordValue('coord-receive-accept-x'),
+            receiveAcceptY: getCoordValue('coord-receive-accept-y'),
+            minimizeAfterStart: !!document.getElementById('minimize-toggle')?.checked
         };
 
         fetch('/api/rotation/coordinates', {
@@ -634,6 +961,15 @@
                     } else if (target === 'revive') {
                         setCoordValue('coord-revive-x', data.x);
                         setCoordValue('coord-revive-y', data.y);
+                    } else if (target === 'sect') {
+                        setCoordValue('coord-sect-x', data.x);
+                        setCoordValue('coord-sect-y', data.y);
+                    } else if (target === 'peach-receive') {
+                        setCoordValue('coord-peach-receive-x', data.x);
+                        setCoordValue('coord-peach-receive-y', data.y);
+                    } else if (target === 'receive-accept') {
+                        setCoordValue('coord-receive-accept-x', data.x);
+                        setCoordValue('coord-receive-accept-y', data.y);
                     } else if (target === 'firstitem') {
                         setCoordValue('coord-first-y', data.y);
                     } else if (target === 'seconditem') {
@@ -673,7 +1009,25 @@
 
     // === 자동 사냥 시작/중지 ===
 
-    function startRotation() {
+    async function startRotation() {
+        // 예약이 걸려있으면 즉시 시작 방지 (사용자가 실수로 시작 버튼 눌렀을 가능성)
+        try {
+            const r = await fetch('/api/rotation/schedule');
+            const sd = await r.json();
+            if (sd && sd.running) {
+                const ok = confirm(`현재 ${sd.targetTimeKST}에 예약된 자동사냥이 있습니다.\n\n예약을 무시하고 지금 즉시 시작하시겠습니까?\n\n[확인] = 예약 취소 + 즉시 시작\n[취소] = 아무 동작 안 함`);
+                if (!ok) {
+                    addRotationLog('예약 유지 — 즉시 시작 취소');
+                    return;
+                }
+                // 예약 취소
+                await fetch('/api/rotation/schedule', { method: 'DELETE' });
+                addRotationLog('예약 취소됨 — 즉시 시작 진행');
+            }
+        } catch (e) {
+            // schedule API 실패해도 시작 진행
+        }
+
         // 시작 전 좌표 검증
         const itemHeight = getCoordValue('coord-item-height');
         const firstY = getCoordValue('coord-first-y');

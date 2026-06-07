@@ -202,8 +202,13 @@ func (t *Trial) runLoopSolo() {
 			return
 		}
 
-		// 2. 입장: o → enter → enter
-		t.log("[2] 입장 시퀀스: o → enter → enter")
+		// 2. 입장: o → enter → enter (+ 첫 사이클만 enter 한 번 더)
+		firstCycle := t.runCount == 0
+		if firstCycle {
+			t.log("[2] 입장 시퀀스 (첫 사이클): o → enter → enter → enter")
+		} else {
+			t.log("[2] 입장 시퀀스: o → enter → enter")
+		}
 		t.pressKey(t.hwnd, "o", "솔로")
 		if !t.sleep(t.randomDelay()) {
 			return
@@ -213,6 +218,17 @@ func (t *Trial) runLoopSolo() {
 			return
 		}
 		t.pressKey(t.hwnd, "enter", "솔로")
+		if firstCycle {
+			if !t.sleep(3 * time.Second) {
+				return
+			}
+			t.pressKey(t.hwnd, "enter", "솔로-첫사이클")
+		}
+		// 마무리 ESC (남은 NPC 대화창 닫기)
+		if !t.sleep(800 * time.Millisecond) {
+			return
+		}
+		t.pressKey(t.hwnd, "escape", "솔로-마무리")
 
 		// 3. 맵 전환 대기 (7초)
 		t.log("[3] 맵 전환 대기 7초...")
@@ -265,8 +281,13 @@ func (t *Trial) runLoopGroup() {
 			return
 		}
 
-		// 2. 그룹장 입장: o → enter → enter
-		t.log("[2] 그룹장 입장: o → enter → enter")
+		// 2. 그룹장 입장: o → enter → enter (+ 첫 사이클만 enter 한 번 더)
+		firstCycle := t.runCount == 0
+		if firstCycle {
+			t.log("[2] 그룹장 입장 (첫 사이클): o → enter → enter → enter")
+		} else {
+			t.log("[2] 그룹장 입장: o → enter → enter")
+		}
 		t.pressKey(t.leaderHwnd, "o", "그룹장")
 		if !t.sleep(t.randomDelay()) {
 			return
@@ -276,13 +297,39 @@ func (t *Trial) runLoopGroup() {
 			return
 		}
 		t.pressKey(t.leaderHwnd, "enter", "그룹장")
+		if firstCycle {
+			if !t.sleep(3 * time.Second) {
+				return
+			}
+			t.pressKey(t.leaderHwnd, "enter", "그룹장-첫사이클")
+		}
+		// 그룹장 마무리 ESC (남은 NPC 대화창 닫기)
+		if !t.sleep(800 * time.Millisecond) {
+			return
+		}
+		t.pressKey(t.leaderHwnd, "escape", "그룹장-마무리")
 
-		// 3. 그룹원 5초 대기 → enter
-		t.log("[3] 그룹원 5초 대기 → enter")
+		// 3. 그룹원 5초 대기 → enter (+ 첫 사이클만 enter 한 번 더)
+		if firstCycle {
+			t.log("[3] 그룹원 (첫 사이클) 5초 대기 → enter → 3초 → enter")
+		} else {
+			t.log("[3] 그룹원 5초 대기 → enter")
+		}
 		if !t.sleep(5 * time.Second) {
 			return
 		}
 		t.pressKey(t.memberHwnd, "enter", "그룹원")
+		if firstCycle {
+			if !t.sleep(3 * time.Second) {
+				return
+			}
+			t.pressKey(t.memberHwnd, "enter", "그룹원-첫사이클")
+		}
+		// 그룹원 마무리 ESC (남은 NPC 대화창 닫기)
+		if !t.sleep(800 * time.Millisecond) {
+			return
+		}
+		t.pressKey(t.memberHwnd, "escape", "그룹원-마무리")
 
 		// 4. 맵 전환 대기 (7초)
 		t.log("[4] 맵 전환 대기 7초...")
@@ -370,18 +417,30 @@ func (t *Trial) detectMap(hwnd uint64) string {
 	return result
 }
 
-// isTrialLobby "환상의시련장" 매칭
+// isTrialLobby "환상의시련장" 매칭 (OCR 부정확 대응 강화)
+// 1) 키워드: "시련", "련장", "환상의", "환상시" 중 하나만 들어가도 true
+// 2) Levenshtein 60% 허용 (7글자 → 최대 4글자 차이까지 허용)
+// 3) 시련장은 "전투" 단어가 절대 안 들어가므로 "전투" 포함이면 false
 func (t *Trial) isTrialLobby(mapName string) bool {
 	if mapName == "" {
 		return false
 	}
-	if strings.Contains(mapName, "시련") {
-		return true
+	// 전투맵 키워드가 있으면 시련장 아님
+	if strings.Contains(mapName, "전투") {
+		return false
 	}
+	// 시련장 키워드 매칭 (부분 일치)
+	keywords := []string{"시련", "련장", "환상의", "환상시", "상의시", "의시련"}
+	for _, kw := range keywords {
+		if strings.Contains(mapName, kw) {
+			return true
+		}
+	}
+	// Levenshtein 60% 허용
 	target := []rune("환상의시련장")
 	mapRunes := []rune(mapName)
 	dist := levenshteinRunes(mapRunes, target)
-	maxDist := len(target) * 50 / 100
+	maxDist := len(target) * 60 / 100
 	if maxDist < 2 {
 		maxDist = 2
 	}
@@ -508,9 +567,11 @@ func (t *Trial) battleLoopSolo() {
 			return
 		}
 
-		// 전투맵이면 좌표 확인 + 이동
-		if t.isBattleMap(mapName) || mapName == "" {
+		// 전투맵일 때만 이동 (OCR 실패=빈 문자열, 시련장=절대 이동 금지)
+		if t.isBattleMap(mapName) {
 			t.walkTo(t.hwnd)
+		} else {
+			t.log(fmt.Sprintf("[전투] 맵='%s' — 전투맵 미확인, 이동 스킵", mapName))
 		}
 
 		if !t.sleep(2 * time.Second) {
@@ -520,30 +581,42 @@ func (t *Trial) battleLoopSolo() {
 }
 
 // battleLoopGroup 그룹 전투 루프: 2초마다 그룹장/그룹원 와리가리 이동 + 시련장 복귀 감지
+// 각 캐릭터의 맵을 개별 OCR하여 시련장이면 절대 이동하지 않음 (이동은 전투맵에서만)
 func (t *Trial) battleLoopGroup() {
 	for {
 		if t.isStopped() || !t.km.IsRunning() {
 			return
 		}
 
-		// 그룹장 맵 확인
+		// === 그룹장 맵 확인 ===
 		t.wm.ActivateWindow(t.leaderHwnd)
 		time.Sleep(300 * time.Millisecond)
-		mapName := t.detectMap(t.leaderHwnd)
-		if t.isTrialLobby(mapName) {
-			t.log("[전투] 환상의시련장 복귀 감지!")
+		leaderMap := t.detectMap(t.leaderHwnd)
+		if t.isTrialLobby(leaderMap) {
+			t.log("[전투] 그룹장 환상의시련장 복귀 감지!")
 			return
 		}
 
-		// 그룹장 이동
-		if t.isBattleMap(mapName) || mapName == "" {
+		// 그룹장: 전투맵일 때만 이동
+		if t.isBattleMap(leaderMap) {
 			t.walkTo(t.leaderHwnd)
+		} else {
+			t.log(fmt.Sprintf("[전투] 그룹장 맵='%s' — 전투맵 미확인, 이동 스킵", leaderMap))
 		}
 
-		// 그룹원 이동
+		// === 그룹원 맵 확인 (별도 OCR) ===
 		t.wm.ActivateWindow(t.memberHwnd)
 		time.Sleep(300 * time.Millisecond)
-		t.walkTo(t.memberHwnd)
+		memberMap := t.detectMap(t.memberHwnd)
+
+		// 그룹원: 시련장이면 절대 이동 금지, 전투맵일 때만 이동
+		if t.isTrialLobby(memberMap) {
+			t.log(fmt.Sprintf("[전투] 그룹원 시련장(%s) — 이동 안 함", memberMap))
+		} else if t.isBattleMap(memberMap) {
+			t.walkTo(t.memberHwnd)
+		} else {
+			t.log(fmt.Sprintf("[전투] 그룹원 맵='%s' — 전투맵 미확인, 이동 스킵", memberMap))
+		}
 
 		if !t.sleep(2 * time.Second) {
 			return
@@ -551,8 +624,13 @@ func (t *Trial) battleLoopGroup() {
 	}
 }
 
-// waitForTrialLobby 시련장에 있을 때까지 대기
+// waitForTrialLobby 시련장에 있을 때까지 대기 (OCR 인식 실패에도 견고하도록)
+//  - 30회 시도(약 90초) 이상 인식 실패 시 경고 로그
+//  - 빈 문자열(OCR 실패)이 연속 5회 이상이면 캐릭터 위치가 시련장이라고 가정하고 진입
+//    (사용자가 의도적으로 시련장에 두고 시작했을 가능성 + OCR이 영역을 못 잡는 경우 대응)
 func (t *Trial) waitForTrialLobby(hwnd uint64) bool {
+	attempts := 0
+	emptyStreak := 0
 	for {
 		if t.isStopped() || !t.km.IsRunning() {
 			return false
@@ -560,13 +638,31 @@ func (t *Trial) waitForTrialLobby(hwnd uint64) bool {
 		t.wm.ActivateWindow(hwnd)
 		time.Sleep(500 * time.Millisecond)
 		mapName := t.detectMap(hwnd)
+		attempts++
+
 		if t.isTrialLobby(mapName) {
-			t.log("[대기] 환상의시련장 확인!")
+			t.log(fmt.Sprintf("[대기] 환상의시련장 확인! (시도 %d회)", attempts))
 			return true
 		}
-		if mapName != "" {
-			t.log(fmt.Sprintf("[대기] 현재 맵='%s' — 시련장 아님, 3초 후 재확인", mapName))
+
+		if mapName == "" {
+			emptyStreak++
+			t.log(fmt.Sprintf("[대기] OCR 인식 실패 (%d회 연속)", emptyStreak))
+			// OCR이 5회 연속 빈 결과면 사용자가 시련장에 두고 시작했다고 가정하고 진입
+			if emptyStreak >= 5 {
+				t.log("[대기] OCR 5회 연속 실패 — 시련장으로 가정하고 진입")
+				return true
+			}
+		} else {
+			emptyStreak = 0
+			t.log(fmt.Sprintf("[대기] 현재 맵='%s' — 시련장 아님 (시도 %d회)", mapName, attempts))
 		}
+
+		// 30회(약 90초)마다 경고
+		if attempts%30 == 0 {
+			t.log(fmt.Sprintf("⚠ [대기] %d회 시도 동안 시련장 미인식 — 캐릭터가 환상의시련장에 있는지 확인하세요", attempts))
+		}
+
 		if !t.sleep(3 * time.Second) {
 			return false
 		}

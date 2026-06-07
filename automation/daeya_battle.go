@@ -209,8 +209,8 @@ func (db *DaeyaBattle) processOnce() {
 	entranceMatch := entranceDist <= entranceMaxDist
 	battleMatch := battleDist <= battleMaxDist
 
-	// 키워드 보조 매칭: "기슭" 포함 → 입구, "전투" 또는 "투" 포함 → 전투맵
-	if !entranceMatch && strings.Contains(mapName, "기슭") {
+	// 키워드 보조 매칭: "기슭" 또는 "산기" 포함 → 입구, "전투" 또는 "투" 포함 → 전투맵
+	if !entranceMatch && (strings.Contains(mapName, "기슭") || strings.Contains(mapName, "산기") || strings.Contains(mapName, "기슭")) {
 		entranceMatch = true
 	}
 	if !battleMatch {
@@ -225,22 +225,24 @@ func (db *DaeyaBattle) processOnce() {
 		entranceMap, entranceDist, entranceMaxDist, entranceMatch,
 		battleMap, battleDist, battleMaxDist, battleMatch))
 
-	// 둘 다 매칭되면 거리가 더 가까운 쪽 선택
+	// 둘 다 매칭되면 입구맵 우선 (입구에서 절대 이동하면 안 됨)
 	if entranceMatch && battleMatch {
-		if entranceDist <= battleDist {
-			battleMatch = false
-		} else {
-			entranceMatch = false
-		}
+		battleMatch = false
+		db.log("[매칭] 둘 다 매칭 → 입구맵 우선 (이동 방지)")
+	}
+
+	// "기슭" 또는 "산기" 포함이면 절대 전투맵 아님 (이동 방지)
+	if strings.Contains(mapName, "기슭") || strings.Contains(mapName, "산기") {
+		entranceMatch = true
+		battleMatch = false
 	}
 
 	if entranceMatch {
 		db.log("[입구맵] 대야산기슭 감지 — 사냥터 입장 시퀀스 실행")
 		db.enterBattle()
 	} else if battleMatch {
-		db.log("[전투맵] 대야전투 감지 — 스킬 사용 + 걸어서 이동")
+		db.log("[전투맵] 대야전투 감지 — 스킬 사용")
 		db.useRandomSkills()
-		db.walkToTarget(hwnd)
 	} else {
 		db.log(fmt.Sprintf("[알수없는맵] '%s' — 스킬만 사용", mapName))
 		db.useRandomSkills()
@@ -259,8 +261,8 @@ func (db *DaeyaBattle) detectMapName(hwnd uint64, img *image.RGBA) string {
 	}
 	clientW := w - clientOffX*2
 
-	cropW := 300
-	cropH := 25
+	cropW := 350
+	cropH := 28
 	cropX := clientOffX + clientW/2 - cropW/2
 	cropY := clientOffY
 	if cropX < 0 {

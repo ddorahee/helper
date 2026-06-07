@@ -2,7 +2,10 @@ package automation
 
 import (
 	"fmt"
+	"image/png"
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-vgo/robotgo"
@@ -77,7 +80,8 @@ func (ma *MouseAutomation) ClickRelative(hwnd uint64, relX, relY int) error {
 // StartHunting 사냥 시작 시퀀스 실행 (칼 클릭 → 사냥터 선택 → 시작 → 확인)
 // logFn: 로그에 메시지를 전송하는 콜백 (nil이면 로그만)
 // stopChan: 중단 신호 채널 (nil이면 중단 불가)
-func (ma *MouseAutomation) StartHunting(hwnd uint64, coords GameUICoords, dropdownIndex int, logFn func(string), stopChan <-chan struct{}) error {
+// peachType: "" / "silla" / "king" / "india" (복숭아 사용 옵션)
+func (ma *MouseAutomation) StartHunting(hwnd uint64, coords GameUICoords, dropdownIndex int, peachType string, logFn func(string), stopChan <-chan struct{}) error {
 	emit := func(msg string) {
 		log.Printf("[사냥시작] %s", msg)
 		if logFn != nil {
@@ -151,6 +155,17 @@ func (ma *MouseAutomation) StartHunting(hwnd uint64, coords GameUICoords, dropdo
 	if waitOrStop(500 * time.Millisecond) {
 		emit("=== 중단됨 ===")
 		return fmt.Errorf("중단됨")
+	}
+
+	// 1-4. 복숭아 시퀀스 (peachType이 설정되고 좌표가 있을 때만)
+	if peachType != "" && (coords.SectButtonX != 0 || coords.SectButtonY != 0) {
+		if stopped() {
+			emit("=== 중단됨 ===")
+			return fmt.Errorf("중단됨")
+		}
+		if err := ma.runPeachSequence(hwnd, coords, peachType, emit, waitOrStop, stopped); err != nil {
+			emit(fmt.Sprintf("복숭아 시퀀스 실패 (무시): %v", err))
+		}
 	}
 
 	// 2. 칼 버튼 클릭 (자동사냥 대화창 열기)
@@ -240,8 +255,238 @@ func (ma *MouseAutomation) StartHunting(hwnd uint64, coords GameUICoords, dropdo
 		emit("⑥ 확인 버튼 좌표 미설정 - 건너뜀")
 	}
 
+	// 7. 자동사냥 시작 완료 → 창 최소화 (옵션 ON일 때만, 리소스 절감)
+	if coords.MinimizeAfterStart {
+		if waitOrStop(1 * time.Second) {
+			emit("=== 중단됨 ===")
+			return fmt.Errorf("중단됨")
+		}
+		emit("⑦ 자동사냥 시작됨 → 창 최소화 (옵션 ON)")
+		if err := ma.wm.MinimizeWindow(hwnd); err != nil {
+			log.Printf("[사냥시작] 창 최소화 실패 (무시): %v", err)
+		}
+	}
+
 	emit("=== 시퀀스 완료 ===")
 	return nil
+}
+
+// runPeachSequence 복숭아 자동 사용 시퀀스
+// peachType: "silla" / "king" / "india" — 인벤토리에서 복숭아 더블클릭 후 누를 위쪽 화살표 횟수 결정
+func (ma *MouseAutomation) runPeachSequence(hwnd uint64, coords GameUICoords, peachType string,
+	emit func(string), waitOrStop func(time.Duration) bool, stopped func() bool) error {
+
+	emit(fmt.Sprintf("==== 복숭아 시퀀스 시작 (타입=%s) ====", peachType))
+
+	// 1. Alt+X (문파창 열기)
+	emit("①-4-1 Alt+X (문파창 열기)")
+	robotgo.KeyTap("x", "alt")
+	if waitOrStop(1 * time.Second) {
+		return fmt.Errorf("중단됨")
+	}
+
+	// 2. 문파 버튼 클릭
+	if coords.SectButtonX != 0 || coords.SectButtonY != 0 {
+		emit(fmt.Sprintf("①-4-2 문파 버튼 클릭 (%d, %d)", coords.SectButtonX, coords.SectButtonY))
+		if err := ma.ClickRelative(hwnd, coords.SectButtonX, coords.SectButtonY); err != nil {
+			log.Printf("[복숭아] 문파 클릭 실패 (무시): %v", err)
+		}
+		if waitOrStop(1 * time.Second) {
+			return fmt.Errorf("중단됨")
+		}
+	}
+
+	// 3. 복숭아 받기 클릭
+	if coords.PeachReceiveX != 0 || coords.PeachReceiveY != 0 {
+		emit(fmt.Sprintf("①-4-3 복숭아 받기 클릭 (%d, %d)", coords.PeachReceiveX, coords.PeachReceiveY))
+		if err := ma.ClickRelative(hwnd, coords.PeachReceiveX, coords.PeachReceiveY); err != nil {
+			log.Printf("[복숭아] 복숭아 받기 클릭 실패 (무시): %v", err)
+		}
+		if waitOrStop(1 * time.Second) {
+			return fmt.Errorf("중단됨")
+		}
+	}
+
+	// 4. 받기 클릭
+	if coords.ReceiveAcceptX != 0 || coords.ReceiveAcceptY != 0 {
+		emit(fmt.Sprintf("①-4-4 받기 클릭 (%d, %d)", coords.ReceiveAcceptX, coords.ReceiveAcceptY))
+		if err := ma.ClickRelative(hwnd, coords.ReceiveAcceptX, coords.ReceiveAcceptY); err != nil {
+			log.Printf("[복숭아] 받기 클릭 실패 (무시): %v", err)
+		}
+		if waitOrStop(1 * time.Second) {
+			return fmt.Errorf("중단됨")
+		}
+	}
+
+	// 4-1. 받기 종료: ESC → Enter → ESC (수령 알림 닫기)
+	emit("①-4-4-1 받기 종료 시퀀스: ESC → Enter → ESC")
+	robotgo.KeyTap("escape")
+	if waitOrStop(400 * time.Millisecond) {
+		return fmt.Errorf("중단됨")
+	}
+	robotgo.KeyTap("enter")
+	if waitOrStop(400 * time.Millisecond) {
+		return fmt.Errorf("중단됨")
+	}
+	robotgo.KeyTap("escape")
+	if waitOrStop(500 * time.Millisecond) {
+		return fmt.Errorf("중단됨")
+	}
+
+	// 5. ESC (받기 창 닫기 — 잔여 팝업 대비)
+	emit("①-4-5 ESC (받기 창 닫기)")
+	robotgo.KeyTap("escape")
+	if waitOrStop(500 * time.Millisecond) {
+		return fmt.Errorf("중단됨")
+	}
+
+	// 6. i (인벤토리 열기)
+	emit("①-4-6 i (인벤토리 열기)")
+	robotgo.KeyTap("i")
+	if waitOrStop(1 * time.Second) {
+		return fmt.Errorf("중단됨")
+	}
+
+	// 7. 인벤토리에서 복숭아 검색 + 더블클릭
+	if !ma.findAndDoubleClickPeach(hwnd, emit, waitOrStop, stopped) {
+		emit("①-4-7 복숭아를 인벤토리에서 찾지 못함 — 시퀀스 종료")
+		robotgo.KeyTap("escape")
+		return nil
+	}
+
+	if waitOrStop(1 * time.Second) {
+		return fmt.Errorf("중단됨")
+	}
+
+	// 8. 캐릭터 타입별 화살표 + 엔터
+	upCount := 0
+	switch peachType {
+	case "silla":
+		upCount = 2
+	case "king":
+		upCount = 3
+	case "india":
+		upCount = 4
+	}
+	if upCount > 0 {
+		emit(fmt.Sprintf("①-4-8 위쪽 화살표 %d회 + Enter + Enter (타입=%s)", upCount, peachType))
+		for i := 0; i < upCount; i++ {
+			if stopped() {
+				return fmt.Errorf("중단됨")
+			}
+			robotgo.KeyTap("up")
+			time.Sleep(150 * time.Millisecond)
+		}
+		time.Sleep(300 * time.Millisecond)
+		robotgo.KeyTap("enter")
+		time.Sleep(500 * time.Millisecond)
+		robotgo.KeyTap("enter")
+		if waitOrStop(1 * time.Second) {
+			return fmt.Errorf("중단됨")
+		}
+	}
+
+	// 9. ESC (인벤토리 닫기)
+	emit("①-4-9 ESC (인벤토리 닫기)")
+	robotgo.KeyTap("escape")
+	if waitOrStop(500 * time.Millisecond) {
+		return fmt.Errorf("중단됨")
+	}
+
+	emit("==== 복숭아 시퀀스 완료 ====")
+	return nil
+}
+
+// findAndDoubleClickPeach 인벤토리 내에서 복숭아 아이콘을 찾아 더블클릭
+// 매번 캡처 + 다중 스케일 이미지 매칭 후 못 찾으면 PageUp/PageDown으로 페이지 넘기며 탐색
+// PageUp 15회 → PageDown 30회 시도 후 미발견시 false 반환
+func (ma *MouseAutomation) findAndDoubleClickPeach(hwnd uint64, emit func(string), waitOrStop func(time.Duration) bool, stopped func() bool) bool {
+	peachPath := "config/peach.png"
+	needle, err := LoadPNG(peachPath)
+	if err != nil {
+		emit(fmt.Sprintf("①-4-7 %s 로드 실패: %v", peachPath, err))
+		return false
+	}
+	emit(fmt.Sprintf("①-4-7 needle 로드 완료 %dx%d (다중 스케일 매칭)",
+		needle.Bounds().Dx(), needle.Bounds().Dy()))
+
+	debugDir := filepath.Join(os.Getenv("USERPROFILE"), "Downloads", "Temp")
+	os.MkdirAll(debugDir, 0755)
+	debugCounter := 0
+
+	tryMatch := func() (bool, int, int) {
+		raw, _, err := ma.wm.CaptureWindowRaw(hwnd)
+		if err != nil {
+			return false, 0, 0
+		}
+		// 다중 스케일 + 완화된 임계값 (작은 아이콘은 픽셀 변동에 민감)
+		x, y, scale, found := FindImageMultiScale(raw, needle, nil, 80, 0.75)
+		if !found {
+			// 디버그: 처음 3회 매칭 실패 시 게임 캡처 저장
+			if debugCounter < 3 {
+				debugCounter++
+				debugPath := filepath.Join(debugDir, fmt.Sprintf("peach_miss_%d.png", debugCounter))
+				if f, e := os.Create(debugPath); e == nil {
+					_ = png.Encode(f, raw)
+					f.Close()
+					emit(fmt.Sprintf("①-4-7 매칭 실패 디버그 이미지: %s", debugPath))
+				}
+			}
+			return false, 0, 0
+		}
+		nb := needle.Bounds()
+		// 스케일된 아이콘의 중심 좌표
+		cx := x + int(float64(nb.Dx())*scale)/2
+		cy := y + int(float64(nb.Dy())*scale)/2
+		emit(fmt.Sprintf("①-4-7 매칭 성공 scale=%.2f at (%d,%d) → 중심 (%d,%d)", scale, x, y, cx, cy))
+		return true, cx, cy
+	}
+
+	doubleClickAt := func(cx, cy int) bool {
+		emit(fmt.Sprintf("①-4-7 복숭아 발견 → 더블클릭 (상대=%d,%d)", cx, cy))
+		if err := ma.DoubleClickRelative(hwnd, cx, cy); err != nil {
+			emit(fmt.Sprintf("①-4-7 더블클릭 실패: %v", err))
+			return false
+		}
+		return true
+	}
+
+	// 0회: 현재 위치에서 매칭
+	if found, cx, cy := tryMatch(); found {
+		return doubleClickAt(cx, cy)
+	}
+
+	// PageUp 15회 탐색 (위쪽 페이지)
+	emit("①-4-7 인벤토리 PageUp 탐색 (최대 15회)")
+	for i := 1; i <= 15; i++ {
+		if stopped() {
+			return false
+		}
+		robotgo.KeyTap("pageup")
+		if waitOrStop(250 * time.Millisecond) {
+			return false
+		}
+		if found, cx, cy := tryMatch(); found {
+			return doubleClickAt(cx, cy)
+		}
+	}
+
+	// PageDown 30회 탐색 (위로 올라간 만큼 + 아래 페이지)
+	emit("①-4-7 인벤토리 PageDown 탐색 (최대 30회)")
+	for i := 1; i <= 30; i++ {
+		if stopped() {
+			return false
+		}
+		robotgo.KeyTap("pagedown")
+		if waitOrStop(250 * time.Millisecond) {
+			return false
+		}
+		if found, cx, cy := tryMatch(); found {
+			return doubleClickAt(cx, cy)
+		}
+	}
+
+	return false
 }
 
 // GetMousePosition 현재 마우스 절대좌표 반환
@@ -288,4 +533,13 @@ type GameUICoords struct {
 	AlertConfirmY      int // 채굴 확인 버튼 Y
 	ReviveX            int // 부활 버튼 X
 	ReviveY            int // 부활 버튼 Y
+	SectButtonX        int // 문파 버튼 X
+	SectButtonY        int // 문파 버튼 Y
+	PeachReceiveX      int // 복숭아 받기 X
+	PeachReceiveY      int // 복숭아 받기 Y
+	ReceiveAcceptX     int // 받기/수락 X
+	ReceiveAcceptY     int // 받기/수락 Y
+
+	// 사냥 시작 후 창 최소화 (리소스 절감)
+	MinimizeAfterStart bool
 }
