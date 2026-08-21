@@ -66,12 +66,13 @@
 
             detectedWindows = data.map(w => ({
                 hwnd: w.hwnd,
-                name: w.detectedName || '(인식 실패)'
+                name: w.detectedName || '',
+                nickCrop: w.nickCrop || ''
             }));
 
             addLog(`${detectedWindows.length}개 바람창 감지됨`);
             detectedWindows.forEach((w, i) => {
-                addLog(`  ${i + 1}. ${w.name}`);
+                addLog(`  창 ${i + 1}${w.name ? ' (' + w.name + ')' : ''}`);
             });
 
             // 기본 선택
@@ -100,9 +101,14 @@
         }
 
         list.innerHTML = detectedWindows.map((w, i) => {
+            // 닉네임 크롭 이미지로 창을 구분 (OCR 텍스트는 부정확할 수 있어 보조 표기만)
+            const img = w.nickCrop
+                ? `<img src="${w.nickCrop}" alt="창 ${i + 1}" style="height:24px;border-radius:3px;image-rendering:pixelated;background:#000">`
+                : `<span style="font-size:0.7rem;opacity:0.3">(크롭 없음)</span>`;
             return `<div style="padding:0.4rem 0.6rem;margin-bottom:0.3rem;background:rgba(255,255,255,0.05);border-radius:6px;display:flex;align-items:center;gap:0.5rem">
-                <span style="font-size:0.75rem;opacity:0.4;min-width:1.2rem">${i + 1}</span>
-                <span style="font-weight:500">${escapeHtml(w.name)}</span>
+                <span style="font-size:0.75rem;opacity:0.5;min-width:2.4rem;font-weight:600">창 ${i + 1}</span>
+                ${img}
+                ${w.name ? `<span style="font-size:0.72rem;opacity:0.4">${escapeHtml(w.name)}</span>` : ''}
                 <span style="font-size:0.7rem;opacity:0.3;margin-left:auto">hwnd:${w.hwnd}</span>
             </div>`;
         }).join('');
@@ -149,9 +155,10 @@
     }
 
     function makeSelect(id, selectedHwnd) {
-        const options = detectedWindows.map(w => {
+        const options = detectedWindows.map((w, i) => {
             const sel = w.hwnd === selectedHwnd ? 'selected' : '';
-            return `<option value="${w.hwnd}" ${sel}>${escapeHtml(w.name)}</option>`;
+            const label = `창 ${i + 1}${w.name ? ' (' + w.name + ')' : ''}`;
+            return `<option value="${w.hwnd}" ${sel}>${escapeHtml(label)}</option>`;
         }).join('');
         return `<select id="${id}" style="width:100%;padding:0.4rem;font-size:0.85rem;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:inherit">${options}</select>`;
     }
@@ -239,8 +246,10 @@
     }
 
     function getNameByHwnd(hwnd) {
-        const w = detectedWindows.find(w => w.hwnd === hwnd);
-        return w ? w.name : '?';
+        const i = detectedWindows.findIndex(w => w.hwnd === hwnd);
+        if (i < 0) return '?';
+        const w = detectedWindows[i];
+        return `창 ${i + 1}${w.name ? ' (' + w.name + ')' : ''}`;
     }
 
     function updateStatus(text) {

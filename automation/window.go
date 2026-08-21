@@ -23,6 +23,7 @@ var (
 	procIsWindow                 = user32.NewProc("IsWindow")
 	procBringWindowToTop         = user32.NewProc("BringWindowToTop")
 	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
+	procGetForegroundWindow      = user32.NewProc("GetForegroundWindow")
 	procKeybdEvent               = user32.NewProc("keybd_event")
 	procIsIconic                 = user32.NewProc("IsIconic")
 	procGetDC                    = user32.NewProc("GetDC")
@@ -180,6 +181,24 @@ func (wm *WindowManager) GetWindowRect(hwnd uint64) (WindowRect, error) {
 func (wm *WindowManager) IsWindowValid(hwnd uint64) bool {
 	ret, _, _ := procIsWindow.Call(uintptr(hwnd))
 	return ret != 0
+}
+
+// GetForegroundWindow 현재 맨 앞(활성) 창의 HWND. 없으면 0.
+func (wm *WindowManager) GetForegroundWindow() uint64 {
+	h, _, _ := procGetForegroundWindow.Call()
+	return uint64(h)
+}
+
+// GetWindowTitle 창 제목 문자열 (UI 표시용). 임의 앱(카카오톡 등) 모두 가능.
+func (wm *WindowManager) GetWindowTitle(hwnd uint64) string {
+	h := uintptr(hwnd)
+	textLen, _, _ := procGetWindowTextLengthW.Call(h)
+	if textLen == 0 {
+		return ""
+	}
+	buf := make([]uint16, textLen+1)
+	procGetWindowTextW.Call(h, uintptr(unsafe.Pointer(&buf[0])), textLen+1)
+	return syscall.UTF16ToString(buf)
 }
 
 // GetClientOffset GetWindowRect 기준 이미지에서 클라이언트 영역의 (X, Y) 오프셋 반환

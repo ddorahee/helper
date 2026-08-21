@@ -23,6 +23,7 @@ type CharacterProfile struct {
 	Order        int         `json:"order"`         // 순환 순서 (0부터)
 	Enabled      bool        `json:"enabled"`       // 순환에 포함할지 여부
 	PeachType    string      `json:"peachType"`     // 복숭아 타입: "" / "silla" / "king" / "india"
+	CompanionMode string     `json:"companionMode"` // 동시 메인화면: "" / "kanchen" / "daeya" — 설정 시 자동사냥 순환에서 빠지고 사냥시간(DurationMins) 동안 메인화면 자동화 병행 실행
 	WindowHWND   uint64      `json:"-"`             // 런타임 전용 (매 실행마다 재할당)
 	Assigned     bool        `json:"-"`             // 런타임 전용
 }

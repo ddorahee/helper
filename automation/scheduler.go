@@ -44,7 +44,8 @@ func kstLocation() *time.Location {
 	return loc
 }
 
-// ScheduleAt KST 기준 오늘 HH:MM 시각으로 예약 (이미 지났으면 에러)
+// ScheduleAt KST 기준 HH:MM 시각으로 예약. 오늘 기준으로 이미 지난 시각이면
+// 다음 날 같은 시각으로 예약된다 (예: 23:11에 00:00 → 다음 날 자정).
 func (s *RotationScheduler) ScheduleAt(timeStr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -68,13 +69,12 @@ func (s *RotationScheduler) ScheduleAt(timeStr string) error {
 	}
 
 	target := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, loc)
+	// 오늘 기준으로 이미 지난 시각이면 다음 날 같은 시각으로
+	if !target.After(now) {
+		target = target.Add(24 * time.Hour)
+	}
 	s.log(fmt.Sprintf("ScheduleAt 호출: 입력='%s' → target=%s, 현재 KST=%s",
 		timeStr, target.Format("2006-01-02 15:04:05 MST"), now.Format("2006-01-02 15:04:05 MST")))
-
-	if !target.After(now) {
-		return fmt.Errorf("이미 지난 시각입니다 (입력=%s, 현재 KST=%s)",
-			timeStr, now.Format("15:04:05"))
-	}
 
 	dur := time.Until(target)
 

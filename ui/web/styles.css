@@ -1316,6 +1316,16 @@ input:checked + .slider:before {
     justify-content: center;
 }
 
+/* 닉네임 크롭 (전체 스크린샷 대체 — 창 구분용) */
+.window-nick-container {
+    background-color: var(--bg-color);
+    border-top: 1px solid var(--border-color);
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .window-thumb {
     width: 100%;
     height: auto;
@@ -2426,4 +2436,118 @@ input:checked + .slider:before {
 }
 .telegram-status.error {
     color: var(--danger-color);
+}
+
+/* ===== 창 전환 (switcher) ===== */
+.section-desc {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.8rem;
+    line-height: 1.5;
+}
+.switcher-help {
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.7rem 0.9rem;
+    margin-bottom: 1rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.9;
+}
+.switcher-help kbd {
+    display: inline-block;
+    background-color: var(--card-bg-hover);
+    border: 1px solid var(--border-hover);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: var(--text-primary);
+}
+.switcher-help b { color: var(--primary-light); }
+.switcher-note { color: var(--text-muted); font-size: 0.74rem; margin-top: 0.4rem; }
+
+.switcher-slots {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.7rem;
+    margin-bottom: 1rem;
+}
+.switcher-slot {
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.switcher-slot.filled { border-color: var(--primary-color); }
+.switcher-slot.dead { border-color: #b04848; opacity: 0.8; }
+.switcher-slot .slot-num {
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--primary-light);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+.switcher-slot .slot-idx {
+    font-family: inherit;
+    font-weight: 500;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+.switcher-slot .slot-cliplabel {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+}
+.switcher-slot .slot-clip {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    font-family: inherit;
+}
+.switcher-slot .slot-clip:focus { outline: none; border-color: var(--primary-color); }
+.switcher-slot .slot-title {
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.switcher-slot .slot-actions { display: flex; gap: 0.4rem; }
+.switcher-slot button {
+    flex: 1;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.74rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background-color: var(--card-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-speed);
+}
+.switcher-slot button:hover { border-color: var(--border-hover); color: var(--text-primary); }
+.switcher-slot .slot-register:hover { border-color: var(--primary-color); color: var(--primary-light); }
+
+.switcher-log {
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.6rem 0.8rem;
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    max-height: 180px;
+    overflow-y: auto;
 }

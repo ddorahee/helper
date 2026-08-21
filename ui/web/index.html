@@ -56,6 +56,15 @@
                     </svg>
                     시련
                 </button>
+                <button class="nav-button" data-section="switcher">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                    창 전환
+                </button>
                 <button class="nav-button" data-section="logs">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -112,69 +121,6 @@
                 </div>
 
                 <div class="settings-grid">
-                    <!-- 모드 선택 카드 -->
-                    <div class="card">
-                        <h2>모드 선택</h2>
-                        <div class="modes-container">
-                            <div class="mode-group">
-                                <h3>대야</h3>
-                                <div class="mode-options">
-                                    <label class="mode-option">
-                                        <input type="radio" name="mode" value="1" checked>
-                                        <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="mode-icon">
-                                                <path d="M15 3H21V9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M21 14V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M21 3L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                            </svg>
-                                            <span>입장</span>
-                                        </span>
-                                    </label>
-                                    <label class="mode-option">
-                                        <input type="radio" name="mode" value="2">
-                                        <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="mode-icon">
-                                                <path d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                            </svg>
-                                            <span>파티</span>
-                                        </span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="mode-group">
-                                <h3>칸첸</h3>
-                                <div class="mode-options">
-                                    <label class="mode-option">
-                                        <input type="radio" name="mode" value="3">
-                                        <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="mode-icon">
-                                                <path d="M15 3H21V9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M21 14V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M21 3L12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                            </svg>
-                                            <span>입장</span>
-                                        </span>
-                                    </label>
-                                    <label class="mode-option">
-                                        <input type="radio" name="mode" value="4">
-                                        <span class="mode-card">
-                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="mode-icon">
-                                                <path d="M17 21V19C17 17.9391 16.5786 16.9217 15.8284 16.1716C15.0783 15.4214 14.0609 15 13 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M23 21V19C22.9993 18.1137 22.7044 17.2528 22.1614 16.5523C21.6184 15.8519 20.8581 15.3516 20 15.13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                                <path d="M16 3.13C16.8604 3.35031 17.623 3.85071 18.1676 4.55232C18.7122 5.25392 19.0078 6.11683 19.0078 7.005C19.0078 7.89318 18.7122 8.75608 18.1676 9.45769C17.623 10.1593 16.8604 10.6597 16 10.88" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                            </svg>
-                                            <span>파티</span>
-                                        </span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- 시간 설정 카드 -->
                     <div class="card">
                         <h2>자동 종료 시간</h2>
@@ -254,6 +200,37 @@
                         <button id="item-pickup-coord-btn" class="apply-btn" style="flex:1;padding:0.4rem;font-size:0.8rem">좌표 테스트</button>
                     </div>
                     <div id="item-pickup-test-result" class="ocr-test-result" style="display:none;margin-top:0.4rem"></div>
+                </div>
+
+                <!-- 다중 창 입장 — 창마다 대야/칸첸을 선택 (혼합 가능) -->
+                <div class="card" id="multi-entry-card">
+                    <div class="rotation-card-header" style="margin-bottom:0.5rem">
+                        <h2 style="font-size:1rem">다중 창 입장 (최대 4개)</h2>
+                        <button id="multi-entry-detect" class="detect-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem">창 감지</button>
+                    </div>
+                    <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.5rem;line-height:1.5">
+                        선택한 창들을 약 30초 주기로 순환하며 <b>입구맵이면 입장</b>, 사냥맵이면 그대로 둡니다.
+                        <b>2개 이상</b> 선택 시 입장 유지만(사냥은 게임 내 자동사냥),
+                        <b>1개</b>만 선택하면 그 창으로 기존 로직(대야 스킬/칸첸 아이템)이 돕니다.
+                        아무것도 선택 안 하면 기존과 동일(첫 번째 창).
+                    </p>
+                    <div id="multi-entry-list" style="display:flex;flex-direction:column;gap:0.3rem">
+                        <span style="font-size:0.78rem;color:var(--text-muted)">'창 감지'를 눌러 게임 창을 확인하세요</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem">
+                        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;cursor:pointer">
+                            <input type="checkbox" id="multi-entry-minimize">
+                            <span>입장 후 창 최소화 (기본 꺼짐)</span>
+                        </label>
+                    </div>
+                    <div id="multi-center-row" style="display:none;align-items:center;gap:0.5rem;margin-top:0.4rem">
+                        <span style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">칸첸 복귀좌표</span>
+                        <span style="font-size:0.8rem;color:var(--text-muted)">X</span>
+                        <input type="text" id="multi-center-x" value="34" maxlength="3" inputmode="numeric" style="width:50px;padding:0.3rem;font-size:0.85rem;text-align:center">
+                        <span style="font-size:0.8rem;color:var(--text-muted)">Y</span>
+                        <input type="text" id="multi-center-y" value="37" maxlength="3" inputmode="numeric" style="width:50px;padding:0.3rem;font-size:0.85rem;text-align:center">
+                        <span style="font-size:0.7rem;color:var(--text-muted)">(입장 후 이 좌표로 이동, 아이템은 안 먹음)</span>
+                    </div>
                 </div>
 
                 <!-- 컨트롤 버튼 -->
@@ -435,6 +412,24 @@
                 </div>
             </section>
 
+            <section id="switcher-section" class="content-section">
+                <div class="card">
+                    <h2>창 전환 (전역 핫키)</h2>
+                    <p class="section-desc">
+                        창을 슬롯에 기억해두고 어디서든 핫키로 그 창으로 전환합니다.
+                        바람의나라뿐 아니라 카카오톡 등 아무 창이나 가능합니다.
+                    </p>
+                    <div class="switcher-help">
+                        <div><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1~5</kbd> — 현재 맨 앞 창을 슬롯에 <b>등록</b></div>
+                        <div><kbd>Shift</kbd>+<kbd>F1~F4</kbd>, <kbd>Alt</kbd>+<kbd>5</kbd> — 슬롯의 창으로 <b>이동</b> (각 슬롯의 핫키는 카드에 표시)</div>
+                        <div>전환 시, 슬롯에 적어둔 텍스트를 <b>클립보드에 복사</b>합니다 (붙여넣기는 직접 Ctrl+V).</div>
+                        <div class="switcher-note">※ 슬롯/텍스트는 앱 실행 중에만 유지됩니다(껐다 켜면 재등록). 등록은 UI 버튼으로도 가능합니다.</div>
+                    </div>
+                    <div id="switcher-slots" class="switcher-slots"></div>
+                    <div id="switcher-log" class="switcher-log"></div>
+                </div>
+            </section>
+
             <section id="logs-section" class="content-section">
                 <div class="card logs-card">
                     <div class="logs-header">
@@ -556,19 +551,28 @@
                                 <input type="text" id="char-name" placeholder="예: 테라폼">
                             </div>
                             <div class="form-row">
+                                <label>역할</label>
+                                <select id="char-companion-mode">
+                                    <option value="">자동사냥</option>
+                                    <option value="kanchen">동시실행 — 칸첸</option>
+                                    <option value="daeya">동시실행 — 대야</option>
+                                </select>
+                                <span class="form-hint">자동사냥: 순환에 참여해 게임 내 자동사냥 실행 / 동시실행: 순환에서 빠지고 다른 캐릭이 사냥하는 동안 메인화면 칸첸·대야를 병행 실행 (전환 순간에만 잠깐 멈췄다 이어서 돎)</span>
+                            </div>
+                            <div class="form-row" id="row-char-area">
                                 <label>사냥터 이름</label>
                                 <input type="text" id="char-area" placeholder="예: 아젠타석굴">
                             </div>
-                            <div class="form-row">
+                            <div class="form-row" id="row-char-dropdown">
                                 <label>사냥터 드롭다운 순서 (0부터)</label>
                                 <input type="number" id="char-dropdown-index" value="0" min="0" max="20">
                                 <span class="form-hint">드롭다운에서 위에서부터 몇 번째 항목인지 (0 = 첫 번째)</span>
                             </div>
                             <div class="form-row">
-                                <label>사냥 시간 (분)</label>
+                                <label id="char-duration-label">사냥 시간 (분)</label>
                                 <input type="number" id="char-duration" value="120" min="1" max="600">
                             </div>
-                            <div class="form-row">
+                            <div class="form-row" id="row-char-peach">
                                 <label>복숭아</label>
                                 <select id="char-peach-type">
                                     <option value="">사용 안 함</option>
@@ -926,5 +930,6 @@
     <script src="./keymapping.js"></script>
     <script src="./trial.js"></script>
     <script src="./rotation.js"></script>
+    <script src="./switcher.js"></script>
 </body>
 </html>

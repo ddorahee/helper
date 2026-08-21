@@ -63,6 +63,9 @@ type Application struct {
 	DaeyaBattle      *automation.DaeyaBattle
 	Trial            *automation.Trial
 	RotationScheduler *automation.RotationScheduler
+	WindowSwitcher    *automation.WindowSwitcher
+	MultiEntry        *automation.MultiEntry
+	EscWatcher        *automation.EscStopWatcher
 	CharacterStore    *config.CharacterStore
 	KeyMappingStore   *config.KeyMappingStore
 	KeyMappingMgr     *keymapping.KeyMappingManager
@@ -285,6 +288,8 @@ func main() {
 	rotationManager.SetEventCallback(func(eventType string, payload interface{}) {
 		sendEvent(app, eventType, payload)
 	})
+	// 자동사냥 대기 중 다음 순번 캐릭 창에서 메인화면(칸첸/대야)을 병행 실행하는 컨트롤러
+	rotationManager.SetCompanionController(&rotationCompanion{app: app})
 	app.RotationManager = rotationManager
 
 	// 자동사냥 예약 매니저 생성
@@ -294,6 +299,41 @@ func main() {
 			sendEvent(app, "rotationLog", map[string]string{"message": "[예약] " + msg})
 		},
 	)
+
+	// 다중 창 입장 유지 (대야/칸첸 — 게임에서 그룹 입장 삭제됨 → 창마다 솔로 입장)
+	app.MultiEntry = automation.NewMultiEntry(windowManager, ocrManager)
+	app.MultiEntry.SetLogFunc(func(msg string) {
+		sendEvent(app, "logMessage", map[string]string{"message": "[다중입장] " + msg})
+	})
+
+	// ESC 빠른 연타(2회) → 자동사냥 + 메인화면 자동화 전체 비상 중지
+	app.EscWatcher = automation.NewEscStopWatcher(func() {
+		stopped := false
+		if app.RotationManager != nil && app.RotationManager.IsRunning() {
+			app.RotationManager.Stop()
+			stopped = true
+		}
+		if app.TimerManager != nil && app.TimerManager.IsRunning() {
+			stopOperation(app) // 키보드/스캐너/다중입장/대야/시련 + 타이머 전부 정리
+			stopped = true
+		}
+		if stopped {
+			log.Println("[ESC중지] 전체 중지 완료")
+			sendEvent(app, "logMessage", map[string]string{"message": "[ESC중지] ESC 연타 감지 — 전체 중지됨"})
+			sendEvent(app, "rotationLog", map[string]string{"message": "[ESC중지] ESC 연타 감지 — 전체 중지됨"})
+		}
+	})
+	app.EscWatcher.Start()
+
+	// 창 전환 매니저 생성 + 전역 핫키(Ctrl+1~5 이동 / Ctrl+Shift+1~5 등록) 시작
+	app.WindowSwitcher = automation.NewWindowSwitcher(windowManager)
+	app.WindowSwitcher.SetLogFunc(func(msg string) {
+		sendEvent(app, "switcherLog", map[string]string{"message": msg})
+	})
+	app.WindowSwitcher.SetOnChange(func() {
+		sendEvent(app, "switcherSlots", app.WindowSwitcher.GetSlots())
+	})
+	app.WindowSwitcher.Start()
 
 	// 타이머 매니저 생성
 	timerManager := utils.NewTimerManager()
@@ -420,16 +460,57 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			return
 		}
 
+		// 다중 창 입장 파라미터 (대야/칸첸 입장 모드) — 콤마 구분 hwnd 목록, 최대 4개.
+		// 1개면 그 창으로 기존 로직, 2개 이상이면 다중 입장 유지 루프.
+		// multi_modes: multi_hwnds와 1:1 대응하는 창별 모드(daeya|kanchen, 혼합 가능).
+		// 없거나 모자라면 선택한 라디오 모드를 따른다.
+		var multiHwnds []uint64
+		var multiModes []string
+		modeStrs := strings.Split(r.FormValue("multi_modes"), ",")
+		for i, s := range strings.Split(r.FormValue("multi_hwnds"), ",") {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			var h uint64
+			fmt.Sscanf(s, "%d", &h)
+			if h != 0 && len(multiHwnds) < 4 {
+				multiHwnds = append(multiHwnds, h)
+				m := ""
+				if i < len(modeStrs) {
+					m = strings.TrimSpace(modeStrs[i])
+				}
+				multiModes = append(multiModes, m)
+			}
+		}
+		multiMinimize := r.FormValue("multi_minimize") == "1"
+		var multiCenterX, multiCenterY int
+		fmt.Sscanf(r.FormValue("center_x"), "%d", &multiCenterX)
+		fmt.Sscanf(r.FormValue("center_y"), "%d", &multiCenterY)
+
 		// 자동 종료 시간 파라미터 가져오기 (옵션)
 		autoStopStr := r.FormValue("auto_stop")
 		var autoStopHours int = 0
 		if autoStopStr != "" {
 			fmt.Sscanf(autoStopStr, "%d", &autoStopHours)
 		}
+		// 일시정지 후 재개 시 남은 시간(초). >0이면 이 시간으로 타이머를 재무장한다.
+		// (전체 시간으로 재무장하면 UI 카운트다운이 먼저 끝나 /api/stop 을 호출 →
+		//  Go 완료 타이머가 취소되어 텔레그램 알림이 안 울리는 버그를 방지)
+		var autoStopSeconds int = 0
+		if s := r.FormValue("auto_stop_seconds"); s != "" {
+			fmt.Sscanf(s, "%d", &autoStopSeconds)
+		}
 
 		// 현재 실행 중인지 확인
 		if tm.IsRunning() {
 			http.Error(w, "Already running", http.StatusConflict)
+			return
+		}
+
+		// 자동사냥과 상호배제 (병행 메인화면이 km/스캐너를 점유하므로 이중 실행 방지)
+		if app.RotationManager != nil && app.RotationManager.IsRunning() {
+			http.Error(w, "자동 사냥이 실행 중입니다. 먼저 중지해주세요.", http.StatusConflict)
 			return
 		}
 
@@ -463,15 +544,50 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		sendEvent(app, "operationStatus", map[string]bool{"running": true})
 
 		// 자동 중지 설정
-		if autoStopHours > 0 {
+		if autoStopSeconds > 0 {
+			// 재개: 남은 시간으로 발화, 알림 메시지는 원래 설정 시간(시) 표기
+			setupAutoStopDuration(app, time.Duration(autoStopSeconds)*time.Second, autoStopHours)
+		} else if autoStopHours > 0 {
 			setupAutoStop(app, autoStopHours)
+		}
+
+		// 창별 모드 목록 → EntryWindow (드롭다운 미지정/이상값은 라디오 모드로)
+		defaultMultiMode := "daeya"
+		if internalMode == ModeKanchenEnter {
+			defaultMultiMode = "kanchen"
+		}
+		var multiEntries []automation.EntryWindow
+		for i, h := range multiHwnds {
+			m := multiModes[i]
+			if m != "daeya" && m != "kanchen" {
+				m = defaultMultiMode
+			}
+			multiEntries = append(multiEntries, automation.EntryWindow{HWND: h, Mode: m})
 		}
 
 		// 선택된 모드에 따라 자동화 시작
 		go func() {
+			// 다중 창(2~4개): 창별 모드 혼합 입장 유지 루프 (예: 2창 대야 + 1창 칸첸).
+			// 스킬/아이템 로직은 포그라운드 독점이라 불가. 중앙 좌표는 칸첸 창에만 적용.
+			if (internalMode == ModeDaeyaEnter || internalMode == ModeKanchenEnter) && len(multiEntries) >= 2 {
+				if err := app.MultiEntry.StartEntries(multiEntries, multiMinimize, multiCenterX, multiCenterY); err != nil {
+					log.Printf("다중 입장 시작 실패: %v", err)
+				}
+				return
+			}
+
+			// 창 1개 선택: 그 창의 드롭다운 모드로 기존 단일 로직 실행
+			if (internalMode == ModeDaeyaEnter || internalMode == ModeKanchenEnter) && len(multiEntries) == 1 {
+				if multiEntries[0].Mode == "daeya" {
+					app.DaeyaBattle.Start(multiEntries[0].HWND) // OCR 맵 감지 + 스킬
+				} else {
+					km.KanchenEnter() // 키 시퀀스 (아이템 스캐너는 아래에서 시작)
+				}
+				return
+			}
+
 			switch internalMode {
 			case ModeDaeyaEnter:
-				// 대야 입장: OCR 기반 맵 감지 + 스킬/좌표 이동 자동화
 				if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
 					app.DaeyaBattle.Start(windows[0].HWND)
 				} else {
@@ -481,6 +597,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			case ModeDaeyaParty:
 				km.DaeyaParty()
 			case ModeKanchenEnter:
+				// 창 미선택: 기존 키 시퀀스 (아이템 스캐너는 아래에서 시작)
 				km.KanchenEnter()
 			case ModeKanchenParty:
 				km.KanchenParty()
@@ -531,10 +648,22 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			}
 		}()
 
-		// 아이템 스캐너 시작 (칸첸 모드만)
-		if internalMode == ModeKanchenEnter || internalMode == ModeKanchenParty {
-			if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
-				app.ItemScanner.Start(windows[0].HWND)
+		// 아이템 스캐너 시작 (칸첸 단일 창만). 다중 창(2개 이상)일 땐 포그라운드를 순환
+		// 점유하므로 아이템 스캐너와 공존 불가 → 시작하지 않음.
+		// 창 1개 선택 시엔 그 창의 드롭다운 모드가 칸첸일 때만.
+		kanchenSingle := internalMode == ModeKanchenParty ||
+			((internalMode == ModeKanchenEnter || internalMode == ModeDaeyaEnter) &&
+				len(multiEntries) == 1 && multiEntries[0].Mode == "kanchen") ||
+			(internalMode == ModeKanchenEnter && len(multiEntries) == 0)
+		if kanchenSingle {
+			scanHwnd := uint64(0)
+			if len(multiEntries) == 1 {
+				scanHwnd = multiEntries[0].HWND // 선택한 창으로
+			} else if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
+				scanHwnd = windows[0].HWND
+			}
+			if scanHwnd != 0 {
+				app.ItemScanner.Start(scanHwnd)
 			}
 		}
 
@@ -564,6 +693,9 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 		// 아이템 스캐너 중지
 		app.ItemScanner.Stop()
+
+		// 다중 창 입장 유지 중지
+		app.MultiEntry.Stop()
 
 		// 대야전투 자동화 중지
 		app.DaeyaBattle.Stop()
@@ -1021,6 +1153,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			MatchedID    string `json:"matchedId,omitempty"`
 			MatchedName  string `json:"matchedName,omitempty"`
 			Confidence   string `json:"confidence"`
+			NickCrop     string `json:"nickCrop,omitempty"` // 닉네임 크롭 이미지(창 시각 구분용)
 			Error        string `json:"error,omitempty"`
 		}
 
@@ -1033,7 +1166,13 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				Confidence: "none",
 			}
 
-			name, err := app.OCRManager.DetectCharacterName(win.HWND)
+			// 1회 캡처로 이름 OCR(자동배정) + 닉네임 크롭(시각 구분) 동시 처리
+			name, cropImg, err := app.OCRManager.DetectNameWithCrop(win.HWND)
+			if cropImg != nil {
+				if b64 := encodePNGScaled(cropImg, 3); b64 != "" {
+					result.NickCrop = "data:image/png;base64," + b64
+				}
+			}
 			if err != nil {
 				log.Printf("[OCR] 실패 (hwnd=%d): %v", win.HWND, err)
 				result.DetectedName = ""
@@ -1403,6 +1542,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				Order:         c.Order,
 				WindowHWND:    c.WindowHWND,
 				PeachType:     c.PeachType,
+				CompanionMode: c.CompanionMode,
 			})
 		}
 
@@ -1724,6 +1864,123 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 	// === 시련 API ===
 
+	// === 창 전환(핫키) API ===
+
+	// 슬롯 상태 조회
+	http.HandleFunc("/api/switcher/slots", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(app.WindowSwitcher.GetSlots())
+	})
+
+	// 현재 맨 앞 창을 슬롯에 등록. delaySec>0이면 그 시간 뒤 등록(그 사이 대상 창을 클릭).
+	http.HandleFunc("/api/switcher/register", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var req struct {
+			Slot     int `json:"slot"`     // 1~5
+			DelaySec int `json:"delaySec"` // 0이면 즉시
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "잘못된 요청", http.StatusBadRequest)
+			return
+		}
+		if req.Slot < 1 || req.Slot > automation.SwitcherSlots {
+			http.Error(w, "슬롯 범위 오류", http.StatusBadRequest)
+			return
+		}
+		if req.DelaySec > 0 {
+			// 지연 등록: helper 창이 앞에 있으면 자기 자신이 잡히므로, 그 사이 대상 창을 클릭.
+			go func(slot, delay int) {
+				time.Sleep(time.Duration(delay) * time.Second)
+				app.WindowSwitcher.RegisterCurrent(slot) // 결과는 switcherSlots/switcherLog 이벤트로 UI 갱신
+			}(req.Slot, req.DelaySec)
+			json.NewEncoder(w).Encode(map[string]interface{}{"scheduled": true, "delaySec": req.DelaySec})
+			return
+		}
+		if err := app.WindowSwitcher.RegisterCurrent(req.Slot); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(app.WindowSwitcher.GetSlots())
+	})
+
+	// 슬롯 전환 시 복사할 텍스트 설정
+	http.HandleFunc("/api/switcher/text", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var req struct {
+			Slot int    `json:"slot"`
+			Text string `json:"text"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "잘못된 요청", http.StatusBadRequest)
+			return
+		}
+		if err := app.WindowSwitcher.SetText(req.Slot, req.Text); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(app.WindowSwitcher.GetSlots())
+	})
+
+	// 슬롯 비우기
+	http.HandleFunc("/api/switcher/clear", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		var req struct {
+			Slot int `json:"slot"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "잘못된 요청", http.StatusBadRequest)
+			return
+		}
+		if err := app.WindowSwitcher.Clear(req.Slot); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(app.WindowSwitcher.GetSlots())
+	})
+
+	// 다중 창 입장용 창 감지 — 닉네임 크롭 이미지 + OCR 텍스트 반환 (창 구분용)
+	http.HandleFunc("/api/multi/detect", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		windows, err := app.WindowManager.FindGameWindows()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("창 감지 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+		type MultiWin struct {
+			HWND    uint64 `json:"hwnd"`
+			Crop    string `json:"crop"`    // data URL (닉네임 영역 이미지 — 창 구분용)
+			MapText string `json:"mapText"` // 맵 이름 OCR 결과 (진단용)
+			MapCrop string `json:"mapCrop"` // data URL (맵 이름 영역 이미지 — 진단용)
+		}
+		results := make([]MultiWin, 0, len(windows))
+		for _, win := range windows {
+			mw := MultiWin{HWND: win.HWND}
+			crop, err := app.OCRManager.NicknameCrop(win.HWND)
+			if err == nil && crop != nil {
+				// 닉네임 크롭을 3배 확대해 PNG base64 data URL로
+				if b64 := encodePNGScaled(crop, 3); b64 != "" {
+					mw.Crop = "data:image/png;base64," + b64
+				}
+			} else if err != nil {
+				log.Printf("[다중창] 닉네임 크롭 실패 (hwnd=%d): %v", win.HWND, err)
+			}
+			// 맵 이름 OCR + 크롭 (칸첸/대야 판별 진단용)
+			if mapText, mapImg, err := app.MultiEntry.DebugMapInfo(win.HWND); err == nil {
+				mw.MapText = mapText
+				if mapImg != nil {
+					if b64 := encodePNGScaled(mapImg, 1); b64 != "" {
+						mw.MapCrop = "data:image/png;base64," + b64
+					}
+				}
+				log.Printf("[다중창] 맵 OCR (hwnd=%d): '%s'", win.HWND, mapText)
+			} else {
+				log.Printf("[다중창] 맵 OCR 실패 (hwnd=%d): %v", win.HWND, err)
+			}
+			results = append(results, mw)
+		}
+		json.NewEncoder(w).Encode(results)
+	})
+
 	// 시련용 바람창 감지 (오른쪽 상단 OCR)
 	http.HandleFunc("/api/trial/detect", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1737,13 +1994,21 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		type TrialWindowResult struct {
 			HWND         uint64 `json:"hwnd"`
 			DetectedName string `json:"detectedName"`
+			NickCrop     string `json:"nickCrop,omitempty"` // 닉네임 크롭 이미지(창 시각 구분용)
 			Error        string `json:"error,omitempty"`
 		}
 
 		var results []TrialWindowResult
 		for _, win := range windows {
 			result := TrialWindowResult{HWND: win.HWND}
-			name, err := app.OCRManager.DetectCharacterNameRightTop(win.HWND)
+			// 1회 캡처로 이름 OCR + 닉네임 크롭(시각 구분) 동시 처리 — 메인화면/자동사냥과 동일 방식.
+			// OCR 텍스트는 부정확할 수 있으므로 크롭 이미지로 창을 구분한다.
+			name, cropImg, err := app.OCRManager.DetectNameWithCrop(win.HWND)
+			if cropImg != nil {
+				if b64 := encodePNGScaled(cropImg, 3); b64 != "" {
+					result.NickCrop = "data:image/png;base64," + b64
+				}
+			}
 			if err != nil {
 				log.Printf("[시련OCR] 실패 (hwnd=%d): %v", win.HWND, err)
 				result.Error = err.Error()
@@ -2150,6 +2415,46 @@ func getModeName(mode int) string {
 	}
 }
 
+// rotationCompanion 자동사냥 병행 메인화면 컨트롤러 (automation.CompanionController 구현).
+// 자동사냥 캐릭은 게임 내 기능이라 포그라운드가 필요 없으므로, 사냥 대기 동안
+// 다음 순번 캐릭 창을 활성화해 메인화면 로직을 돌린다:
+//   kanchen → 키 시퀀스(KanchenEnter) + 아이템 스캐너
+//   daeya   → DaeyaBattle (OCR 맵 감지 + 스킬)
+// StopCompanion은 잔여 키 입력이 소진될 때까지 블로킹한다 (이후 로테이션이 창 전환).
+type rotationCompanion struct {
+	app *Application
+}
+
+func (rc *rotationCompanion) StartCompanion(mode string, hwnd uint64) {
+	app := rc.app
+	if hwnd == 0 {
+		return
+	}
+	if err := app.WindowManager.ActivateWindow(hwnd); err != nil {
+		log.Printf("[동시실행] 창 활성화 실패 (hwnd=%d): %v", hwnd, err)
+		return
+	}
+	time.Sleep(1 * time.Second)
+
+	switch mode {
+	case "kanchen":
+		app.KeyboardManager.SetRunning(true)
+		go app.KeyboardManager.KanchenEnter()
+		app.ItemScanner.Start(hwnd)
+	case "daeya":
+		go app.DaeyaBattle.Start(hwnd)
+	}
+}
+
+func (rc *rotationCompanion) StopCompanion() {
+	app := rc.app
+	app.KeyboardManager.SetRunning(false)
+	app.ItemScanner.Stop()
+	app.DaeyaBattle.Stop()
+	// RunKeySequence 루프가 키 입력(300ms 지연) 중일 수 있으므로 잔여 입력 소진 대기
+	time.Sleep(1500 * time.Millisecond)
+}
+
 // 시작 버튼 클릭 처리
 func startOperation(app *Application) {
 	if app.TimerManager == nil || app.TimerManager.IsRunning() {
@@ -2266,6 +2571,11 @@ func stopOperation(app *Application) {
 		app.ItemScanner.Stop()
 	}
 
+	// 다중 창 입장 유지 중지
+	if app.MultiEntry != nil {
+		app.MultiEntry.Stop()
+	}
+
 	// 대야전투 자동화 중지
 	if app.DaeyaBattle != nil {
 		app.DaeyaBattle.Stop()
@@ -2312,6 +2622,7 @@ func startRotationFromScheduler(app *Application) error {
 			Order:         c.Order,
 			WindowHWND:    c.WindowHWND,
 			PeachType:     c.PeachType,
+			CompanionMode: c.CompanionMode,
 		})
 	}
 	if len(rotChars) == 0 {
@@ -2368,19 +2679,27 @@ func resetSettings(app *Application) {
 
 // 시간이 지난 후 자동 중지 처리
 func setupAutoStop(app *Application, hours int) {
+	setupAutoStopDuration(app, time.Duration(hours)*time.Hour, hours)
+}
+
+// setupAutoStopDuration 은 fire 후 자동 종료 타이머를 건다.
+// displayHours 는 텔레그램 알림 메시지에 표기할 원래 설정 시간(시)이다.
+// (일시정지 후 재개 시 fire 는 남은 시간, displayHours 는 원래 시간이 되어
+//  UI 카운트다운과 Go 타이머가 같은 시각에 끝나도록 맞춘다)
+func setupAutoStopDuration(app *Application, fire time.Duration, displayHours int) {
 	// 이전 타이머가 있다면 중지
 	if app.AutoStopTimer != nil {
 		app.AutoStopTimer.Stop()
 		app.AutoStopTimer = nil
 	}
 
-	if hours <= 0 {
+	if fire <= 0 {
 		return
 	}
 
 	// 새 타이머 설정
-	duration := time.Duration(hours) * time.Hour
-	app.AutoStopTimer = time.AfterFunc(duration, func() {
+	hours := displayHours
+	app.AutoStopTimer = time.AfterFunc(fire, func() {
 		if app.TimerManager != nil && app.TimerManager.IsRunning() {
 			// 상태 업데이트
 			app.RunningOperation = false
@@ -2392,6 +2711,11 @@ func setupAutoStop(app *Application, hours int) {
 			// 키보드 매니저 중지
 			if app.KeyboardManager != nil {
 				app.KeyboardManager.SetRunning(false)
+			}
+
+			// 다중 창 입장 유지 중지 (km 감시를 안 하므로 명시적으로)
+			if app.MultiEntry != nil {
+				app.MultiEntry.Stop()
 			}
 
 			// 텔레그램 완료 알림
@@ -2441,8 +2765,11 @@ func setupLogging() {
 		return
 	}
 
-	// 표준 로그 설정: 파일 + 터미널(stdout) 동시 출력
-	multiWriter := io.MultiWriter(os.Stdout, f)
+	// 표준 로그 설정: 파일 + 터미널(stdout) 동시 출력.
+	// 주의: 파일을 반드시 앞에 둘 것 — windowsgui 빌드에서는 os.Stdout이 무효 핸들이라
+	// 쓰기가 실패하는데, MultiWriter는 앞 writer가 실패하면 뒤 writer에 쓰지 않는다
+	// (stdout이 앞이면 로그 파일이 영원히 0바이트가 되는 버그).
+	multiWriter := io.MultiWriter(f, os.Stdout)
 	log.SetOutput(multiWriter)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 }
@@ -2493,4 +2820,29 @@ func reverseSlice(s []string) {
 	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
 		s[i], s[j] = s[j], s[i]
 	}
+}
+
+// encodePNGScaled 이미지를 정수배 nearest-neighbor로 확대해 PNG base64 문자열로 반환.
+// (작은 닉네임 크롭을 UI에서 알아보기 쉽게 키우는 용도)
+func encodePNGScaled(src image.Image, scale int) string {
+	if src == nil || scale < 1 {
+		return ""
+	}
+	b := src.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= 0 || h <= 0 {
+		return ""
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, w*scale, h*scale))
+	for y := 0; y < h*scale; y++ {
+		sy := b.Min.Y + y/scale
+		for x := 0; x < w*scale; x++ {
+			dst.Set(x, y, src.At(b.Min.X+x/scale, sy))
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, dst); err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
 }

@@ -337,6 +337,9 @@
         if (addCharacterBtn) addCharacterBtn.addEventListener('click', showAddForm);
         if (saveCharacterBtn) saveCharacterBtn.addEventListener('click', saveCharacter);
         if (cancelCharacterBtn) cancelCharacterBtn.addEventListener('click', hideForm);
+        // 역할 변경 시 관련 항목 표시/숨김 (자동사냥 ↔ 동시실행)
+        const charRoleSel = document.getElementById('char-companion-mode');
+        if (charRoleSel) charRoleSel.addEventListener('change', updateCharFormRole);
         if (detectWindowsBtn) detectWindowsBtn.addEventListener('click', detectWindows);
         if (applyAssignBtn) applyAssignBtn.addEventListener('click', applyAssignments);
         const autoAssignBtn = document.getElementById('auto-assign-btn');
@@ -376,8 +379,10 @@
                 </label>
                 <div class="char-order">${i + 1}</div>
                 <div class="char-info">
-                    <div class="char-name">${escapeHtml(c.name)}</div>
-                    <div class="char-detail">${escapeHtml(c.huntingArea?.name || '')} (${c.huntingArea?.dropdownIndex || 0}번째) / ${c.durationMins}분</div>
+                    <div class="char-name">${escapeHtml(c.name)}${c.companionMode ? ` <span style="font-size:0.68rem;padding:0.1rem 0.35rem;border-radius:4px;background:rgba(59,130,246,0.18);color:#60a5fa" title="자동사냥 순환에서 빠지고, 실행 시간 동안 메인화면 자동화를 병행 실행 (전환 순간에만 잠깐 정지 후 이어서 돎)">동시실행</span>` : ''}</div>
+                    <div class="char-detail">${c.companionMode
+                        ? `메인화면 ${c.companionMode === 'kanchen' ? '칸첸' : '대야'} 병행 / ${c.durationMins}분`
+                        : `${escapeHtml(c.huntingArea?.name || '')} (${c.huntingArea?.dropdownIndex || 0}번째) / ${c.durationMins}분`}</div>
                 </div>
                 <div class="char-actions">
                     <button class="char-move-btn" onclick="rotationMoveChar('${c.id}', -1)" ${i === 0 ? 'disabled' : ''} title="위로">▲</button>
@@ -389,6 +394,20 @@
         `).join('');
     }
 
+    // 역할(자동사냥/동시실행)에 따라 폼 항목 표시 토글
+    // 동시실행이면 사냥터/드롭다운/복숭아는 안 쓰므로 숨기고, 시간 라벨을 바꾼다
+    function updateCharFormRole() {
+        const role = document.getElementById('char-companion-mode')?.value || '';
+        const isCompanion = role !== '';
+        const rows = ['row-char-area', 'row-char-dropdown', 'row-char-peach'];
+        rows.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = isCompanion ? 'none' : '';
+        });
+        const durLabel = document.getElementById('char-duration-label');
+        if (durLabel) durLabel.textContent = isCompanion ? '실행 시간 (분)' : '사냥 시간 (분)';
+    }
+
     function showAddForm() {
         editingCharId = null;
         document.getElementById('char-name').value = '';
@@ -397,6 +416,9 @@
         document.getElementById('char-duration').value = '120';
         const peachSel = document.getElementById('char-peach-type');
         if (peachSel) peachSel.value = '';
+        const compSel = document.getElementById('char-companion-mode');
+        if (compSel) compSel.value = '';
+        updateCharFormRole();
         characterForm.style.display = 'block';
         characterForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -412,9 +434,11 @@
         const dropdownIndex = parseInt(document.getElementById('char-dropdown-index').value) || 0;
         const duration = parseInt(document.getElementById('char-duration').value) || 120;
         const peachType = document.getElementById('char-peach-type')?.value || '';
+        const companionMode = document.getElementById('char-companion-mode')?.value || '';
 
         if (!name) { alert('캐릭터 이름을 입력해주세요.'); return; }
-        if (!area) { alert('사냥터 이름을 입력해주세요.'); return; }
+        // 동시실행 캐릭은 사냥터를 안 쓰므로 자동사냥일 때만 필수
+        if (!companionMode && !area) { alert('사냥터 이름을 입력해주세요.'); return; }
 
         // 수정 모드면 기존 order/enabled 유지, 신규면 마지막 순서로
         const existing = editingCharId ? characters.find(c => c.id === editingCharId) : null;
@@ -427,7 +451,8 @@
             durationMins: duration,
             order: order,
             enabled: enabled,
-            peachType: peachType
+            peachType: peachType,
+            companionMode: companionMode
         };
 
         if (editingCharId) {
@@ -459,6 +484,9 @@
         document.getElementById('char-duration').value = char.durationMins;
         const peachSel = document.getElementById('char-peach-type');
         if (peachSel) peachSel.value = char.peachType || '';
+        const compSel = document.getElementById('char-companion-mode');
+        if (compSel) compSel.value = char.companionMode || '';
+        updateCharFormRole();
         characterForm.style.display = 'block';
         characterForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     };
@@ -550,7 +578,8 @@
             }
 
             renderWindows();
-            loadScreenshotsSequential(0);
+            // 닉네임 크롭 이미지는 detect-with-ocr 응답(nickCrop)에 포함되어 렌더됨
+            // → 무거운 전체 스크린샷 순차 로드 제거(속도).
         } catch (e) {
             windowList.innerHTML = '<p class="empty-placeholder">창 감지에 실패했습니다.</p>';
         } finally {
@@ -624,7 +653,6 @@
 
         windowList.innerHTML = detectedWindows.map((w, idx) => {
             const isExcluded = excludedWindows.has(w.hwnd);
-            const cached = screenshotCache[idx];
             const charOptions = characters.map(c =>
                 `<option value="${c.id}" ${windowAssignments[c.id] == w.hwnd ? 'selected' : ''}>${escapeHtml(c.name)}</option>`
             ).join('');
@@ -655,9 +683,10 @@
                             ${charOptions}
                         </select>
                     </div>
-                    <div class="window-thumb-container">
-                        <img id="window-thumb-${idx}" class="window-thumb" ${cached ? `src="${cached}" style="display:block"` : 'style="display:none"'} alt="스크린샷">
-                        <div class="window-thumb-loading" id="window-thumb-loading-${idx}" ${cached ? 'style="display:none"' : ''}>스크린샷 로딩...</div>
+                    <div class="window-nick-container">
+                        ${w.nickCrop
+                            ? `<img class="window-nick" src="${w.nickCrop}" alt="닉네임" style="height:34px;image-rendering:pixelated;background:#000;border:1px solid var(--border-color);border-radius:4px">`
+                            : '<span class="window-nick-empty" style="font-size:0.72rem;color:var(--text-muted)">닉네임 캡처 없음</span>'}
                     </div>
                 </div>
             `;
@@ -1050,12 +1079,19 @@
             if (!confirm(msg)) return;
         }
 
+        // 동시 메인화면은 캐릭터별 설정(companionMode)을 따른다 — 서버가 캐릭터 저장소에서 읽음
+        const companionChars = characters.filter(c => c.enabled && c.companionMode);
         fetch('/api/rotation/start', { method: 'POST' })
             .then(r => {
                 if (r.ok) {
                     rotationRunning = true;
                     updateRotationUI();
-                    addRotationLog('자동 사냥 시작!');
+                    if (companionChars.length > 0) {
+                        const desc = companionChars.map(c => `${c.name}=${c.companionMode === 'kanchen' ? '칸첸' : '대야'} ${c.durationMins}분`).join(', ');
+                        addRotationLog(`자동 사냥 시작! (동시 메인화면: ${desc})`);
+                    } else {
+                        addRotationLog('자동 사냥 시작!');
+                    }
                     startStatusPolling();
                 } else {
                     return r.text().then(t => { throw new Error(t); });

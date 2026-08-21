@@ -415,6 +415,101 @@ func (om *OCRManager) DetectCharacterNameRightTop(hwnd uint64) (string, error) {
 	return text, nil
 }
 
+// DetectNameWithCrop 창을 1회만 캡처해 (설정영역 OCR 이름, 닉네임 크롭 이미지)를 반환.
+// 자동사냥 창 감지에서 자동배정(OCR 이름 매칭)과 시각 구분(닉네임 이미지)을 한 캡처로 처리해
+// 창별로 두 번 캡처하지 않게 한다. OCR은 기존 DetectCharacterName과 동일(config 영역).
+func (om *OCRManager) DetectNameWithCrop(hwnd uint64) (string, image.Image, error) {
+	om.wm.ActivateWindow(hwnd)
+	time.Sleep(400 * time.Millisecond)
+	img, _, err := om.wm.CaptureWindowRaw(hwnd)
+	if err != nil {
+		return "", nil, fmt.Errorf("창 캡처 실패: %v", err)
+	}
+	width := img.Bounds().Dx()
+	height := img.Bounds().Dy()
+
+	// --- 1) 이름 OCR용 크롭 (CaptureNameRegion과 동일 로직) ---
+	name := ""
+	cfg := om.config
+	cropX, cropY, cropW, cropH := cfg.NameRegionX, cfg.NameRegionY, cfg.NameRegionWidth, cfg.NameRegionHeight
+	if cropX == 0 {
+		coffX, coffY, offErr := om.wm.GetClientOffset(hwnd)
+		if offErr != nil {
+			coffX, coffY = 8, 31
+		}
+		cropX = coffX + 10
+		cropY += coffY
+	}
+	if cropX < 0 {
+		cropX = 0
+	}
+	if cropX+cropW > width {
+		cropW = width - cropX
+	}
+	if cropY+cropH > height {
+		cropH = height - cropY
+	}
+	if cropW > 0 && cropH > 0 {
+		nameImg := img.SubImage(image.Rect(cropX, cropY, cropX+cropW, cropY+cropH))
+		name, _ = om.RecognizeText(nameImg)
+	}
+
+	// --- 2) 닉네임 크롭 이미지 (client-relative, 검증된 영역) ---
+	nick := om.cropNicknameRegion(img, hwnd)
+	return name, nick, nil
+}
+
+// cropNicknameRegion 캡처된 이미지에서 우측 상단 닉네임 셀(클라이언트 기준)을 잘라 반환.
+func (om *OCRManager) cropNicknameRegion(img *image.RGBA, hwnd uint64) image.Image {
+	b := img.Bounds()
+	W, H := b.Dx(), b.Dy()
+	offX, offY, offErr := om.wm.GetClientOffset(hwnd)
+	if offErr != nil {
+		offX, offY = 8, 31
+	}
+	cw := W - offX*2
+	ch := H - offY - offX
+	if cw <= 0 || ch <= 0 {
+		cw, ch, offX, offY = W, H, 0, 0
+	}
+	x0 := b.Min.X + offX + int(0.875*float64(cw))
+	x1 := b.Min.X + offX + int(0.945*float64(cw))
+	y0 := b.Min.Y + offY + int(0.008*float64(ch))
+	y1 := b.Min.Y + offY + int(0.052*float64(ch))
+	if x1 > b.Max.X {
+		x1 = b.Max.X
+	}
+	if y1 > b.Max.Y {
+		y1 = b.Max.Y
+	}
+	if x1 <= x0 || y1 <= y0 {
+		return nil
+	}
+	return img.SubImage(image.Rect(x0, y0, x1, y1))
+}
+
+// NicknameCrop 우측 상단 닉네임 셀을 크롭해 이미지로 반환 (창 시각 구분용).
+// 크롭은 창(타이틀바 포함) 전체가 아니라 클라이언트(게임 렌더) 영역 기준이라, 해상도가
+// 달라도(노트북 등) 위치가 맞는다. 영역(클라이언트 x0.875~0.945, y0.008~0.052)은
+// dataset(사막·왕무·나타 3캐릭, 각 100% 일관) + 카톡 캡처(1600x900, 아무튼최고/캠핑다니엘)
+// 두 레이아웃 모두에서 닉네임을 담도록 검증.
+// ※ OCR 텍스트 인식은 이 게임 폰트에서 체계적 오인식(재↔새, 하↔햐, 캠핑다니엘→가께뵌)이라
+//   신뢰 불가로 판단 → 이미지만 반환하고 창 구분은 눈으로 한다.
+func (om *OCRManager) NicknameCrop(hwnd uint64) (image.Image, error) {
+	om.wm.ActivateWindow(hwnd)
+	time.Sleep(400 * time.Millisecond)
+
+	img, _, err := om.wm.CaptureWindowRaw(hwnd)
+	if err != nil {
+		return nil, fmt.Errorf("창 캡처 실패: %v", err)
+	}
+	nick := om.cropNicknameRegion(img, hwnd)
+	if nick == nil {
+		return nil, fmt.Errorf("유효하지 않은 크롭 영역")
+	}
+	return nick, nil
+}
+
 // scaleImage 이미지를 지정 배율로 확대
 func scaleImage(src image.Image, scale int) *image.RGBA {
 	bounds := src.Bounds()
@@ -733,6 +828,19 @@ func (om *OCRManager) RecognizeText(img image.Image) (string, error) {
 	return bestKorean, nil
 }
 
+// RecognizeMapName 상단 맵 이름 크롭 OCR — 아이템 스캐너와 동일한
+// 8x 확대(색 필터 없음) 방식. 라이브에서 대야/칸첸 맵 모두 검증됨.
+// RecognizeText(4x+흰색 이진화)는 닉네임용 튜닝이라 맵 이름 색상에
+// 따라(칸첸 등) 글자가 필터에 지워져 빈 결과가 나온다.
+func (om *OCRManager) RecognizeMapName(img image.Image) (string, error) {
+	scaled := scaleImage(img, 8)
+	text, err := om.recognizeImage(scaled)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(extractKoreanFromText(text)), nil
+}
+
 // extractKorean 문자열에서 한글 완성형만 추출
 func extractKorean(s string) string {
 	var filtered []rune
@@ -745,6 +853,64 @@ func extractKorean(s string) string {
 }
 
 // recognizeWithPositionsOnce 단일 이미지에 대해 OCR+좌표를 수행하는 내부 헬퍼
+// RecognizeYellowNames 게임 화면에서 노란 글씨(몬스터 이름표)를 위치와 함께 인식.
+// 노란 글씨 → 검정, 배경 → 흰색으로 이진화 후 4배 확대하여 OCR.
+// 반환 좌표는 원본 이미지 기준.
+func (om *OCRManager) RecognizeYellowNames(img image.Image) ([]OCRWord, error) {
+	b := img.Bounds()
+	W, H := b.Dx(), b.Dy()
+
+	// 게임 플레이 영역만 (좌/우 UI 패널, 상/하단 제외)
+	cropX := W * 3 / 100
+	cropY := H * 3 / 100
+	cropW := W * 70 / 100
+	cropH := H * 78 / 100
+	if cropW <= 0 || cropH <= 0 {
+		return nil, nil
+	}
+
+	scale := 4
+	binW, binH := cropW*scale, cropH*scale
+	bin := image.NewRGBA(image.Rect(0, 0, binW, binH))
+	// 노란 글씨 이진화 + 4배 확대 (nearest)
+	for y := 0; y < cropH; y++ {
+		for x := 0; x < cropW; x++ {
+			r, g, bl, _ := img.At(b.Min.X+cropX+x, b.Min.Y+cropY+y).RGBA()
+			r8, g8, b8 := int(r>>8), int(g>>8), int(bl>>8)
+			// 노란 글씨: R·G 높고 B 낮음, 채도 충분
+			isYellow := r8 > 150 && g8 > 120 && b8 < 120 && (r8+g8)/2-b8 > 50
+			var c color.Color
+			if isYellow {
+				c = color.Black // 글씨 → 검정
+			} else {
+				c = color.White // 배경 → 흰색
+			}
+			for dy := 0; dy < scale; dy++ {
+				for dx := 0; dx < scale; dx++ {
+					bin.Set(x*scale+dx, y*scale+dy, c)
+				}
+			}
+		}
+	}
+
+	words, err := om.recognizeWithPositionsOnce(bin)
+	if err != nil {
+		return nil, err
+	}
+	// 좌표 역산 (확대 + 크롭 오프셋 → 원본)
+	out := make([]OCRWord, 0, len(words))
+	for _, w := range words {
+		out = append(out, OCRWord{
+			Text:   w.Text,
+			X:      w.X/float64(scale) + float64(cropX),
+			Y:      w.Y/float64(scale) + float64(cropY),
+			Width:  w.Width / float64(scale),
+			Height: w.Height / float64(scale),
+		})
+	}
+	return out, nil
+}
+
 func (om *OCRManager) recognizeWithPositionsOnce(processed image.Image) ([]OCRWord, error) {
 	tmpFile, err := os.CreateTemp("", "baram-ocr-pos-*.png")
 	if err != nil {

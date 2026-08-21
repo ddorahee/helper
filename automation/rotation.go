@@ -29,6 +29,7 @@ type RotationCharacter struct {
 	Order          int
 	WindowHWND     uint64
 	PeachType      string // "" / "silla" / "king" / "india"
+	CompanionMode  string // "" / "kanchen" / "daeya" — 설정 시 자동사냥 순환에서 빠지고 DurationMins 동안 메인화면 자동화를 병행 실행
 }
 
 // RotationStatus 현재 자동 사냥 상태 정보
@@ -53,6 +54,15 @@ type RotationEvent struct {
 // EventCallback 이벤트 콜백 함수 타입
 type EventCallback func(eventType string, payload interface{})
 
+// CompanionController 자동사냥 도는 동안 동시실행 캐릭터 창에서
+// 메인화면 자동화(칸첸/대야)를 병행 실행하기 위한 훅.
+// Start는 지정 창에서 메인화면 로직을 시작하고, Stop은 완전히 멈출 때까지
+// (잔여 키 입력 소진 포함) 블로킹해야 한다 — 이후 로테이션이 창을 전환하므로.
+type CompanionController interface {
+	StartCompanion(mode string, hwnd uint64)
+	StopCompanion()
+}
+
 // RotationManager 자동 사냥 관리자
 type RotationManager struct {
 	mu             sync.RWMutex
@@ -68,6 +78,21 @@ type RotationManager struct {
 	stopChan       chan struct{}
 	eventCallback  EventCallback
 	watcher        *DisconnectWatcher
+
+	companionCtl CompanionController
+
+	// 동시실행(메인화면 병행) 상태 — 동시실행 캐릭은 자동사냥 순환에서 빠지고,
+	// 자기 DurationMins 동안 칸첸/대야를 돈다. 로테이션이 포그라운드를 쓰는
+	// 전환 구간에만 일시정지했다가 누적 시간 이어서 재개. 여러 명이면 순서대로.
+	compMu        sync.Mutex
+	compChars     []RotationCharacter
+	compIdx       int           // 현재 동시실행 캐릭 인덱스
+	compRemaining time.Duration // 현재 캐릭의 남은 실행 시간
+	compSegStart  time.Time     // 현재 세그먼트 시작 시각
+	compRunning   bool          // 세그먼트 실행 중 여부
+	compTimer     *time.Timer   // 남은 시간 만료 타이머
+	compDone      chan struct{} // 모든 동시실행 완료 시 close
+	compStopped   bool          // 종료됨 (재시작 방지)
 }
 
 // NewRotationManager 새로운 자동 사냥 관리자 생성
@@ -116,6 +141,148 @@ func (rm *RotationManager) SetCoordinates(coords GameUICoords) {
 	rm.coords = coords
 }
 
+// SetCompanionController 병행 메인화면 컨트롤러 주입 (main.go 배선)
+func (rm *RotationManager) SetCompanionController(ctl CompanionController) {
+	rm.mu.Lock()
+	defer rm.mu.Unlock()
+	rm.companionCtl = ctl
+}
+
+// ===== 동시실행(메인화면 병행) 엔진 =====
+//
+// 동시실행 캐릭은 자동사냥 순환에서 빠지고, 자기 DurationMins 동안 메인화면
+// 자동화(칸첸/대야)를 돈다. 자동사냥 캐릭 전환(창 활성화 + 사냥 시작) 동안만
+// suspend로 일시정지하고, 끝나면 resume으로 누적 시간 이어서 재개한다.
+// 캐릭의 시간이 다 차면 다음 동시실행 캐릭으로 넘어간다.
+
+// initCompanions Start()에서 동시실행 캐릭 목록 초기화
+func (rm *RotationManager) initCompanions(comp []RotationCharacter) {
+	rm.compMu.Lock()
+	defer rm.compMu.Unlock()
+	rm.compChars = comp
+	rm.compIdx = 0
+	rm.compRunning = false
+	rm.compStopped = false
+	rm.compTimer = nil
+	rm.compDone = make(chan struct{})
+	if len(comp) == 0 {
+		close(rm.compDone) // 동시실행 캐릭 없음 — 이미 완료 상태
+	} else {
+		rm.compRemaining = time.Duration(comp[0].DurationMins) * time.Minute
+	}
+}
+
+// companionResume 현재 동시실행 캐릭의 세그먼트 시작/재개 (포그라운드가 빌 때 호출)
+func (rm *RotationManager) companionResume() {
+	rm.compMu.Lock()
+	defer rm.compMu.Unlock()
+	rm.companionResumeLocked()
+}
+
+func (rm *RotationManager) companionResumeLocked() {
+	if rm.compStopped || rm.compRunning || rm.compIdx >= len(rm.compChars) || rm.companionCtl == nil {
+		return
+	}
+	c := rm.compChars[rm.compIdx]
+	modeName := "칸첸"
+	if c.CompanionMode == "daeya" {
+		modeName = "대야"
+	}
+	rm.emitEvent("rotationLog", map[string]string{
+		"message": fmt.Sprintf("[동시실행] %s — 메인화면 %s 실행 (남은 %.0f분)",
+			c.Name, modeName, rm.compRemaining.Minutes()),
+	})
+	rm.compRunning = true
+	rm.compSegStart = time.Now()
+	rm.compTimer = time.AfterFunc(rm.compRemaining, rm.companionTimeUp)
+	rm.companionCtl.StartCompanion(c.CompanionMode, c.WindowHWND)
+}
+
+// companionSuspend 세그먼트 일시정지 + 경과 시간 차감 (로테이션이 포그라운드 쓰기 직전 호출).
+// 완전히 멈출 때까지 블로킹 — 이후 창 전환 시 키 입력이 새지 않도록.
+func (rm *RotationManager) companionSuspend() {
+	rm.compMu.Lock()
+	defer rm.compMu.Unlock()
+	if !rm.compRunning {
+		return
+	}
+	if rm.compTimer != nil {
+		rm.compTimer.Stop()
+		rm.compTimer = nil
+	}
+	rm.companionCtl.StopCompanion()
+	rm.compRemaining -= time.Since(rm.compSegStart)
+	rm.compRunning = false
+	if rm.compRemaining <= 0 {
+		rm.companionFinishCurrentLocked()
+		return
+	}
+	c := rm.compChars[rm.compIdx]
+	rm.emitEvent("rotationLog", map[string]string{
+		"message": fmt.Sprintf("[동시실행] %s 일시정지 (캐릭터 전환) — 남은 %.0f분, 전환 후 재개",
+			c.Name, rm.compRemaining.Minutes()),
+	})
+}
+
+// companionTimeUp 현재 캐릭의 시간이 다 참 (타이머 콜백) — 다음 캐릭으로
+func (rm *RotationManager) companionTimeUp() {
+	rm.compMu.Lock()
+	defer rm.compMu.Unlock()
+	if !rm.compRunning || rm.compStopped {
+		return
+	}
+	rm.compTimer = nil
+	rm.companionCtl.StopCompanion()
+	rm.compRunning = false
+	rm.compRemaining = 0
+	rm.companionFinishCurrentLocked()
+	// 포그라운드가 비어 있는 상태(사냥 대기 중)이므로 다음 캐릭 바로 시작
+	rm.companionResumeLocked()
+}
+
+// companionFinishCurrentLocked 현재 캐릭 완료 처리 + 다음 캐릭 준비 (compMu 보유 상태에서 호출)
+func (rm *RotationManager) companionFinishCurrentLocked() {
+	if rm.compIdx >= len(rm.compChars) {
+		return
+	}
+	c := rm.compChars[rm.compIdx]
+	rm.emitEvent("rotationLog", map[string]string{
+		"message": fmt.Sprintf("[동시실행] %s 완료 (%d분)", c.Name, c.DurationMins),
+	})
+	rm.compIdx++
+	if rm.compIdx >= len(rm.compChars) {
+		select {
+		case <-rm.compDone:
+		default:
+			close(rm.compDone)
+		}
+		return
+	}
+	rm.compRemaining = time.Duration(rm.compChars[rm.compIdx].DurationMins) * time.Minute
+}
+
+// companionShutdown 동시실행 완전 종료 (로테이션 종료/중지 시)
+func (rm *RotationManager) companionShutdown() {
+	rm.compMu.Lock()
+	defer rm.compMu.Unlock()
+	rm.compStopped = true
+	if rm.compTimer != nil {
+		rm.compTimer.Stop()
+		rm.compTimer = nil
+	}
+	if rm.compRunning && rm.companionCtl != nil {
+		rm.companionCtl.StopCompanion()
+	}
+	rm.compRunning = false
+}
+
+// companionDoneChan 완료 대기용 채널 반환
+func (rm *RotationManager) companionDoneChan() chan struct{} {
+	rm.compMu.Lock()
+	defer rm.compMu.Unlock()
+	return rm.compDone
+}
+
 // Start 자동 사냥 시작
 func (rm *RotationManager) Start(characters []RotationCharacter, coords GameUICoords) error {
 	rm.mu.Lock()
@@ -138,7 +305,17 @@ func (rm *RotationManager) Start(characters []RotationCharacter, coords GameUICo
 		}
 	}
 
-	rm.characters = characters
+	// 동시실행 캐릭(CompanionMode 설정) 분리 — 자동사냥 순환에는 나머지만 참여
+	var huntChars, compChars []RotationCharacter
+	for _, c := range characters {
+		if c.CompanionMode == "kanchen" || c.CompanionMode == "daeya" {
+			compChars = append(compChars, c)
+		} else {
+			huntChars = append(huntChars, c)
+		}
+	}
+
+	rm.characters = huntChars
 	rm.coords = coords
 	rm.currentIndex = 0
 	rm.completedCount = 0
@@ -148,10 +325,13 @@ func (rm *RotationManager) Start(characters []RotationCharacter, coords GameUICo
 
 	rm.mu.Unlock()
 
-	// 팅김 감지 워처 시작 (모든 캐릭터의 hwnd 감시)
+	rm.initCompanions(compChars)
+
+	// 팅김 감지 워처 시작 (자동사냥 캐릭터의 hwnd 감시 — 동시실행 캐릭은
+	// 재접속 시 StartHunting을 잘못 실행하면 안 되므로 제외)
 	if rm.watcher != nil {
-		hwnds := make([]uint64, 0, len(characters))
-		for _, c := range characters {
+		hwnds := make([]uint64, 0, len(huntChars))
+		for _, c := range huntChars {
 			hwnds = append(hwnds, c.WindowHWND)
 		}
 		rm.watcher.SetLogFunc(func(msg string) {
@@ -243,6 +423,9 @@ func (rm *RotationManager) runRotation() {
 	log.Println("[자동사냥] 자동 사냥 시작")
 	rm.emitEvent("rotationLog", map[string]string{"message": "자동 사냥을 시작합니다."})
 
+	// 종료(정상/중지/에러) 시 동시실행도 반드시 정리
+	defer rm.companionShutdown()
+
 	// 시작 시 모든 캐릭터 창을 최소화 (옵션 ON일 때만, 리소스 절감)
 	rm.mu.RLock()
 	minimizeOn := rm.coords.MinimizeAfterStart
@@ -271,6 +454,10 @@ func (rm *RotationManager) runRotation() {
 		}
 		char := rm.characters[rm.currentIndex]
 		rm.mu.RUnlock()
+
+		// 0. 동시실행 일시정지 — 창 전환/사냥 시작 동안 키 입력이 새지 않도록
+		//    (잔여 키 입력 소진까지 블로킹). 남은 시간은 전환 후 재개.
+		rm.companionSuspend()
 
 		// 1. 창 활성화
 		rm.setState(RotationActivating)
@@ -325,6 +512,10 @@ func (rm *RotationManager) runRotation() {
 		log.Printf("[자동사냥] %s", msg)
 		rm.emitEvent("rotationLog", map[string]string{"message": msg})
 
+		// 사냥은 게임 내 기능이라 포그라운드 불필요 → 대기 동안
+		// 동시실행 캐릭의 메인화면(칸첸/대야)을 재개 (누적 시간 이어서)
+		rm.companionResume()
+
 		if !rm.waitForDuration(durationSecs) {
 			return // 중단됨
 		}
@@ -347,6 +538,21 @@ func (rm *RotationManager) runRotation() {
 				"message": fmt.Sprintf("다음 캐릭터로 전환합니다: %s", rm.characters[rm.currentIndex].Name),
 			})
 			time.Sleep(2 * time.Second)
+		}
+	}
+
+	// 자동사냥 캐릭 모두 완료 — 동시실행 시간이 남았으면 마저 채운다
+	done := rm.companionDoneChan()
+	select {
+	case <-done:
+		// 동시실행도 이미 완료 (또는 없음)
+	default:
+		rm.companionResume() // 자동사냥 캐릭이 0명이었거나 마지막 전환 직후면 여기서 시작
+		rm.emitEvent("rotationLog", map[string]string{"message": "자동사냥 캐릭 완료 — 동시실행 남은 시간을 마저 채웁니다."})
+		select {
+		case <-done:
+		case <-rm.stopChan:
+			return
 		}
 	}
 

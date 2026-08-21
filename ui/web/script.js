@@ -80,11 +80,100 @@ document.addEventListener('DOMContentLoaded', () => {
     addLogMessage('프로그램이 시작되었습니다.');
     setupStatusPolling();
     setupLogAutoRefresh();
+    setupMultiEntry();
 
     if (logsContainer && currentContentSection === 'logs') {
         refreshLogs();
     }
 });
+
+// 카드 표시 갱신 — 다중창 목록에서 칸첸으로 지정된 창이 있으면
+// 아이템습득 카드 + 칸첸 복귀좌표 행을 표시 (모드 라디오는 제거됨)
+function updateModeCards() {
+    updateMultiCenterRow();
+}
+
+function anyKanchenSelected() {
+    return Array.from(document.querySelectorAll('#multi-entry-list select.multi-mode-select'))
+        .some(s => s.value === 'kanchen');
+}
+
+function updateMultiCenterRow() {
+    const anyKanchen = anyKanchenSelected();
+    const centerRow = document.getElementById('multi-center-row');
+    if (centerRow) centerRow.style.display = anyKanchen ? 'flex' : 'none';
+    const pickupCard = document.getElementById('item-pickup-card');
+    if (pickupCard) pickupCard.style.display = anyKanchen ? '' : 'none';
+}
+
+// 다중 창 입장 UI (창감지 → 체크박스 목록, 최대 4개 선택)
+function setupMultiEntry() {
+    const detectBtn = document.getElementById('multi-entry-detect');
+    const list = document.getElementById('multi-entry-list');
+    if (!detectBtn || !list) return;
+
+    detectBtn.addEventListener('click', async () => {
+        detectBtn.disabled = true;
+        const orig = detectBtn.textContent;
+        detectBtn.textContent = '감지 중…';
+        try {
+            const res = await fetch('/api/multi/detect');
+            const wins = await res.json();
+            if (!wins || wins.length === 0) {
+                list.innerHTML = '<span style="font-size:0.78rem;color:var(--text-muted)">게임 창을 찾을 수 없습니다</span>';
+            } else {
+                // OCR 텍스트는 이 게임 폰트에서 부정확(재↔새 등)해서 닉네임 크롭 이미지로 구분한다.
+                // 창마다 대야/칸첸 드롭다운 — 혼합 가능 (예: 2창 대야 + 1창 칸첸)
+                const defMode = 'daeya';
+                list.innerHTML = wins.map((w, i) => {
+                    const cropImg = w.crop
+                        ? `<img src="${w.crop}" alt="닉네임" style="height:34px;border:1px solid var(--border-color);border-radius:4px;image-rendering:pixelated;background:#000">`
+                        : '<span style="font-size:0.72rem;color:var(--text-muted)">(캡처 실패)</span>';
+                    // 맵 이름 OCR + 크롭 (어느 맵에 있는지 + OCR이 뭘 읽는지 진단)
+                    const mapInfo = `<div style="display:flex;align-items:center;gap:0.5rem;padding:0 0.2rem 0.35rem 2rem">
+                        ${w.mapCrop ? `<img src="${w.mapCrop}" alt="맵" style="height:22px;border:1px solid var(--border-color);border-radius:3px;background:#000">` : ''}
+                        <span style="font-size:0.72rem;color:var(--text-muted)">맵: ${escapeHtmlMin(w.mapText || '(인식 실패)')}</span>
+                    </div>`;
+                    return `<label style="display:flex;align-items:center;gap:0.6rem;font-size:0.85rem;padding:0.35rem 0.2rem;cursor:pointer">
+                        <input type="checkbox" value="${w.hwnd}" ${i < 4 ? 'checked' : ''}>
+                        <span style="color:var(--text-muted);white-space:nowrap">창 ${i + 1}</span>
+                        ${cropImg}
+                        <select class="multi-mode-select" style="font-size:0.78rem;padding:0.15rem 0.3rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit">
+                            <option value="daeya" ${defMode === 'daeya' ? 'selected' : ''}>대야</option>
+                            <option value="kanchen" ${defMode === 'kanchen' ? 'selected' : ''}>칸첸</option>
+                        </select>
+                        <span style="color:var(--text-muted);font-size:0.72rem;margin-left:auto">hwnd ${w.hwnd}</span>
+                    </label>${mapInfo}`;
+                }).join('');
+                // 최대 4개 제한
+                list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                    cb.addEventListener('change', () => {
+                        const checked = list.querySelectorAll('input[type="checkbox"]:checked');
+                        if (checked.length > 4) {
+                            cb.checked = false;
+                            addLogMessage('다중 창 입장은 최대 4개까지입니다.');
+                        }
+                    });
+                });
+                // 모드 드롭다운 변경 시 중앙좌표 입력란 표시 갱신
+                // (select는 인터랙티브 요소라 label의 체크박스 토글을 트리거하지 않음)
+                list.querySelectorAll('select.multi-mode-select').forEach(sel => {
+                    sel.addEventListener('change', updateMultiCenterRow);
+                });
+                updateMultiCenterRow();
+            }
+            addLogMessage(`다중 창 입장: 창 ${(wins || []).length}개 감지됨`);
+        } catch (e) {
+            addLogMessage('다중 창 입장: 창 감지 실패 - ' + e.message);
+        }
+        detectBtn.textContent = orig;
+        detectBtn.disabled = false;
+    });
+}
+
+function escapeHtmlMin(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
 // 상태 확인 폴링 설정
 function setupStatusPolling() {
@@ -159,24 +248,10 @@ function changeContentSection(section) {
 
 // 초기 선택 설정
 function setupInitialSelections() {
-    modeOptions[0].checked = true;
+    // 모드 라디오는 제거됨 — 다중창 목록의 창별 대야/칸첸 드롭다운이 모드를 결정한다.
+    // currentMode는 서버 전송용 기본값(대야 입장)으로 고정.
     timeOptions[2].checked = true;
-
-    modeOptions.forEach(option => {
-        option.addEventListener('change', (e) => {
-            currentMode = parseInt(e.target.value);
-            setModeApi(currentMode);
-            addLogMessage(`${getModeName(currentMode)} 모드 선택됨`);
-
-            // 칸첸 모드일 때만 아이템 습득 카드 표시
-            const pickupCard = document.getElementById('item-pickup-card');
-            if (pickupCard) {
-                const isKanchen = (currentMode === ModeKanchenEnter || currentMode === ModeKanchenParty);
-                pickupCard.style.display = isKanchen ? '' : 'none';
-            }
-
-        });
-    });
+    updateModeCards();
 
     timeOptions.forEach(option => {
         option.addEventListener('change', (e) => {
@@ -632,6 +707,12 @@ window.dispatchAppEvent = function(event) {
         case 'appVersion':
             updateAppVersion(payload.version, payload.buildDate);
             break;
+        case 'switcherLog':
+            if (window.onSwitcherLog) window.onSwitcherLog(payload.message);
+            break;
+        case 'switcherSlots':
+            if (window.onSwitcherSlots) window.onSwitcherSlots(payload);
+            break;
     }
 };
 
@@ -663,27 +744,58 @@ function updateAppVersion(version, date) {
 // API 호출 관련 함수
 
 function startOperation(wasTimerPaused) {
-    if (currentMode === ModeNone) {
-        addLogMessage("오류: 모드를 선택해야 합니다.");
+    // 창별 대야/칸첸 드롭다운이 모드를 결정 — 창 선택 필수 (모드 라디오는 제거됨)
+    const rows = Array.from(document.querySelectorAll('#multi-entry-list input[type="checkbox"]:checked'))
+        .slice(0, 4)
+        .map(cb => {
+            const sel = cb.closest('label')?.querySelector('select.multi-mode-select');
+            return { hwnd: cb.value, mode: (sel && sel.value) || 'daeya' };
+        });
+
+    if (rows.length === 0) {
+        addLogMessage("오류: '창 감지' 후 입장할 창을 선택해주세요.");
         startBtn.classList.remove('active');
         isRunning = false;
         return;
     }
 
-    const apiMode = getApiModeName(currentMode);
-    if (!apiMode) {
-        addLogMessage("오류: 유효하지 않은 모드입니다.");
-        startBtn.classList.remove('active');
-        isRunning = false;
-        return;
-    }
+    // 서버 mode 파라미터: 전부 칸첸이면 kanchen-entrance, 아니면 daeya-entrance
+    // (혼합/단일 로직은 multi_modes가 창별로 결정하므로 알림 표기용에 가깝다)
+    const allKanchen = rows.every(r => r.mode === 'kanchen');
+    const apiMode = allKanchen ? 'kanchen-entrance' : 'daeya-entrance';
+    currentMode = allKanchen ? ModeKanchenEnter : ModeDaeyaEnter;
 
     const hours = getHoursFromOption(currentTimeOption);
+
+    let body = `mode=${apiMode}&auto_stop=${hours}`;
+    // 일시정지 후 재개: 남은 시간(초)을 함께 보내 서버 자동종료 타이머를 남은 시간으로 맞춘다.
+    // (전체 시간으로 재무장하면 UI 카운트다운이 먼저 끝나 /api/stop 을 호출 →
+    //  서버 완료 타이머가 취소되어 텔레그램 알림이 안 울리는 버그 방지)
+    if (wasTimerPaused && countdownTime > 0) {
+        body += `&auto_stop_seconds=${countdownTime}`;
+    }
+
+    body += `&multi_hwnds=${rows.map(r => r.hwnd).join(',')}`;
+    body += `&multi_modes=${rows.map(r => r.mode).join(',')}`;
+    const minimize = document.getElementById('multi-entry-minimize');
+    if (minimize && minimize.checked) body += `&multi_minimize=1`;
+    // 칸첸 창이 하나라도 있으면 복귀 좌표 전송 (칸첸 창에만 적용됨, 기본 34,37)
+    if (rows.some(r => r.mode === 'kanchen')) {
+        const cx = (document.getElementById('multi-center-x') || {}).value || '34';
+        const cy = (document.getElementById('multi-center-y') || {}).value || '37';
+        body += `&center_x=${cx}&center_y=${cy}`;
+    }
+    const nDaeya = rows.filter(r => r.mode === 'daeya').length;
+    const nKanchen = rows.length - nDaeya;
+    const mixDesc = [nDaeya ? `대야 ${nDaeya}` : '', nKanchen ? `칸첸 ${nKanchen}` : ''].filter(Boolean).join(' + ');
+    addLogMessage(rows.length >= 2
+        ? `다중 창 입장 유지: ${rows.length}개 창 (${mixDesc})`
+        : `선택한 창 1개(${rows[0].mode === 'kanchen' ? '칸첸' : '대야'})로 기존 로직 실행`);
 
     fetch('/api/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `mode=${apiMode}&auto_stop=${hours}`
+        body: body
     })
     .then(response => {
         if (response.ok) {
