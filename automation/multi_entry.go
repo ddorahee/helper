@@ -44,11 +44,13 @@ func meCfgFor(mode string) (meModeCfg, error) {
 	}
 }
 
-// EntryWindow 다중 입장 창 1개: 창 핸들 + 모드("daeya"|"kanchen").
-// 창마다 모드를 다르게 섞을 수 있다 (예: 2창 대야 + 1창 칸첸).
+// EntryWindow 다중 입장 창 1개: 창 핸들 + 모드("daeya"|"kanchen") + 입력 방식.
+// 창마다 모드와 입력 방식을 다르게 섞을 수 있다
+// (예: 2창 대야 + 1창 칸첸, 메인 캐릭만 포그라운드 + 나머지는 백그라운드).
 type EntryWindow struct {
 	HWND uint64
 	Mode string
+	BG   bool // true=백그라운드(창 안 띄움), false=포그라운드(창을 앞으로)
 }
 
 // MultiEntry 다중 창 솔로 입장 유지 루프 (대야/칸첸 혼합 가능).
@@ -66,7 +68,7 @@ type MultiEntry struct {
 	running   bool
 	stopChan  chan struct{}
 	entries   []EntryWindow
-	minimize  bool // 입장 후 창 최소화 여부 (옵션)
+	minimize  bool // 입장 후 창 최소화 여부 (옵션, 포그라운드 창에만 적용)
 	centerX   int  // 칸첸 창 중앙 이동 목표 (0,0이면 이동 안 함, 칸첸 창에만 적용)
 	centerY   int
 	centerSet bool
@@ -133,6 +135,13 @@ func (me *MultiEntry) StartEntries(entries []EntryWindow, minimize bool, centerX
 		counts[cfg.modeName]++
 	}
 
+	// 최소화는 창을 내려버리므로 백그라운드 캡처(PrintWindow)가 불가능하다.
+	// 최소화를 켜면 모든 창을 포그라운드로 강제한다 (UI에서도 막지만 방어적으로).
+	if minimize {
+		for i := range entries {
+			entries[i].BG = false
+		}
+	}
 	me.entries = append([]EntryWindow(nil), entries...)
 	me.minimize = minimize
 	me.centerX, me.centerY = centerX, centerY
@@ -150,9 +159,21 @@ func (me *MultiEntry) StartEntries(entries []EntryWindow, minimize bool, centerX
 		}
 		summary += fmt.Sprintf("%s %d개", name, n)
 	}
+	nBG := 0
+	for _, e := range entries {
+		if e.BG {
+			nBG++
+		}
+	}
 	extra := ""
+	switch {
+	case nBG == len(entries):
+		extra += " +전부 백그라운드"
+	case nBG > 0:
+		extra += fmt.Sprintf(" +백그라운드 %d개/포그라운드 %d개", nBG, len(entries)-nBG)
+	}
 	if me.minimize {
-		extra += " +최소화"
+		extra += " +최소화(포그라운드 창만)"
 	}
 	if me.centerSet {
 		extra += fmt.Sprintf(" +칸첸중앙(%d,%d)", centerX, centerY)
@@ -231,6 +252,53 @@ func (me *MultiEntry) run(stop chan struct{}) {
 	}
 }
 
+// ===== 입력/캡처 추상화 =====
+// 비활성 모드(bgMode)면 창을 앞으로 가져오지 않고 PostMessage/PrintWindow로 처리하고,
+// 아니면 기존대로 포그라운드(robotgo/BitBlt)를 쓴다.
+
+// tap 키 1회 입력 (mods는 조합키). bg=true면 백그라운드 전송.
+func (me *MultiEntry) tap(hwnd uint64, bg bool, key string, mods ...string) {
+	if bg {
+		if err := BgKeyTap(hwnd, key, mods...); err != nil {
+			me.log("비활성 키 입력 실패(%s): %v", key, err)
+		}
+		return
+	}
+	for _, m := range mods {
+		robotgo.KeyToggle(m, "down")
+		time.Sleep(50 * time.Millisecond)
+	}
+	robotgo.KeyTap(key)
+	for i := len(mods) - 1; i >= 0; i-- {
+		time.Sleep(50 * time.Millisecond)
+		robotgo.KeyToggle(mods[i], "up")
+	}
+}
+
+// captureWindow 화면 캡처. 비활성 모드는 창을 앞으로 끌어오지 않는다.
+// (기존 CaptureWindowRaw는 내부에서 ActivateWindow를 호출한다)
+func (me *MultiEntry) captureWindow(hwnd uint64, bg bool) (*image.RGBA, error) {
+	if bg {
+		img, _, err := me.wm.CaptureWindowBG(hwnd)
+		return img, err
+	}
+	img, _, err := me.wm.CaptureWindowRaw(hwnd)
+	return img, err
+}
+
+// readCoords Ctrl+D 좌표창의 좌표 읽기. 비활성 모드는 BG 캡처 + 이미지 기반 인식.
+func (me *MultiEntry) readCoords(hwnd uint64, bg bool) (GameCoords, error) {
+	if !bg {
+		return me.om.ReadCoordinates(hwnd)
+	}
+	img, _, err := me.wm.CaptureWindowBG(hwnd)
+	if err != nil {
+		return GameCoords{}, err
+	}
+	c, _, err := me.om.ReadCoordinatesFromImage(img)
+	return c, err
+}
+
 // handleWindow 창 1개 점검: 활성화 → 맵 판별(창별 모드) → 입구면 입장 → 최소화.
 func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindow) {
 	hwnd := entry.HWND
@@ -245,22 +313,29 @@ func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindo
 		return
 	}
 
-	me.wm.ActivateWindow(hwnd)
-	if !me.sleepOrStop(stop, 900*time.Millisecond) { // 복원/렌더 대기
-		return
+	bg := entry.BG
+	if !bg {
+		me.wm.ActivateWindow(hwnd)
+		if !me.sleepOrStop(stop, 900*time.Millisecond) { // 복원/렌더 대기
+			return
+		}
 	}
 
-	state, raw := me.detectState(hwnd, cfg)
-	me.log("창%d[%s] 맵='%s' → %s", idx, cfg.modeName, raw, state)
+	state, raw := me.detectState(hwnd, bg, cfg)
+	inputName := "포그라운드"
+	if bg {
+		inputName = "백그라운드"
+	}
+	me.log("창%d[%s/%s] 맵='%s' → %s", idx, cfg.modeName, inputName, raw, state)
 
 	switch state {
 	case "entrance":
-		me.enterOnce(stop)
+		me.enterOnce(stop, hwnd, bg)
 		// 입장/로딩 대기 후 확인
 		if !me.sleepOrStop(stop, 4*time.Second) {
 			return
 		}
-		state, raw = me.detectState(hwnd, cfg)
+		state, raw = me.detectState(hwnd, bg, cfg)
 		if state == "inside" {
 			me.log("창%d[%s] 입장 성공 (%s)", idx, cfg.modeName, raw)
 		} else {
@@ -274,11 +349,11 @@ func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindo
 		// 대야는 OCR 분류가 안정적이므로 기존대로 다음 바퀴 재확인.
 		if entry.Mode == "kanchen" {
 			me.log("창%d[칸첸] 맵 미상 (OCR='%s') — 단일창 방식으로 입장 시도", idx, raw)
-			me.enterOnce(stop)
+			me.enterOnce(stop, hwnd, bg)
 			if !me.sleepOrStop(stop, 4*time.Second) {
 				return
 			}
-			state, raw = me.detectState(hwnd, cfg)
+			state, raw = me.detectState(hwnd, bg, cfg)
 			me.log("창%d[칸첸] 입장 시도 후 맵='%s' → %s", idx, raw, state)
 		} else {
 			me.log("창%d[%s] 맵 미상 — 다음 바퀴 재확인", idx, cfg.modeName)
@@ -287,11 +362,12 @@ func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindo
 
 	// 칸첸 창: 사냥맵이면 중앙 좌표로 이동 (아이템은 안 먹고 자리만). 대야 창은 이동 안 함.
 	if me.centerSet && entry.Mode == "kanchen" && state == "inside" {
-		me.moveToCenter(stop, idx, hwnd)
+		me.moveToCenter(stop, idx, hwnd, bg)
 	}
 
-	// 최소화는 옵션 (기본 꺼짐)
-	if me.minimize {
+	// 최소화는 옵션 (기본 꺼짐). 최소화를 켜면 위에서 모든 창을 포그라운드로
+	// 강제하므로 여기서 bg는 항상 false다.
+	if me.minimize && !bg {
 		me.wm.MinimizeWindow(hwnd)
 	}
 	me.sleepOrStop(stop, 300*time.Millisecond)
@@ -299,44 +375,40 @@ func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindo
 
 // moveToCenter Ctrl+D 좌표창을 열어 현재 좌표를 읽고 중앙 좌표로 방향키 이동(1회).
 // 오버슈팅해도 다음 바퀴에 보정. 아이템 습득은 하지 않는다.
-func (me *MultiEntry) moveToCenter(stop chan struct{}, idx int, hwnd uint64) {
+func (me *MultiEntry) moveToCenter(stop chan struct{}, idx int, hwnd uint64, bg bool) {
 	// Ctrl+D 좌표창 열기
-	robotgo.KeyToggle("ctrl", "down")
-	time.Sleep(100 * time.Millisecond)
-	robotgo.KeyTap("d")
-	time.Sleep(100 * time.Millisecond)
-	robotgo.KeyToggle("ctrl", "up")
+	me.tap(hwnd, bg, "d", "ctrl")
 	if !me.sleepOrStop(stop, 500*time.Millisecond) {
 		return
 	}
-	c, err := me.om.ReadCoordinates(hwnd)
+	c, err := me.readCoords(hwnd, bg)
 	if err != nil {
 		me.log("창%d 좌표 읽기 실패 — 중앙 이동 생략", idx)
-		robotgo.KeyTap("escape")
+		me.tap(hwnd, bg, "escape")
 		return
 	}
 	dx, dy := me.centerX-c.X, me.centerY-c.Y
 	if meAbs(dx) <= 1 && meAbs(dy) <= 1 {
 		me.log("창%d (%d,%d) 이미 중앙 근처", idx, c.X, c.Y)
-		robotgo.KeyTap("escape")
+		me.tap(hwnd, bg, "escape")
 		return
 	}
 	dx, dy = meClamp(dx, dy, 7) // 과도한 점프 방지
 	me.log("창%d (%d,%d) → 중앙(%d,%d) 이동: dx=%+d dy=%+d", idx, c.X, c.Y, me.centerX, me.centerY, dx, dy)
-	meArrows(dx, dy)
+	me.arrows(hwnd, bg, dx, dy)
 	me.sleepOrStop(stop, 400*time.Millisecond)
-	robotgo.KeyTap("escape") // 좌표창 닫기
+	me.tap(hwnd, bg, "escape") // 좌표창 닫기
 }
 
-// meArrows 좌표창(Ctrl+D) 타일모드 방향키 이동 후 엔터.
-func meArrows(dx, dy int) {
+// arrows 좌표창(Ctrl+D) 타일모드 방향키 이동 후 엔터.
+func (me *MultiEntry) arrows(hwnd uint64, bg bool, dx, dy int) {
 	if dx != 0 {
 		dir, n := "right", dx
 		if dx < 0 {
 			dir, n = "left", -dx
 		}
 		for i := 0; i < n; i++ {
-			robotgo.KeyTap(dir)
+			me.tap(hwnd, bg, dir)
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
@@ -346,12 +418,12 @@ func meArrows(dx, dy int) {
 			dir, n = "up", -dy
 		}
 		for i := 0; i < n; i++ {
-			robotgo.KeyTap(dir)
+			me.tap(hwnd, bg, dir)
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
 	time.Sleep(200 * time.Millisecond)
-	robotgo.KeyTap("enter")
+	me.tap(hwnd, bg, "enter")
 }
 
 func meAbs(v int) int {
@@ -383,13 +455,13 @@ func (me *MultiEntry) DebugDetect(hwnd uint64, mode string) (mapName, state stri
 	if err != nil {
 		return "", "", err
 	}
-	st, raw := me.detectState(hwnd, cfg)
+	st, raw := me.detectState(hwnd, false, cfg)
 	return raw, st, nil
 }
 
 // detectState 상단 중앙 맵 이름 OCR → "entrance" | "inside" | "unknown" (+원본 텍스트).
-func (me *MultiEntry) detectState(hwnd uint64, cfg meModeCfg) (string, string) {
-	rawImg, _, err := me.wm.CaptureWindowRaw(hwnd)
+func (me *MultiEntry) detectState(hwnd uint64, bg bool, cfg meModeCfg) (string, string) {
+	rawImg, err := me.captureWindow(hwnd, bg)
 	if err != nil {
 		return "unknown", ""
 	}
@@ -523,13 +595,13 @@ func (me *MultiEntry) classify(mapName string, cfg meModeCfg) string {
 }
 
 // enterOnce 입구맵 입장 시퀀스 1회: o → Enter → Enter → ESC (1~3초 랜덤 딜레이).
-func (me *MultiEntry) enterOnce(stop chan struct{}) {
+func (me *MultiEntry) enterOnce(stop chan struct{}, hwnd uint64, bg bool) {
 	keys := []string{"o", "enter", "enter", "esc"}
 	for _, key := range keys {
 		if me.stopped(stop) {
 			return
 		}
-		robotgo.KeyTap(key)
+		me.tap(hwnd, bg, key)
 		delay := 1*time.Second + time.Duration(rand.Intn(2001))*time.Millisecond
 		me.log("[입장] '%s' 키 (대기 %.1f초)", key, delay.Seconds())
 		if !me.sleepOrStop(stop, delay) {

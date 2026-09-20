@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,6 +25,7 @@ type CharacterProfile struct {
 	Enabled      bool        `json:"enabled"`       // 순환에 포함할지 여부
 	PeachType    string      `json:"peachType"`     // 복숭아 타입: "" / "silla" / "king" / "india"
 	CompanionMode string     `json:"companionMode"` // 동시 메인화면: "" / "kanchen" / "daeya" — 설정 시 자동사냥 순환에서 빠지고 사냥시간(DurationMins) 동안 메인화면 자동화 병행 실행
+	HuntAfterMins int        `json:"huntAfterMins"` // 동시실행 캐릭 전용: 다른 캐릭 자동사냥이 모두 끝난 뒤 이 시간(분)만큼 자동사냥 턴을 받음 (0 = 동시실행만)
 	WindowHWND   uint64      `json:"-"`             // 런타임 전용 (매 실행마다 재할당)
 	Assigned     bool        `json:"-"`             // 런타임 전용
 }
@@ -86,10 +88,11 @@ type ItemPickupConfig struct {
 
 // CharacterData JSON 저장 구조
 type CharacterData struct {
-	Characters       []CharacterProfile `json:"characters"`
-	Coordinates      GameUICoordinates  `json:"coordinates"`
-	OCRConfig        OCRRegionConfig    `json:"ocrConfig"`
-	ItemPickupConfig ItemPickupConfig   `json:"itemPickupConfig,omitempty"`
+	Characters       []CharacterProfile            `json:"characters"`
+	Coordinates      GameUICoordinates             `json:"coordinates"`
+	OCRConfig        OCRRegionConfig               `json:"ocrConfig"`
+	ItemPickupConfig ItemPickupConfig              `json:"itemPickupConfig,omitempty"`
+	Presets          map[string][]CharacterProfile `json:"presets,omitempty"` // 캐릭터 구성 프리셋 (이름 → 캐릭터 목록 스냅샷)
 }
 
 // CharacterStore 캐릭터 저장소
@@ -183,6 +186,52 @@ func (cs *CharacterStore) GetAll() []CharacterProfile {
 	result := make([]CharacterProfile, len(cs.data.Characters))
 	copy(result, cs.data.Characters)
 	return result
+}
+
+// SavePreset 현재 캐릭터 목록을 프리셋으로 저장 (같은 이름이면 덮어쓰기)
+func (cs *CharacterStore) SavePreset(name string) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	if cs.data.Presets == nil {
+		cs.data.Presets = map[string][]CharacterProfile{}
+	}
+	snapshot := make([]CharacterProfile, len(cs.data.Characters))
+	copy(snapshot, cs.data.Characters)
+	cs.data.Presets[name] = snapshot
+}
+
+// ApplyPreset 프리셋의 캐릭터 목록으로 현재 목록을 교체
+func (cs *CharacterStore) ApplyPreset(name string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	preset, ok := cs.data.Presets[name]
+	if !ok {
+		return fmt.Errorf("프리셋 '%s'을(를) 찾을 수 없습니다", name)
+	}
+	chars := make([]CharacterProfile, len(preset))
+	copy(chars, preset)
+	cs.data.Characters = chars
+	return nil
+}
+
+// DeletePreset 프리셋 삭제
+func (cs *CharacterStore) DeletePreset(name string) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	delete(cs.data.Presets, name)
+}
+
+// GetPresets 프리셋 목록 반환 (이름 순 정렬, 캐릭터 스냅샷 포함)
+func (cs *CharacterStore) GetPresets() map[string][]CharacterProfile {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	out := make(map[string][]CharacterProfile, len(cs.data.Presets))
+	for k, v := range cs.data.Presets {
+		chars := make([]CharacterProfile, len(v))
+		copy(chars, v)
+		out[k] = chars
+	}
+	return out
 }
 
 // GetByOrder 순서대로 정렬된 캐릭터 반환

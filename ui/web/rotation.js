@@ -340,6 +340,15 @@
         // 역할 변경 시 관련 항목 표시/숨김 (자동사냥 ↔ 동시실행)
         const charRoleSel = document.getElementById('char-companion-mode');
         if (charRoleSel) charRoleSel.addEventListener('change', updateCharFormRole);
+        // 후속 자동사냥 시간 변경 시 사냥터 입력란 표시/숨김
+        const huntAfterInput = document.getElementById('char-hunt-after');
+        if (huntAfterInput) huntAfterInput.addEventListener('input', updateCharFormRole);
+        // 캐릭터 구성 프리셋
+        document.getElementById('preset-save-btn')?.addEventListener('click', savePreset);
+        document.getElementById('preset-apply-btn')?.addEventListener('click', applyPreset);
+        document.getElementById('preset-update-btn')?.addEventListener('click', updatePreset);
+        document.getElementById('preset-delete-btn')?.addEventListener('click', deletePreset);
+        loadPresets();
         if (detectWindowsBtn) detectWindowsBtn.addEventListener('click', detectWindows);
         if (applyAssignBtn) applyAssignBtn.addEventListener('click', applyAssignments);
         const autoAssignBtn = document.getElementById('auto-assign-btn');
@@ -381,7 +390,9 @@
                 <div class="char-info">
                     <div class="char-name">${escapeHtml(c.name)}${c.companionMode ? ` <span style="font-size:0.68rem;padding:0.1rem 0.35rem;border-radius:4px;background:rgba(59,130,246,0.18);color:#60a5fa" title="자동사냥 순환에서 빠지고, 실행 시간 동안 메인화면 자동화를 병행 실행 (전환 순간에만 잠깐 정지 후 이어서 돎)">동시실행</span>` : ''}</div>
                     <div class="char-detail">${c.companionMode
-                        ? `메인화면 ${c.companionMode === 'kanchen' ? '칸첸' : '대야'} 병행 / ${c.durationMins}분`
+                        ? `메인화면 ${c.companionMode === 'kanchen' ? '칸첸' : '대야'} 병행 ${c.durationMins}분${c.huntAfterMins > 0
+                            ? ` → 이후 자동사냥 ${c.huntAfterMins}분 (${escapeHtml(c.huntingArea?.name || '')}, ${c.huntingArea?.dropdownIndex || 0}번째)`
+                            : ''}`
                         : `${escapeHtml(c.huntingArea?.name || '')} (${c.huntingArea?.dropdownIndex || 0}번째) / ${c.durationMins}분`}</div>
                 </div>
                 <div class="char-actions">
@@ -394,18 +405,122 @@
         `).join('');
     }
 
-    // 역할(자동사냥/동시실행)에 따라 폼 항목 표시 토글
-    // 동시실행이면 사냥터/드롭다운/복숭아는 안 쓰므로 숨기고, 시간 라벨을 바꾼다
+    // ===== 캐릭터 구성 프리셋 =====
+    // 현재 캐릭터 목록 전체(이름/시간/순서/역할/후속사냥)를 이름 붙여 저장하고 통째로 교체
+    async function loadPresets() {
+        try {
+            const r = await fetch('/api/rotation/presets');
+            const data = await r.json() || {};
+            const sel = document.getElementById('preset-select');
+            if (!sel) return;
+            const prevSelected = sel.value; // 갱신 후에도 선택 유지 (덮어쓰기 흐름)
+            const names = Object.keys(data).sort();
+            if (names.length === 0) {
+                sel.innerHTML = '<option value="">(저장된 프리셋 없음)</option>';
+                return;
+            }
+            sel.innerHTML = names.map(n => {
+                const chars = (data[n] || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+                const desc = chars.map(c =>
+                    `${c.name} ${c.companionMode ? '동시' : ''}${c.durationMins}분`).join(', ');
+                return `<option value="${escapeHtml(n)}">${escapeHtml(n)} — ${escapeHtml(desc)}</option>`;
+            }).join('');
+            if (prevSelected && names.includes(prevSelected)) sel.value = prevSelected;
+        } catch (e) { /* 서버 미응답 시 무시 */ }
+    }
+
+    // 선택한 프리셋에 현재 캐릭터 목록을 같은 이름으로 저장 (수정 후 덮어쓰기)
+    async function updatePreset() {
+        const sel = document.getElementById('preset-select');
+        const name = sel?.value;
+        if (!name) { alert('덮어쓸 프리셋을 선택해주세요.'); return; }
+        if (characters.length === 0) { alert('저장할 캐릭터가 없습니다.'); return; }
+        if (!confirm(`프리셋 '${name}'을(를) 현재 캐릭터 목록(${characters.length}개)으로 덮어쓸까요?`)) return;
+        const r = await fetch('/api/rotation/presets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, action: 'save' })
+        });
+        if (r.ok) {
+            addRotationLog(`프리셋 '${name}' 덮어쓰기 완료 (캐릭터 ${characters.length}개)`);
+            loadPresets();
+        } else {
+            alert('프리셋 덮어쓰기 실패: ' + await r.text());
+        }
+    }
+
+    async function savePreset() {
+        const nameInput = document.getElementById('preset-name');
+        const name = (nameInput?.value || '').trim();
+        if (!name) { alert('프리셋 이름을 입력해주세요.'); return; }
+        if (characters.length === 0) { alert('저장할 캐릭터가 없습니다.'); return; }
+        const r = await fetch('/api/rotation/presets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, action: 'save' })
+        });
+        if (r.ok) {
+            addRotationLog(`프리셋 '${name}' 저장됨 (캐릭터 ${characters.length}개)`);
+            nameInput.value = '';
+            loadPresets();
+        } else {
+            alert('프리셋 저장 실패: ' + await r.text());
+        }
+    }
+
+    async function applyPreset() {
+        const sel = document.getElementById('preset-select');
+        const name = sel?.value;
+        if (!name) { alert('불러올 프리셋을 선택해주세요.'); return; }
+        if (!confirm(`현재 캐릭터 목록을 프리셋 '${name}'(으)로 교체할까요?\n(창 할당은 다시 감지해야 합니다)`)) return;
+        const r = await fetch('/api/rotation/presets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, action: 'apply' })
+        });
+        if (r.ok) {
+            addRotationLog(`프리셋 '${name}' 적용됨 — 창 감지 후 시작해주세요`);
+            loadCharacters();
+        } else {
+            alert('프리셋 적용 실패: ' + await r.text());
+        }
+    }
+
+    async function deletePreset() {
+        const sel = document.getElementById('preset-select');
+        const name = sel?.value;
+        if (!name) { alert('삭제할 프리셋을 선택해주세요.'); return; }
+        if (!confirm(`프리셋 '${name}'을(를) 삭제할까요?`)) return;
+        const r = await fetch(`/api/rotation/presets?name=${encodeURIComponent(name)}`, { method: 'DELETE' });
+        if (r.ok) {
+            addRotationLog(`프리셋 '${name}' 삭제됨`);
+            loadPresets();
+        }
+    }
+
+    // 역할(자동사냥/동시실행)에 따라 폼 항목 표시 토글.
+    // 동시실행: 시간 라벨 변경 + "동시실행 후 자동사냥" 필드 표시.
+    // 사냥터/드롭다운/복숭아는 자동사냥이거나, 동시실행이라도 후속 자동사냥이 있으면 표시
+    // (동시실행일 땐 라벨에 '후속 자동사냥'을 붙여 어느 사냥에 쓰이는지 명확하게).
     function updateCharFormRole() {
         const role = document.getElementById('char-companion-mode')?.value || '';
         const isCompanion = role !== '';
-        const rows = ['row-char-area', 'row-char-dropdown', 'row-char-peach'];
-        rows.forEach(id => {
+        const huntAfter = isCompanion ? (parseInt(document.getElementById('char-hunt-after')?.value) || 0) : 0;
+        const showHuntFields = !isCompanion || huntAfter > 0;
+        ['row-char-area', 'row-char-dropdown', 'row-char-peach'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.style.display = isCompanion ? 'none' : '';
+            if (el) el.style.display = showHuntFields ? '' : 'none';
         });
+        const afterRow = document.getElementById('row-char-hunt-after');
+        if (afterRow) afterRow.style.display = isCompanion ? '' : 'none';
         const durLabel = document.getElementById('char-duration-label');
-        if (durLabel) durLabel.textContent = isCompanion ? '실행 시간 (분)' : '사냥 시간 (분)';
+        if (durLabel) durLabel.textContent = isCompanion ? '동시실행 시간 (분)' : '사냥 시간 (분)';
+        const areaLabel = document.getElementById('char-area-label');
+        if (areaLabel) areaLabel.textContent = isCompanion ? '후속 자동사냥 사냥터 이름' : '사냥터 이름';
+        const dropLabel = document.getElementById('char-dropdown-label');
+        if (dropLabel) dropLabel.textContent = isCompanion
+            ? '후속 자동사냥 드롭다운 순서 (0부터)'
+            : '사냥터 드롭다운 순서 (0부터)';
     }
 
     function showAddForm() {
@@ -418,6 +533,8 @@
         if (peachSel) peachSel.value = '';
         const compSel = document.getElementById('char-companion-mode');
         if (compSel) compSel.value = '';
+        const huntAfter = document.getElementById('char-hunt-after');
+        if (huntAfter) huntAfter.value = '0';
         updateCharFormRole();
         characterForm.style.display = 'block';
         characterForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -435,10 +552,13 @@
         const duration = parseInt(document.getElementById('char-duration').value) || 120;
         const peachType = document.getElementById('char-peach-type')?.value || '';
         const companionMode = document.getElementById('char-companion-mode')?.value || '';
+        const huntAfterMins = companionMode
+            ? (parseInt(document.getElementById('char-hunt-after')?.value) || 0)
+            : 0;
 
         if (!name) { alert('캐릭터 이름을 입력해주세요.'); return; }
-        // 동시실행 캐릭은 사냥터를 안 쓰므로 자동사냥일 때만 필수
-        if (!companionMode && !area) { alert('사냥터 이름을 입력해주세요.'); return; }
+        // 사냥터: 자동사냥이거나, 동시실행+후속 자동사냥이 있으면 필수
+        if ((!companionMode || huntAfterMins > 0) && !area) { alert('사냥터 이름을 입력해주세요.'); return; }
 
         // 수정 모드면 기존 order/enabled 유지, 신규면 마지막 순서로
         const existing = editingCharId ? characters.find(c => c.id === editingCharId) : null;
@@ -452,7 +572,8 @@
             order: order,
             enabled: enabled,
             peachType: peachType,
-            companionMode: companionMode
+            companionMode: companionMode,
+            huntAfterMins: huntAfterMins
         };
 
         if (editingCharId) {
@@ -486,6 +607,8 @@
         if (peachSel) peachSel.value = char.peachType || '';
         const compSel = document.getElementById('char-companion-mode');
         if (compSel) compSel.value = char.companionMode || '';
+        const huntAfter = document.getElementById('char-hunt-after');
+        if (huntAfter) huntAfter.value = char.huntAfterMins || 0;
         updateCharFormRole();
         characterForm.style.display = 'block';
         characterForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

@@ -81,6 +81,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setupStatusPolling();
     setupLogAutoRefresh();
     setupMultiEntry();
+    setupBaramlog();
+    setupDaeyaConfig();
+    setupCollapsibles();
 
     if (logsContainer && currentContentSection === 'logs') {
         refreshLogs();
@@ -106,11 +109,365 @@ function updateMultiCenterRow() {
     if (pickupCard) pickupCard.style.display = anyKanchen ? '' : 'none';
 }
 
+// 카드 접기/펴기.
+// 설정 카드들이 항상 펼쳐져 있으면 화면을 잡아먹어 불편하므로 기본은 접힘이고,
+// 접고 편 상태는 브라우저에 기억해 다음에도 유지한다.
+function setupCollapsibles() {
+    document.querySelectorAll('.collapse-btn[data-collapse]').forEach(btn => {
+        const bodyId = btn.dataset.collapse;
+        const body = document.getElementById(bodyId);
+        if (!body) return;
+        const KEY = 'collapse:' + bodyId;
+
+        function paint(open) {
+            body.style.display = open ? '' : 'none';
+            btn.textContent = open ? '▾' : '▸';
+            btn.title = open ? '접기' : '펴기';
+        }
+
+        let open = false; // 기본 접힘
+        try { open = localStorage.getItem(KEY) === 'open'; } catch (e) {}
+        paint(open);
+
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // 헤더의 다른 조작(토글 스위치 등)과 분리
+            open = body.style.display === 'none';
+            paint(open);
+            try { localStorage.setItem(KEY, open ? 'open' : 'closed'); } catch (e) {}
+        });
+    });
+}
+
+// 대야 전투 키 설정 — 어떤 키를 누르는지 보여주고 바꿀 수 있게 한다.
+// 서버는 기본값(d, x, 5 / 29,32 / ±1)으로 시작하므로, 저장한 값이 있으면
+// 화면이 뜰 때 서버에 다시 적용한다.
+function setupDaeyaConfig() {
+    const card = document.getElementById('daeya-config-card');
+    if (!card) return;
+    const keysEl = document.getElementById('daeya-skill-keys');
+    const xEl = document.getElementById('daeya-target-x');
+    const yEl = document.getElementById('daeya-target-y');
+    const tolEl = document.getElementById('daeya-tolerance');
+    const saveBtn = document.getElementById('daeya-config-save');
+    const KEY = 'daeyaBattleConfig';
+
+    function paint(cfg) {
+        keysEl.value = (cfg.skillKeys || []).join(', ');
+        xEl.value = cfg.targetX;
+        yEl.value = cfg.targetY;
+        tolEl.value = cfg.tolerance;
+    }
+
+    function read() {
+        return {
+            skillKeys: keysEl.value.split(',').map(s => s.trim()).filter(Boolean),
+            targetX: parseInt(xEl.value) || 0,
+            targetY: parseInt(yEl.value) || 0,
+            tolerance: Math.max(0, parseInt(tolEl.value) || 0)
+        };
+    }
+
+    async function post(cfg) {
+        const r = await fetch('/api/daeya/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cfg)
+        });
+        if (!r.ok) throw new Error(await r.text());
+        return await r.json();
+    }
+
+    (async () => {
+        try {
+            const r = await fetch('/api/daeya/config');
+            let cfg = await r.json();
+            // 저장해둔 설정이 있으면 서버에 재적용 (서버는 재시작 시 기본값)
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+            if (saved && saved.skillKeys && saved.skillKeys.length) {
+                cfg = await post(saved);
+            }
+            paint(cfg);
+        } catch (e) { /* 서버 미응답 시 무시 */ }
+    })();
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            const cfg = read();
+            if (cfg.skillKeys.length === 0) { alert('스킬 키를 하나 이상 입력해주세요.'); return; }
+            saveBtn.disabled = true;
+            try {
+                const applied = await post(cfg);
+                paint(applied);
+                try { localStorage.setItem(KEY, JSON.stringify(applied)); } catch (e) {}
+                addLogMessage(`대야 설정 저장: 스킬 [${(applied.skillKeys || []).join(', ')}] / 목표 (${applied.targetX},${applied.targetY}) ±${applied.tolerance}`);
+            } catch (e) {
+                addLogMessage('대야 설정 저장 실패: ' + e.message);
+            }
+            saveBtn.disabled = false;
+        });
+    }
+}
+
+// 시련 모집 알림 화면 (전용 섹션)
+// 서버가 10초마다 baramlog.com을 확인하고, 여기서는 5초마다 상태만 갱신한다.
+// "새로고침"은 주기와 무관하게 서버에 즉시 동기화를 요청한다(서버가 조회를 마친 뒤 응답).
+function setupBaramlog() {
+    const section = document.getElementById('baramlog-section');
+    if (!section) return;
+    const badge = document.getElementById('baramlog-badge');
+    const statsBox = document.getElementById('baramlog-stats');
+    const targetsBox = document.getElementById('baramlog-targets');
+    const errBox = document.getElementById('baramlog-error');
+    const listBox = document.getElementById('baramlog-hits-list');
+    const intervalEl = document.getElementById('baramlog-interval');
+    const refreshBtn = document.getElementById('baramlog-refresh');
+    const toggleBtn = document.getElementById('baramlog-toggle');
+    const testBtn = document.getElementById('baramlog-test');
+    const intervalSel = document.getElementById('baramlog-interval-select');
+    const INTERVAL_KEY = 'baramlogIntervalSeconds';
+    let appliedSavedInterval = false;
+    let running = false; // 기본은 중지 — 서버도 자동 시작하지 않는다
+
+    function stat(label, value, color) {
+        return `<div class="result-item" style="background:rgba(255,255,255,0.04);border-radius:8px;padding:0.6rem">
+            <div style="font-size:0.7rem;color:var(--text-muted)">${label}</div>
+            <div style="font-size:0.95rem;font-weight:600;margin-top:0.2rem${color ? ';color:' + color : ''}">${value}</div>
+        </div>`;
+    }
+
+    function paint(st) {
+        running = !!st.running;
+
+        let label, bg, fg;
+        if (!st.running) { label = '중지됨'; bg = 'rgba(148,163,184,0.2)'; fg = '#94a3b8'; }
+        else if (!st.healthy) { label = '접속 실패'; bg = 'rgba(248,113,113,0.18)'; fg = '#f87171'; }
+        else if (st.stale) { label = '데이터 정체'; bg = 'rgba(245,166,35,0.18)'; fg = '#f5a623'; }
+        else { label = '감시중'; bg = 'rgba(52,211,153,0.18)'; fg = '#34d399'; }
+        badge.textContent = label;
+        badge.style.background = bg;
+        badge.style.color = fg;
+        if (toggleBtn) toggleBtn.textContent = st.running ? '중지' : '시작';
+        if (intervalEl && st.intervalSeconds) intervalEl.textContent = st.intervalSeconds;
+
+        // 서버의 현재 주기를 드롭다운에 반영.
+        // 프로그램을 껐다 켜면 서버는 기본값(10초)으로 시작하므로,
+        // 저장해둔 사용자 선택이 있으면 최초 1회 서버에 다시 적용한다.
+        if (intervalSel && st.intervalSeconds) {
+            let saved = null;
+            try { saved = localStorage.getItem(INTERVAL_KEY); } catch (e) {}
+            if (!appliedSavedInterval && saved && parseInt(saved) !== st.intervalSeconds) {
+                appliedSavedInterval = true;
+                post('interval', { seconds: parseInt(saved) })
+                    .then(s2 => paint(s2))
+                    .catch(() => {});
+                return;
+            }
+            appliedSavedInterval = true;
+            if (intervalSel.value !== String(st.intervalSeconds)) {
+                intervalSel.value = String(st.intervalSeconds);
+            }
+        }
+
+        if (targetsBox) {
+            targetsBox.innerHTML = (st.targets || []).map(t =>
+                `<span style="font-size:0.75rem;padding:0.2rem 0.5rem;border-radius:6px;background:rgba(245,166,35,0.15);color:#f5a623">${escapeHtmlMin(t)}</span>`
+            ).join('');
+        }
+
+        statsBox.innerHTML =
+            stat('마지막 동기화', st.lastPollAt || '-') +
+            stat('발견', `${st.totalHits || 0}건`) +
+            stat('최근 발견', st.lastHitAt || '-') +
+            stat('사이트 상태',
+                !st.healthy ? `접속 실패 ${st.failCount}회`
+                    : st.stale ? `데이터 정체 ${st.dataAgeMinutes}분`
+                    : '정상',
+                !st.healthy ? '#f87171' : st.stale ? '#f5a623' : '#34d399') +
+            stat('사이트 최신 글', st.newestMessageAt || '-', st.stale ? '#f5a623' : undefined);
+
+        if (!st.healthy && st.lastError) {
+            errBox.style.display = '';
+            errBox.style.background = 'rgba(248,113,113,0.12)';
+            errBox.style.color = '#f87171';
+            errBox.textContent = `baramlog.com 접속 실패 ${st.failCount}회 연속 — ${st.lastError}`;
+        } else if (st.stale) {
+            // 사이트는 응답하지만 새 글이 안 올라오는 상태 (사이트 쪽 문제)
+            errBox.style.display = '';
+            errBox.style.background = 'rgba(245,166,35,0.12)';
+            errBox.style.color = '#f5a623';
+            errBox.textContent = `사이트는 응답하지만 ${st.dataAgeMinutes}분째 새 글이 없습니다 (최신 글 ${st.newestMessageAt}). 사이트 쪽 문제로 보이며, 감시는 계속 돌고 있습니다.`;
+        } else {
+            errBox.style.display = 'none';
+        }
+
+        const hits = st.recentHits || [];
+        listBox.innerHTML = hits.length === 0
+            ? '<p style="font-size:0.8rem;color:var(--text-muted)">아직 발견된 모집 글이 없습니다. 새 글이 올라오면 여기와 텔레그램에 표시됩니다.</p>'
+            : hits.map(h => `<div style="display:flex;gap:0.6rem;align-items:baseline;padding:0.45rem 0.2rem;border-bottom:1px solid var(--border-color);flex-wrap:wrap">
+                <span style="font-size:0.68rem;padding:0.1rem 0.4rem;border-radius:5px;background:rgba(245,166,35,0.18);color:#f5a623;white-space:nowrap">${escapeHtmlMin(h.label)}</span>
+                <span style="font-size:0.72rem;color:var(--text-muted);white-space:nowrap">${escapeHtmlMin((h.createdAt || '').slice(5))}</span>
+                <span style="font-size:0.83rem"><b>${escapeHtmlMin(h.name)}</b> ${escapeHtmlMin(h.message)}</span>
+            </div>`).join('');
+    }
+
+    async function refreshStatus() {
+        try {
+            const r = await fetch('/api/baramlog/status');
+            if (r.ok) paint(await r.json());
+        } catch (e) { /* 서버 미응답 시 무시 */ }
+    }
+
+    async function post(action, extra) {
+        const r = await fetch('/api/baramlog/status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.assign({ action }, extra || {}))
+        });
+        if (!r.ok) throw new Error(await r.text());
+        return await r.json();
+    }
+
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async () => {
+            const orig = refreshBtn.textContent;
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = '동기화 중…';
+            try {
+                const st = await post('sync');   // 서버가 조회를 끝낸 뒤 최신 상태를 준다
+                paint(st);
+                addLogMessage(`시련 알림: 동기화 완료 (${st.lastPollAt || '-'})`);
+            } catch (e) {
+                addLogMessage('시련 알림: 동기화 실패 - ' + e.message);
+            }
+            refreshBtn.textContent = orig;
+            refreshBtn.disabled = false;
+        });
+    }
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', async () => {
+            toggleBtn.disabled = true;
+            try {
+                const st = await post(running ? 'stop' : 'start');
+                paint(st);
+                addLogMessage(`시련 알림: ${st.running ? '감시 시작' : '감시 중지'}`);
+            } catch (e) {
+                addLogMessage('시련 알림: 상태 변경 실패 - ' + e.message);
+            }
+            toggleBtn.disabled = false;
+        });
+    }
+
+    if (testBtn) {
+        testBtn.addEventListener('click', async () => {
+            const orig = testBtn.textContent;
+            testBtn.disabled = true;
+            testBtn.textContent = '전송 중…';
+            try {
+                // 실제 알림과 같은 경로로 전송된다 — 도착하면 실제 알림도 정상
+                const st = await post('test');
+                paint(st);
+                testBtn.textContent = '✓ 전송됨';
+                addLogMessage('시련 알림: 텔레그램 테스트 메시지 전송 완료');
+            } catch (e) {
+                testBtn.textContent = '✗ 실패';
+                addLogMessage('시련 알림: 텔레그램 테스트 실패 - ' + e.message);
+                alert('텔레그램 테스트 실패\n\n' + e.message);
+            }
+            setTimeout(() => { testBtn.textContent = orig; testBtn.disabled = false; }, 2000);
+        });
+    }
+
+    if (intervalSel) {
+        intervalSel.addEventListener('change', async () => {
+            const sec = parseInt(intervalSel.value) || 10;
+            try {
+                const st = await post('interval', { seconds: sec });
+                try { localStorage.setItem(INTERVAL_KEY, String(sec)); } catch (e) {}
+                paint(st);
+                addLogMessage(`시련 알림: 확인 주기 ${sec < 60 ? sec + '초' : (sec / 60) + '분'}로 변경`);
+            } catch (e) {
+                addLogMessage('시련 알림: 주기 변경 실패 - ' + e.message);
+            }
+        });
+    }
+
+    refreshStatus();
+    setInterval(refreshStatus, 5000);
+}
+// 입력 방식(포그라운드/백그라운드) 선택 UI.
+// 백그라운드는 창을 앞으로 가져오지 않지만, 최소화된 창은 캡처가 불가능하므로
+// 최소화 옵션과 함께 쓸 수 없다(서버에서도 강제 해제됨).
+// 입력 방식(포그라운드/백그라운드)은 창 목록의 창별 드롭다운으로만 정한다.
+// 단, "입장 후 창 최소화"를 켜면 최소화된 창은 백그라운드 캡처(PrintWindow)가
+// 불가능하므로 전 창을 포그라운드로 잠근다.
+function setupInputModeSelect() {
+    const desc = document.getElementById('multi-input-mode-desc');
+    const minimize = document.getElementById('multi-entry-minimize');
+
+    function applyToRows() {
+        const locked = !!(minimize && minimize.checked);
+        document.querySelectorAll('#multi-entry-list select.multi-input-select').forEach(s => {
+            if (locked) s.value = 'fg';
+            s.disabled = locked;
+            s.title = locked
+                ? '최소화 옵션이 켜져 있어 포그라운드로 고정됩니다 (최소화된 창은 백그라운드 캡처 불가).'
+                : '포그라운드: 창을 앞으로 가져와 입력 / 백그라운드: 창을 띄우지 않고 입력·캡처';
+        });
+        if (desc) {
+            desc.innerHTML = locked
+                ? '<b>포그라운드 고정</b>: "입장 후 창 최소화"가 켜져 있습니다. 최소화된 창은 백그라운드 캡처가 불가능하므로 백그라운드를 쓸 수 없습니다. 백그라운드로 돌리려면 최소화를 꺼주세요.'
+                : '입력 방식은 <b>창마다</b> 고릅니다. 백그라운드는 창을 앞으로 가져오지 않아 봇이 도는 동안 다른 작업을 할 수 있습니다(게임이 관리자 권한이면 도우미도 관리자로 실행). 창 감지 때는 화면 확인을 위해 창을 활성화합니다.';
+        }
+    }
+
+    if (minimize) minimize.addEventListener('change', applyToRows);
+    window.refreshMultiInputMode = applyToRows; // 창 감지 후 재적용
+    applyToRows();
+}
 // 다중 창 입장 UI (창감지 → 체크박스 목록, 최대 4개 선택)
 function setupMultiEntry() {
     const detectBtn = document.getElementById('multi-entry-detect');
     const list = document.getElementById('multi-entry-list');
+    setupInputModeSelect();
     if (!detectBtn || !list) return;
+
+    // 맵 디버그: 창마다 상단 맵 이름 OCR (느려서 버튼으로만 실행)
+    const mapBtn = document.getElementById('multi-entry-mapdebug');
+    if (mapBtn) {
+        mapBtn.addEventListener('click', async () => {
+            const rows = document.querySelectorAll('#multi-entry-list .multi-map-info');
+            if (rows.length === 0) {
+                addLogMessage('맵 디버그: 먼저 창 감지를 해주세요.');
+                return;
+            }
+            mapBtn.disabled = true;
+            const orig = mapBtn.textContent;
+            mapBtn.textContent = '읽는 중…';
+            try {
+                const res = await fetch('/api/multi/mapinfo');
+                const infos = await res.json();
+                const byHwnd = {};
+                (infos || []).forEach(m => { byHwnd[String(m.hwnd)] = m; });
+                rows.forEach(div => {
+                    const m = byHwnd[div.dataset.hwnd];
+                    if (!m) { div.style.display = 'none'; return; }
+                    const img = m.mapCrop
+                        ? `<img src="${m.mapCrop}" alt="맵" style="height:22px;border:1px solid var(--border-color);border-radius:3px;background:#000">`
+                        : '';
+                    div.innerHTML = `${img}<span style="font-size:0.72rem;color:var(--text-muted)">맵: ${escapeHtmlMin(m.mapText || '(인식 실패)')}</span>`;
+                    div.style.display = 'flex';
+                });
+                addLogMessage(`맵 디버그: ${(infos || []).length}개 창 맵 인식 완료`);
+            } catch (e) {
+                addLogMessage('맵 디버그 실패: ' + e.message);
+            }
+            mapBtn.textContent = orig;
+            mapBtn.disabled = false;
+        });
+    }
 
     detectBtn.addEventListener('click', async () => {
         detectBtn.disabled = true;
@@ -125,15 +482,13 @@ function setupMultiEntry() {
                 // OCR 텍스트는 이 게임 폰트에서 부정확(재↔새 등)해서 닉네임 크롭 이미지로 구분한다.
                 // 창마다 대야/칸첸 드롭다운 — 혼합 가능 (예: 2창 대야 + 1창 칸첸)
                 const defMode = 'daeya';
+                const defInput = 'fg'; // 새 행 기본값은 포그라운드 (창마다 개별 변경)
                 list.innerHTML = wins.map((w, i) => {
                     const cropImg = w.crop
                         ? `<img src="${w.crop}" alt="닉네임" style="height:34px;border:1px solid var(--border-color);border-radius:4px;image-rendering:pixelated;background:#000">`
                         : '<span style="font-size:0.72rem;color:var(--text-muted)">(캡처 실패)</span>';
-                    // 맵 이름 OCR + 크롭 (어느 맵에 있는지 + OCR이 뭘 읽는지 진단)
-                    const mapInfo = `<div style="display:flex;align-items:center;gap:0.5rem;padding:0 0.2rem 0.35rem 2rem">
-                        ${w.mapCrop ? `<img src="${w.mapCrop}" alt="맵" style="height:22px;border:1px solid var(--border-color);border-radius:3px;background:#000">` : ''}
-                        <span style="font-size:0.72rem;color:var(--text-muted)">맵: ${escapeHtmlMin(w.mapText || '(인식 실패)')}</span>
-                    </div>`;
+                    // 맵 정보는 "맵 디버그" 버튼을 눌렀을 때만 이 자리에 채워진다
+                    const mapInfo = `<div class="multi-map-info" data-hwnd="${w.hwnd}" style="display:none;align-items:center;gap:0.5rem;padding:0 0.2rem 0.35rem 2rem"></div>`;
                     return `<label style="display:flex;align-items:center;gap:0.6rem;font-size:0.85rem;padding:0.35rem 0.2rem;cursor:pointer">
                         <input type="checkbox" value="${w.hwnd}" ${i < 4 ? 'checked' : ''}>
                         <span style="color:var(--text-muted);white-space:nowrap">창 ${i + 1}</span>
@@ -142,10 +497,18 @@ function setupMultiEntry() {
                             <option value="daeya" ${defMode === 'daeya' ? 'selected' : ''}>대야</option>
                             <option value="kanchen" ${defMode === 'kanchen' ? 'selected' : ''}>칸첸</option>
                         </select>
+                        <select class="multi-input-select" title="포그라운드: 창을 앞으로 가져와 입력 / 백그라운드: 창을 띄우지 않고 입력·캡처" style="font-size:0.78rem;padding:0.15rem 0.3rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit;display:${i < 4 ? '' : 'none'}">
+                            <option value="fg" ${defInput === 'fg' ? 'selected' : ''}>포그라운드</option>
+                            <option value="bg" ${defInput === 'bg' ? 'selected' : ''}>백그라운드</option>
+                        </select>
                         <span style="color:var(--text-muted);font-size:0.72rem;margin-left:auto">hwnd ${w.hwnd}</span>
                     </label>${mapInfo}`;
                 }).join('');
-                // 최대 4개 제한
+                // 최대 4개 제한 + 선택된 창에만 입력 방식 드롭다운 표시
+                const syncInputVisibility = (cb) => {
+                    const inp = cb.closest('label')?.querySelector('select.multi-input-select');
+                    if (inp) inp.style.display = cb.checked ? '' : 'none';
+                };
                 list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                     cb.addEventListener('change', () => {
                         const checked = list.querySelectorAll('input[type="checkbox"]:checked');
@@ -153,7 +516,9 @@ function setupMultiEntry() {
                             cb.checked = false;
                             addLogMessage('다중 창 입장은 최대 4개까지입니다.');
                         }
+                        syncInputVisibility(cb);
                     });
+                    syncInputVisibility(cb);
                 });
                 // 모드 드롭다운 변경 시 중앙좌표 입력란 표시 갱신
                 // (select는 인터랙티브 요소라 label의 체크박스 토글을 트리거하지 않음)
@@ -161,6 +526,7 @@ function setupMultiEntry() {
                     sel.addEventListener('change', updateMultiCenterRow);
                 });
                 updateMultiCenterRow();
+                if (window.refreshMultiInputMode) window.refreshMultiInputMode();
             }
             addLogMessage(`다중 창 입장: 창 ${(wins || []).length}개 감지됨`);
         } catch (e) {
@@ -748,8 +1114,14 @@ function startOperation(wasTimerPaused) {
     const rows = Array.from(document.querySelectorAll('#multi-entry-list input[type="checkbox"]:checked'))
         .slice(0, 4)
         .map(cb => {
-            const sel = cb.closest('label')?.querySelector('select.multi-mode-select');
-            return { hwnd: cb.value, mode: (sel && sel.value) || 'daeya' };
+            const row = cb.closest('label');
+            const sel = row?.querySelector('select.multi-mode-select');
+            const inp = row?.querySelector('select.multi-input-select');
+            return {
+                hwnd: cb.value,
+                mode: (sel && sel.value) || 'daeya',
+                bg: (inp && inp.value === 'bg')
+            };
         });
 
     if (rows.length === 0) {
@@ -779,6 +1151,12 @@ function startOperation(wasTimerPaused) {
     body += `&multi_modes=${rows.map(r => r.mode).join(',')}`;
     const minimize = document.getElementById('multi-entry-minimize');
     if (minimize && minimize.checked) body += `&multi_minimize=1`;
+    // 창별 입력 방식 (fg=포그라운드, bg=백그라운드)
+    body += `&multi_bgs=${rows.map(r => r.bg ? 'bg' : 'fg').join(',')}`;
+    const nBG = rows.filter(r => r.bg).length;
+    if (nBG > 0) {
+        addLogMessage(`입력 방식: 백그라운드 ${nBG}개 / 포그라운드 ${rows.length - nBG}개`);
+    }
     // 칸첸 창이 하나라도 있으면 복귀 좌표 전송 (칸첸 창에만 적용됨, 기본 34,37)
     if (rows.some(r => r.mode === 'kanchen')) {
         const cx = (document.getElementById('multi-center-x') || {}).value || '34';

@@ -66,6 +66,7 @@ type Application struct {
 	WindowSwitcher    *automation.WindowSwitcher
 	MultiEntry        *automation.MultiEntry
 	EscWatcher        *automation.EscStopWatcher
+	BaramlogWatcher   *automation.BaramlogWatcher
 	CharacterStore    *config.CharacterStore
 	KeyMappingStore   *config.KeyMappingStore
 	KeyMappingMgr     *keymapping.KeyMappingManager
@@ -274,7 +275,9 @@ func main() {
 
 	daeyaBattle := automation.NewDaeyaBattle(ocrManager, keyboardManager, windowManager)
 	daeyaBattle.SetLogFunc(func(msg string) {
-		sendEvent(app, "rotationLog", map[string]string{"message": msg})
+		// 대야전투는 메인화면 기능이므로 메인 로그로 보낸다
+		// (예전엔 rotationLog로 보내 자동사냥 탭에만 찍혔음)
+		sendEvent(app, "logMessage", map[string]string{"message": "[대야] " + msg})
 	})
 	app.DaeyaBattle = daeyaBattle
 
@@ -306,7 +309,7 @@ func main() {
 		sendEvent(app, "logMessage", map[string]string{"message": "[다중입장] " + msg})
 	})
 
-	// ESC 빠른 연타(2회) → 자동사냥 + 메인화면 자동화 전체 비상 중지
+	// F12 빠른 연타(2회) → 자동사냥 + 메인화면 자동화 전체 비상 중지
 	app.EscWatcher = automation.NewEscStopWatcher(func() {
 		stopped := false
 		if app.RotationManager != nil && app.RotationManager.IsRunning() {
@@ -318,12 +321,27 @@ func main() {
 			stopped = true
 		}
 		if stopped {
-			log.Println("[ESC중지] 전체 중지 완료")
-			sendEvent(app, "logMessage", map[string]string{"message": "[ESC중지] ESC 연타 감지 — 전체 중지됨"})
-			sendEvent(app, "rotationLog", map[string]string{"message": "[ESC중지] ESC 연타 감지 — 전체 중지됨"})
+			log.Println("[F12중지] 전체 중지 완료")
+			sendEvent(app, "logMessage", map[string]string{"message": "[F12중지] F12 연타 감지 — 전체 중지됨"})
+			sendEvent(app, "rotationLog", map[string]string{"message": "[F12중지] F12 연타 감지 — 전체 중지됨"})
 		}
 	})
 	app.EscWatcher.Start()
+
+	// 바람로그 시련 모집 감시 (10초 주기) + 사이트 헬스체크.
+	// 알림 전송은 호출 시점의 app.TelegramBot을 읽으므로 설정 변경이 즉시 반영된다
+	// (텔레그램 비활성화 시 TelegramBot이 nil → 조용히 건너뜀).
+	app.BaramlogWatcher = automation.NewBaramlogWatcher(func(text string) error {
+		if app.TelegramBot == nil {
+			return nil
+		}
+		return app.TelegramBot.SendMessage(text)
+	})
+	app.BaramlogWatcher.SetLogFunc(func(msg string) {
+		sendEvent(app, "logMessage", map[string]string{"message": "[바람로그] " + msg})
+	})
+	// 자동 시작하지 않는다 — 기본은 중지 상태이고,
+	// "시련 알림" 화면의 시작 버튼으로 켠다.
 
 	// 창 전환 매니저 생성 + 전역 핫키(Ctrl+1~5 이동 / Ctrl+Shift+1~5 등록) 시작
 	app.WindowSwitcher = automation.NewWindowSwitcher(windowManager)
@@ -354,6 +372,15 @@ func main() {
 	app.WebView.SetSize(app.WindowWidth, app.WindowHeight, webview.HintNone)
 	app.WebView.SetSize(app.WindowWidth, app.WindowHeight, webview.HintMin)
 	app.WebView.SetSize(app.WindowWidth, app.WindowHeight, webview.HintMax)
+
+	// 작업표시줄/Alt+Tab 아이콘 적용.
+	// exe에 임베드한 아이콘(resource.syso)은 탐색기 파일 아이콘에만 쓰이고,
+	// 창 아이콘은 별도로 설정해야 한다(webview가 만든 창에는 아이콘이 없음).
+	if wnd := app.WebView.Window(); wnd != nil {
+		if err := automation.SetWindowIconFromExe(uintptr(wnd)); err != nil {
+			log.Printf("창 아이콘 설정 실패(무시): %v", err)
+		}
+	}
 
 	// 콜백 함수 바인딩
 	bindJavaScriptCallbacks(app)
@@ -466,7 +493,11 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		// 없거나 모자라면 선택한 라디오 모드를 따른다.
 		var multiHwnds []uint64
 		var multiModes []string
+		var multiBGs []bool
 		modeStrs := strings.Split(r.FormValue("multi_modes"), ",")
+		// multi_bgs: multi_hwnds와 1:1 대응하는 창별 입력 방식("bg"=백그라운드).
+		// 창을 앞으로 가져오지 않고 PostMessage/PrintWindow로 처리한다 (baram-yolo에서 이식).
+		bgStrs := strings.Split(r.FormValue("multi_bgs"), ",")
 		for i, s := range strings.Split(r.FormValue("multi_hwnds"), ",") {
 			s = strings.TrimSpace(s)
 			if s == "" {
@@ -481,6 +512,11 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 					m = strings.TrimSpace(modeStrs[i])
 				}
 				multiModes = append(multiModes, m)
+				bg := false
+				if i < len(bgStrs) {
+					bg = strings.TrimSpace(bgStrs[i]) == "bg"
+				}
+				multiBGs = append(multiBGs, bg)
 			}
 		}
 		multiMinimize := r.FormValue("multi_minimize") == "1"
@@ -562,7 +598,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			if m != "daeya" && m != "kanchen" {
 				m = defaultMultiMode
 			}
-			multiEntries = append(multiEntries, automation.EntryWindow{HWND: h, Mode: m})
+			multiEntries = append(multiEntries, automation.EntryWindow{HWND: h, Mode: m, BG: multiBGs[i]})
 		}
 
 		// 선택된 모드에 따라 자동화 시작
@@ -578,10 +614,19 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 			// 창 1개 선택: 그 창의 드롭다운 모드로 기존 단일 로직 실행
 			if (internalMode == ModeDaeyaEnter || internalMode == ModeKanchenEnter) && len(multiEntries) == 1 {
-				if multiEntries[0].Mode == "daeya" {
-					app.DaeyaBattle.Start(multiEntries[0].HWND) // OCR 맵 감지 + 스킬
+				e := multiEntries[0]
+				if e.Mode == "daeya" {
+					app.DaeyaBattle.Start(e.HWND, e.BG) // OCR 맵 감지 + 스킬
 				} else {
-					km.KanchenEnter() // 키 시퀀스 (아이템 스캐너는 아래에서 시작)
+					// 칸첸 단일창: 키 시퀀스는 포그라운드 전용(robotgo)이라
+					// 백그라운드를 고르면 창별 입장 유지 루프(MultiEntry)로 처리한다.
+					if e.BG {
+						if err := app.MultiEntry.StartEntries(multiEntries, multiMinimize, multiCenterX, multiCenterY); err != nil {
+							log.Printf("다중 입장 시작 실패: %v", err)
+						}
+					} else {
+						km.KanchenEnter() // 키 시퀀스 (아이템 스캐너는 아래에서 시작)
+					}
 				}
 				return
 			}
@@ -589,7 +634,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			switch internalMode {
 			case ModeDaeyaEnter:
 				if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
-					app.DaeyaBattle.Start(windows[0].HWND)
+					app.DaeyaBattle.Start(windows[0].HWND, false)
 				} else {
 					// 게임 창 미발견 시 기존 키 시퀀스 폴백
 					km.DaeyaEnter()
@@ -983,6 +1028,57 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"success":true}`)
+	})
+
+	// 캐릭터 구성 프리셋 (저장/적용/삭제/목록)
+	// GET: 프리셋 목록 / POST {name, action:"save"|"apply"} / DELETE ?name=
+	http.HandleFunc("/api/rotation/presets", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			json.NewEncoder(w).Encode(app.CharacterStore.GetPresets())
+
+		case http.MethodPost:
+			var req struct {
+				Name   string `json:"name"`
+				Action string `json:"action"` // "save" | "apply"
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+				http.Error(w, "프리셋 이름이 필요합니다", http.StatusBadRequest)
+				return
+			}
+			name := strings.TrimSpace(req.Name)
+			switch req.Action {
+			case "apply":
+				if err := app.CharacterStore.ApplyPreset(name); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			default: // save
+				app.CharacterStore.SavePreset(name)
+			}
+			if err := app.CharacterStore.Save(); err != nil {
+				http.Error(w, "저장 실패", http.StatusInternalServerError)
+				return
+			}
+			fmt.Fprint(w, `{"success":true}`)
+
+		case http.MethodDelete:
+			name := strings.TrimSpace(r.URL.Query().Get("name"))
+			if name == "" {
+				http.Error(w, "프리셋 이름이 필요합니다", http.StatusBadRequest)
+				return
+			}
+			app.CharacterStore.DeletePreset(name)
+			if err := app.CharacterStore.Save(); err != nil {
+				http.Error(w, "저장 실패", http.StatusInternalServerError)
+				return
+			}
+			fmt.Fprint(w, `{"success":true}`)
+
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 
 	// 게임 창 감지
@@ -1543,6 +1639,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				WindowHWND:    c.WindowHWND,
 				PeachType:     c.PeachType,
 				CompanionMode: c.CompanionMode,
+				HuntAfterMins: c.HuntAfterMins,
 			})
 		}
 
@@ -1964,21 +2061,139 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			} else if err != nil {
 				log.Printf("[다중창] 닉네임 크롭 실패 (hwnd=%d): %v", win.HWND, err)
 			}
-			// 맵 이름 OCR + 크롭 (칸첸/대야 판별 진단용)
+
+			results = append(results, mw)
+		}
+		json.NewEncoder(w).Encode(results)
+	})
+
+	// 대야전투 설정 (스킬 키 / 목표 좌표 / 허용 오차)
+	http.HandleFunc("/api/daeya/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			cfg := app.DaeyaBattle.GetConfig()
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"skillKeys": cfg.SkillKeys,
+				"targetX":   cfg.TargetX,
+				"targetY":   cfg.TargetY,
+				"tolerance": cfg.Tolerance,
+			})
+		case http.MethodPost:
+			var req struct {
+				SkillKeys []string `json:"skillKeys"`
+				TargetX   int      `json:"targetX"`
+				TargetY   int      `json:"targetY"`
+				Tolerance int      `json:"tolerance"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "잘못된 데이터", http.StatusBadRequest)
+				return
+			}
+			cfg := app.DaeyaBattle.GetConfig()
+			// 빈 값은 기존 설정 유지
+			if len(req.SkillKeys) > 0 {
+				cfg.SkillKeys = req.SkillKeys
+			}
+			if req.TargetX > 0 {
+				cfg.TargetX = req.TargetX
+			}
+			if req.TargetY > 0 {
+				cfg.TargetY = req.TargetY
+			}
+			if req.Tolerance >= 0 {
+				cfg.Tolerance = req.Tolerance
+			}
+			app.DaeyaBattle.SetConfig(cfg)
+			log.Printf("[대야] 설정 변경: 스킬=%v 목표=(%d,%d) 오차=±%d",
+				cfg.SkillKeys, cfg.TargetX, cfg.TargetY, cfg.Tolerance)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"skillKeys": cfg.SkillKeys,
+				"targetX":   cfg.TargetX,
+				"targetY":   cfg.TargetY,
+				"tolerance": cfg.Tolerance,
+			})
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// 맵 디버그: 창마다 상단 맵 이름 OCR + 크롭 이미지 반환.
+	// 창마다 PowerShell OCR을 돌려 느리므로 창 감지와 분리해 버튼으로만 호출한다.
+	http.HandleFunc("/api/multi/mapinfo", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		windows, err := app.WindowManager.FindGameWindows()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("창 감지 실패: %v", err), http.StatusInternalServerError)
+			return
+		}
+		type MapInfo struct {
+			HWND    uint64 `json:"hwnd"`
+			MapText string `json:"mapText"`
+			MapCrop string `json:"mapCrop"`
+			Error   string `json:"error,omitempty"`
+		}
+		results := make([]MapInfo, 0, len(windows))
+		for _, win := range windows {
+			mi := MapInfo{HWND: win.HWND}
 			if mapText, mapImg, err := app.MultiEntry.DebugMapInfo(win.HWND); err == nil {
-				mw.MapText = mapText
+				mi.MapText = mapText
 				if mapImg != nil {
 					if b64 := encodePNGScaled(mapImg, 1); b64 != "" {
-						mw.MapCrop = "data:image/png;base64," + b64
+						mi.MapCrop = "data:image/png;base64," + b64
 					}
 				}
 				log.Printf("[다중창] 맵 OCR (hwnd=%d): '%s'", win.HWND, mapText)
 			} else {
+				mi.Error = err.Error()
 				log.Printf("[다중창] 맵 OCR 실패 (hwnd=%d): %v", win.HWND, err)
 			}
-			results = append(results, mw)
+			results = append(results, mi)
 		}
 		json.NewEncoder(w).Encode(results)
+	})
+
+	// 바람로그 시련 모집 감시 상태 (GET) / 수동 제어 (POST {action:"start"|"stop"|"sync"|"test"|"interval"})
+	http.HandleFunc("/api/baramlog/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if app.BaramlogWatcher == nil {
+			http.Error(w, "감시기가 초기화되지 않았습니다", http.StatusServiceUnavailable)
+			return
+		}
+		if r.Method == http.MethodPost {
+			var req struct {
+				Action  string `json:"action"`
+				Seconds int    `json:"seconds"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			switch req.Action {
+			case "stop":
+				app.BaramlogWatcher.Stop()
+			case "start":
+				app.BaramlogWatcher.Start()
+			case "sync":
+				// 주기와 무관하게 즉시 동기화 (동기 호출이라 아래 상태는 최신)
+				app.BaramlogWatcher.SyncNow()
+			case "interval":
+				// 조회 주기 변경 (10/20/30/60초 등)
+				if err := app.BaramlogWatcher.SetInterval(req.Seconds); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			case "test":
+				// 텔레그램 테스트 전송 — 미설정이면 UI에 이유를 알려준다
+				// (알림 경로는 TelegramBot이 nil이면 조용히 건너뛰므로 여기서 먼저 확인)
+				if app.TelegramBot == nil {
+					http.Error(w, "텔레그램이 설정되지 않았습니다. 설정 메뉴에서 토큰과 채팅 ID를 입력해주세요.", http.StatusBadRequest)
+					return
+				}
+				if err := app.BaramlogWatcher.SendTestMessage(); err != nil {
+					http.Error(w, fmt.Sprintf("테스트 전송 실패: %v", err), http.StatusBadGateway)
+					return
+				}
+			}
+		}
+		json.NewEncoder(w).Encode(app.BaramlogWatcher.GetStatus())
 	})
 
 	// 시련용 바람창 감지 (오른쪽 상단 OCR)
@@ -2442,7 +2657,7 @@ func (rc *rotationCompanion) StartCompanion(mode string, hwnd uint64) {
 		go app.KeyboardManager.KanchenEnter()
 		app.ItemScanner.Start(hwnd)
 	case "daeya":
-		go app.DaeyaBattle.Start(hwnd)
+		go app.DaeyaBattle.Start(hwnd, false)
 	}
 }
 
@@ -2516,7 +2731,7 @@ func startOperation(app *Application) {
 		switch app.ActiveMode {
 		case ModeDaeyaEnter:
 			if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
-				go app.DaeyaBattle.Start(windows[0].HWND)
+				go app.DaeyaBattle.Start(windows[0].HWND, false)
 			} else {
 				go app.KeyboardManager.DaeyaEnter()
 			}
@@ -2623,6 +2838,7 @@ func startRotationFromScheduler(app *Application) error {
 			WindowHWND:    c.WindowHWND,
 			PeachType:     c.PeachType,
 			CompanionMode: c.CompanionMode,
+			HuntAfterMins: c.HuntAfterMins,
 		})
 	}
 	if len(rotChars) == 0 {

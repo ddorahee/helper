@@ -419,6 +419,8 @@ func (om *OCRManager) DetectCharacterNameRightTop(hwnd uint64) (string, error) {
 // 자동사냥 창 감지에서 자동배정(OCR 이름 매칭)과 시각 구분(닉네임 이미지)을 한 캡처로 처리해
 // 창별로 두 번 캡처하지 않게 한다. OCR은 기존 DetectCharacterName과 동일(config 영역).
 func (om *OCRManager) DetectNameWithCrop(hwnd uint64) (string, image.Image, error) {
+	// 창 감지는 창을 활성화해 확실히 렌더된 화면을 캡처한다
+	// (백그라운드 캡처는 실행 루프에서만 사용).
 	om.wm.ActivateWindow(hwnd)
 	time.Sleep(400 * time.Millisecond)
 	img, _, err := om.wm.CaptureWindowRaw(hwnd)
@@ -496,6 +498,7 @@ func (om *OCRManager) cropNicknameRegion(img *image.RGBA, hwnd uint64) image.Ima
 // ※ OCR 텍스트 인식은 이 게임 폰트에서 체계적 오인식(재↔새, 하↔햐, 캠핑다니엘→가께뵌)이라
 //   신뢰 불가로 판단 → 이미지만 반환하고 창 구분은 눈으로 한다.
 func (om *OCRManager) NicknameCrop(hwnd uint64) (image.Image, error) {
+	// 창 감지는 창을 활성화해 확실히 렌더된 화면을 캡처한다
 	om.wm.ActivateWindow(hwnd)
 	time.Sleep(400 * time.Millisecond)
 

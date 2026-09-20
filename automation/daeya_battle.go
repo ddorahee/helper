@@ -38,6 +38,7 @@ type DaeyaBattle struct {
 	wm            *WindowManager
 	config        DaeyaBattleConfig
 	hwnd          uint64
+	bg            bool // 백그라운드 모드: 창을 앞으로 가져오지 않고 입력/캡처
 	stopChan      chan struct{}
 	running       bool
 	lastCtrlDTime time.Time
@@ -53,6 +54,60 @@ func NewDaeyaBattle(om *OCRManager, km *KeyboardManager, wm *WindowManager) *Dae
 		wm:     wm,
 		config: DefaultDaeyaBattleConfig(),
 	}
+}
+
+// ===== 입력/캡처 추상화 =====
+// bg=true면 창을 앞으로 가져오지 않고 PostMessage/PrintWindow로 처리한다.
+
+// tap 키 1회 입력 (mods는 조합키)
+func (db *DaeyaBattle) tap(key string, mods ...string) {
+	if db.bg {
+		if err := BgKeyTap(db.hwnd, key, mods...); err != nil {
+			db.log(fmt.Sprintf("비활성 키 입력 실패(%s): %v", key, err))
+		}
+		return
+	}
+	for _, m := range mods {
+		robotgo.KeyToggle(m, "down")
+		time.Sleep(100 * time.Millisecond)
+	}
+	robotgo.KeyTap(key) // 주의: db.tap을 부르면 무한 재귀
+	for i := len(mods) - 1; i >= 0; i-- {
+		time.Sleep(100 * time.Millisecond)
+		robotgo.KeyToggle(mods[i], "up")
+	}
+}
+
+// capture 화면 캡처 (기존 CaptureWindowRaw는 내부에서 창을 활성화한다)
+func (db *DaeyaBattle) capture() (*image.RGBA, error) {
+	if db.bg {
+		img, _, err := db.wm.CaptureWindowBG(db.hwnd)
+		return img, err
+	}
+	img, _, err := db.wm.CaptureWindowRaw(db.hwnd)
+	return img, err
+}
+
+// readCoords Ctrl+D 좌표 읽기 (백그라운드면 BG 캡처 + 이미지 기반 인식)
+func (db *DaeyaBattle) readCoords() (GameCoords, error) {
+	if !db.bg {
+		return db.om.ReadCoordinates(db.hwnd)
+	}
+	img, _, err := db.wm.CaptureWindowBG(db.hwnd)
+	if err != nil {
+		return GameCoords{}, err
+	}
+	c, _, err := db.om.ReadCoordinatesFromImage(img)
+	return c, err
+}
+
+// GetConfig 현재 설정 반환
+func (db *DaeyaBattle) GetConfig() DaeyaBattleConfig {
+	db.mutex.Lock()
+	defer db.mutex.Unlock()
+	cfg := db.config
+	cfg.SkillKeys = append([]string(nil), db.config.SkillKeys...)
+	return cfg
 }
 
 // SetConfig 설정 업데이트
@@ -91,7 +146,7 @@ func (db *DaeyaBattle) isStopped() bool {
 }
 
 // Start 대야전투 자동화 시작
-func (db *DaeyaBattle) Start(hwnd uint64) {
+func (db *DaeyaBattle) Start(hwnd uint64, bg bool) {
 	db.mutex.Lock()
 	if db.running {
 		db.log("이미 실행 중 — 스킵")
@@ -100,6 +155,7 @@ func (db *DaeyaBattle) Start(hwnd uint64) {
 	}
 	db.running = true
 	db.hwnd = hwnd
+	db.bg = bg
 	db.stopChan = make(chan struct{})
 	db.mutex.Unlock()
 
@@ -160,7 +216,7 @@ func (db *DaeyaBattle) processOnce() {
 	hwnd := db.hwnd
 
 	// 게임 화면 캡처
-	rawImg, _, err := db.wm.CaptureWindowRaw(hwnd)
+	rawImg, err := db.capture()
 	if err != nil {
 		db.log(fmt.Sprintf("화면 캡처 실패: %v", err))
 		return
@@ -301,7 +357,7 @@ func (db *DaeyaBattle) enterBattle() {
 		if db.isStopped() || !db.km.IsRunning() {
 			return
 		}
-		robotgo.KeyTap(key)
+		db.tap(key)
 		// 1~3초 랜덤 딜레이
 		delay := 1*time.Second + time.Duration(rand.Intn(2001))*time.Millisecond
 		db.log(fmt.Sprintf("[입장] '%s' 키 입력 (대기 %.1f초)", key, delay.Seconds()))
@@ -332,7 +388,7 @@ func (db *DaeyaBattle) useRandomSkills() {
 		if db.km.IsPaused() {
 			return
 		}
-		robotgo.KeyTap(key)
+		db.tap(key)
 		db.log(fmt.Sprintf("[스킬] '%s' 사용", key))
 		time.Sleep(300 * time.Millisecond)
 	}
@@ -351,7 +407,7 @@ func (db *DaeyaBattle) walkToTarget(hwnd uint64) {
 	}
 
 	// 현재 좌표 읽기
-	coords, err := db.om.ReadCoordinates(hwnd)
+	coords, err := db.readCoords()
 	if err != nil {
 		db.log(fmt.Sprintf("[걷기] 좌표 읽기 실패: %v", err))
 		return
@@ -388,7 +444,7 @@ func (db *DaeyaBattle) walkToTarget(hwnd uint64) {
 			if db.isStopped() || !db.km.IsRunning() {
 				return
 			}
-			robotgo.KeyTap(dir)
+			db.tap(dir)
 			delay := 300 + rand.Intn(200)
 			time.Sleep(time.Duration(delay) * time.Millisecond)
 		}
@@ -405,7 +461,7 @@ func (db *DaeyaBattle) walkToTarget(hwnd uint64) {
 			if db.isStopped() || !db.km.IsRunning() {
 				return
 			}
-			robotgo.KeyTap(dir)
+			db.tap(dir)
 			delay := 300 + rand.Intn(200)
 			time.Sleep(time.Duration(delay) * time.Millisecond)
 		}
@@ -429,7 +485,7 @@ func (db *DaeyaBattle) checkAndMoveToTarget(hwnd uint64) {
 	}
 
 	// 현재 좌표 읽기
-	coords, err := db.om.ReadCoordinates(hwnd)
+	coords, err := db.readCoords()
 	if err != nil {
 		db.log(fmt.Sprintf("[좌표] 좌표 읽기 실패: %v", err))
 		return
@@ -469,7 +525,7 @@ func (db *DaeyaBattle) moveToTarget(hwnd uint64, targetX, targetY int) {
 		db.pressCtrlD()
 		time.Sleep(800 * time.Millisecond)
 
-		rawImg, _, captErr := db.wm.CaptureWindowRaw(hwnd)
+		rawImg, captErr := db.capture()
 		if captErr != nil {
 			db.log(fmt.Sprintf("[이동] 캡처 실패: %v", captErr))
 			continue
@@ -487,7 +543,7 @@ func (db *DaeyaBattle) moveToTarget(hwnd uint64, targetX, targetY int) {
 	}
 	if !coordsOK {
 		db.log("[이동] 좌표 인식 3회 실패 — 이동 포기")
-		robotgo.KeyTap("escape")
+		db.tap("escape")
 		time.Sleep(300 * time.Millisecond)
 		return
 	}
@@ -523,7 +579,7 @@ func (db *DaeyaBattle) moveToTarget(hwnd uint64, targetX, targetY int) {
 
 		// Enter 재시도 (몬스터가 있으면 Enter가 무시됨)
 		for retry := 0; retry < 5; retry++ {
-			quickCoords, qErr := db.om.ReadCoordinates(hwnd)
+			quickCoords, qErr := db.readCoords()
 			if qErr != nil {
 				break
 			}
@@ -533,7 +589,7 @@ func (db *DaeyaBattle) moveToTarget(hwnd uint64, targetX, targetY int) {
 				break
 			}
 			db.log(fmt.Sprintf("[이동] 이동 안됨 — Enter 재시도 %d/5", retry+1))
-			robotgo.KeyTap("enter")
+			db.tap("enter")
 			time.Sleep(1500 * time.Millisecond)
 		}
 
@@ -541,7 +597,7 @@ func (db *DaeyaBattle) moveToTarget(hwnd uint64, targetX, targetY int) {
 		db.waitCtrlDCooldown()
 
 		// OCR로 현재 위치 확인
-		newCoords, err := db.om.ReadCoordinates(hwnd)
+		newCoords, err := db.readCoords()
 		if err != nil {
 			db.log(fmt.Sprintf("[이동] OCR 실패: %v — 이동 중단", err))
 			break
@@ -561,7 +617,7 @@ func (db *DaeyaBattle) moveToTarget(hwnd uint64, targetX, targetY int) {
 		tolerance := db.config.Tolerance
 		if absDX <= tolerance && absDY <= tolerance {
 			db.log(fmt.Sprintf("[이동] 성공! (%d,%d)", newCoords.X, newCoords.Y))
-			robotgo.KeyTap("escape")
+			db.tap("escape")
 			time.Sleep(300 * time.Millisecond)
 			return
 		}
@@ -570,7 +626,7 @@ func (db *DaeyaBattle) moveToTarget(hwnd uint64, targetX, targetY int) {
 		diffY = targetY - newCoords.Y
 	}
 
-	robotgo.KeyTap("escape")
+	db.tap("escape")
 	time.Sleep(300 * time.Millisecond)
 }
 
@@ -648,11 +704,7 @@ func (db *DaeyaBattle) clampMovement(diffX, diffY int) (int, int) {
 // pressCtrlD Ctrl+D 전송
 func (db *DaeyaBattle) pressCtrlD() {
 	db.log("[키입력] Ctrl+D 전송")
-	robotgo.KeyToggle("ctrl", "down")
-	time.Sleep(100 * time.Millisecond)
-	robotgo.KeyTap("d")
-	time.Sleep(100 * time.Millisecond)
-	robotgo.KeyToggle("ctrl", "up")
+	db.tap("d", "ctrl")
 	time.Sleep(100 * time.Millisecond)
 	db.lastCtrlDTime = time.Now()
 }
@@ -682,7 +734,7 @@ func (db *DaeyaBattle) moveByArrowKeys(diffX, diffY int) {
 			count = -diffX
 		}
 		for i := 0; i < count; i++ {
-			robotgo.KeyTap(dir)
+			db.tap(dir)
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
@@ -695,12 +747,12 @@ func (db *DaeyaBattle) moveByArrowKeys(diffX, diffY int) {
 			count = -diffY
 		}
 		for i := 0; i < count; i++ {
-			robotgo.KeyTap(dir)
+			db.tap(dir)
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	robotgo.KeyTap("enter")
+	db.tap("enter")
 	db.log("[화살표이동] 엔터 입력 — 이동 확정")
 }

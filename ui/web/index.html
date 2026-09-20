@@ -65,6 +65,13 @@
                     </svg>
                     창 전환
                 </button>
+                <button class="nav-button" data-section="baramlog">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                    </svg>
+                    시련 알림
+                </button>
                 <button class="nav-button" data-section="logs">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -160,12 +167,16 @@
                 <!-- 아이템 자동 습득 설정 (칸첸 모드 전용) -->
                 <div class="card" id="item-pickup-card" style="display:none">
                     <div class="rotation-card-header" style="margin-bottom:0.5rem">
-                        <h2 style="font-size:1rem">아이템 자동 습득</h2>
+                        <h2 style="font-size:1rem">
+                            <button class="collapse-btn" data-collapse="item-pickup-body" title="접기/펴기">▸</button>
+                            아이템 자동 습득
+                        </h2>
                         <label class="switch">
                             <input type="checkbox" id="item-pickup-toggle">
                             <span class="slider round"></span>
                         </label>
                     </div>
+                    <div id="item-pickup-body" style="display:none">
                     <!-- 아이템 리스트 -->
                     <div id="item-pickup-list" style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.4rem"></div>
                     <button id="item-pickup-add-btn" class="add-btn" style="width:100%;padding:0.3rem;font-size:0.75rem;margin-bottom:0.4rem">+ 아이템 추가</button>
@@ -200,13 +211,17 @@
                         <button id="item-pickup-coord-btn" class="apply-btn" style="flex:1;padding:0.4rem;font-size:0.8rem">좌표 테스트</button>
                     </div>
                     <div id="item-pickup-test-result" class="ocr-test-result" style="display:none;margin-top:0.4rem"></div>
+                    </div>
                 </div>
 
                 <!-- 다중 창 입장 — 창마다 대야/칸첸을 선택 (혼합 가능) -->
                 <div class="card" id="multi-entry-card">
                     <div class="rotation-card-header" style="margin-bottom:0.5rem">
                         <h2 style="font-size:1rem">다중 창 입장 (최대 4개)</h2>
-                        <button id="multi-entry-detect" class="detect-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem">창 감지</button>
+                        <div style="display:flex;gap:0.35rem">
+                            <button id="multi-entry-detect" class="detect-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem">창 감지</button>
+                            <button id="multi-entry-mapdebug" class="detect-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem" title="창마다 상단 맵 이름을 OCR로 읽어 표시합니다. 느리므로 필요할 때만 누르세요.">맵 디버그</button>
+                        </div>
                     </div>
                     <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.5rem;line-height:1.5">
                         선택한 창들을 약 30초 주기로 순환하며 <b>입구맵이면 입장</b>, 사냥맵이면 그대로 둡니다.
@@ -222,7 +237,9 @@
                             <input type="checkbox" id="multi-entry-minimize">
                             <span>입장 후 창 최소화 (기본 꺼짐)</span>
                         </label>
+
                     </div>
+                    <p id="multi-input-mode-desc" style="font-size:0.72rem;color:var(--text-muted);margin-top:0.4rem;line-height:1.5"></p>
                     <div id="multi-center-row" style="display:none;align-items:center;gap:0.5rem;margin-top:0.4rem">
                         <span style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap">칸첸 복귀좌표</span>
                         <span style="font-size:0.8rem;color:var(--text-muted)">X</span>
@@ -230,6 +247,44 @@
                         <span style="font-size:0.8rem;color:var(--text-muted)">Y</span>
                         <input type="text" id="multi-center-y" value="37" maxlength="3" inputmode="numeric" style="width:50px;padding:0.3rem;font-size:0.85rem;text-align:center">
                         <span style="font-size:0.7rem;color:var(--text-muted)">(입장 후 이 좌표로 이동, 아이템은 안 먹음)</span>
+                    </div>
+                </div>
+
+                <!-- 대야 전투 키 설정 -->
+                <div class="card" id="daeya-config-card">
+                    <div class="rotation-card-header" style="margin-bottom:0.5rem">
+                        <h2 style="font-size:1rem">
+                            <button class="collapse-btn" data-collapse="daeya-config-body" title="접기/펴기">▸</button>
+                            대야 전투 — 사용 키
+                        </h2>
+                        <button id="daeya-config-save" class="detect-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem">저장</button>
+                    </div>
+                    <div id="daeya-config-body" style="display:none">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.5rem;margin-bottom:0.6rem">
+                        <div>
+                            <label style="display:block;font-size:0.72rem;color:var(--text-muted);margin-bottom:0.2rem">스킬 키 (쉼표 구분)</label>
+                            <input type="text" id="daeya-skill-keys" placeholder="d, x, 5" style="width:100%;padding:0.35rem 0.45rem;font-size:0.85rem;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.05);color:inherit">
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:0.72rem;color:var(--text-muted);margin-bottom:0.2rem">목표 좌표 X</label>
+                            <input type="number" id="daeya-target-x" style="width:100%;padding:0.35rem 0.45rem;font-size:0.85rem;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.05);color:inherit">
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:0.72rem;color:var(--text-muted);margin-bottom:0.2rem">목표 좌표 Y</label>
+                            <input type="number" id="daeya-target-y" style="width:100%;padding:0.35rem 0.45rem;font-size:0.85rem;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.05);color:inherit">
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:0.72rem;color:var(--text-muted);margin-bottom:0.2rem">허용 오차 (±)</label>
+                            <input type="number" id="daeya-tolerance" min="0" style="width:100%;padding:0.35rem 0.45rem;font-size:0.85rem;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.05);color:inherit">
+                        </div>
+                    </div>
+                    <div style="font-size:0.74rem;color:var(--text-muted);line-height:1.7;background:rgba(255,255,255,0.03);border-radius:8px;padding:0.5rem 0.7rem">
+                        <div><b>입장</b> (입구맵 대야산기슭) — <code>o</code> → <code>Enter</code> → <code>Enter</code> → <code>ESC</code> (각 1~3초 랜덤 대기)</div>
+                        <div><b>스킬</b> (전투맵 대야전투) — 위 스킬 키를 <b>랜덤 순서</b>로, 0.3초 간격</div>
+                        <div><b>좌표 확인</b> — <code>Ctrl+D</code> (좌표창 열기) → 읽은 뒤 <code>ESC</code></div>
+                        <div><b>이동</b> — 방향키 <code>←↑→↓</code> 로 목표 좌표까지, 마지막에 <code>Enter</code></div>
+                        <div style="margin-top:0.3rem;opacity:0.8">실제 입력되는 키는 아래 로그에 <code>[대야] [스킬] 'd' 사용</code> 형식으로 실시간 표시됩니다.</div>
+                    </div>
                     </div>
                 </div>
 
@@ -430,6 +485,45 @@
                 </div>
             </section>
 
+            <!-- 시련 모집 알림 -->
+            <section id="baramlog-section" class="content-section">
+                <div class="card">
+                    <div class="rotation-card-header" style="margin-bottom:0.5rem">
+                        <h2>시련 모집 알림
+                            <span id="baramlog-badge" style="font-size:0.72rem;padding:0.15rem 0.45rem;border-radius:5px;background:rgba(148,163,184,0.2);color:#94a3b8;vertical-align:middle;margin-left:0.4rem">중지됨</span>
+                        </h2>
+                        <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap">
+                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.78rem;color:var(--text-muted);white-space:nowrap">
+                                주기
+                                <select id="baramlog-interval-select" style="padding:0.3rem 0.4rem;font-size:0.78rem;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.05);color:inherit">
+                                    <option value="10">10초</option>
+                                    <option value="20">20초</option>
+                                    <option value="30">30초</option>
+                                    <option value="60">1분</option>
+                                </select>
+                            </label>
+                            <button id="baramlog-refresh" class="detect-btn" style="padding:0.35rem 0.8rem;font-size:0.8rem">새로고침</button>
+                            <button id="baramlog-test" class="detect-btn" style="padding:0.35rem 0.8rem;font-size:0.8rem;color:#f5a623">텔레그램 테스트</button>
+                            <button id="baramlog-toggle" class="detect-btn" style="padding:0.35rem 0.8rem;font-size:0.8rem">시작</button>
+                        </div>
+                    </div>
+                    <p class="section-desc">
+                        baramlog.com 채팅을 <b id="baramlog-interval">10</b>초마다 확인해, 아래 키워드의 시련 파티 모집 글이 올라오면
+                        텔레그램으로 알립니다. 사이트 접속이 연속 실패하면 장애 알림도 보냅니다.
+                    </p>
+                    <div id="baramlog-targets" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.8rem"></div>
+
+                    <div class="result-grid" id="baramlog-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.5rem"></div>
+
+                    <div id="baramlog-error" style="display:none;margin-top:0.7rem;padding:0.5rem 0.7rem;border-radius:6px;background:rgba(248,113,113,0.12);color:#f87171;font-size:0.78rem"></div>
+                </div>
+
+                <div class="card">
+                    <h2 style="font-size:1rem">최근 발견 <span style="font-size:0.72rem;color:var(--text-muted);font-weight:normal">(최대 50건, 프로그램 재시작 시 초기화)</span></h2>
+                    <div id="baramlog-hits-list" style="margin-top:0.6rem"></div>
+                </div>
+            </section>
+
             <section id="logs-section" class="content-section">
                 <div class="card logs-card">
                     <div class="logs-header">
@@ -544,6 +638,18 @@
                             <h2>캐릭터 관리</h2>
                             <button id="add-character-btn" class="add-btn">+ 추가</button>
                         </div>
+                        <!-- 캐릭터 구성 프리셋: 현재 목록 전체를 이름으로 저장/불러오기 -->
+                        <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;margin-bottom:0.6rem;padding:0.5rem;background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-radius:8px">
+                            <span style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap">프리셋</span>
+                            <select id="preset-select" style="flex:1;min-width:110px;padding:0.3rem 0.4rem;font-size:0.8rem;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.05);color:inherit">
+                                <option value="">(저장된 프리셋 없음)</option>
+                            </select>
+                            <button id="preset-apply-btn" class="detect-btn" style="padding:0.3rem 0.6rem;font-size:0.75rem">불러오기</button>
+                            <button id="preset-update-btn" class="detect-btn" style="padding:0.3rem 0.6rem;font-size:0.75rem;color:#f5a623" title="현재 캐릭터 목록을 선택한 프리셋에 같은 이름으로 저장">덮어쓰기</button>
+                            <button id="preset-delete-btn" class="detect-btn" style="padding:0.3rem 0.6rem;font-size:0.75rem;color:#f87171">삭제</button>
+                            <input type="text" id="preset-name" placeholder="새 프리셋 이름" style="flex:1;min-width:100px;padding:0.3rem 0.4rem;font-size:0.8rem;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.05);color:inherit">
+                            <button id="preset-save-btn" class="add-btn" style="padding:0.3rem 0.6rem;font-size:0.75rem">현재 목록 저장</button>
+                        </div>
                         <!-- 캐릭터 추가/수정 폼 (숨김, 리스트 위에 배치) -->
                         <div id="character-form" class="character-form" style="display:none">
                             <div class="form-row">
@@ -557,20 +663,32 @@
                                     <option value="kanchen">동시실행 — 칸첸</option>
                                     <option value="daeya">동시실행 — 대야</option>
                                 </select>
-                                <span class="form-hint">자동사냥: 순환에 참여해 게임 내 자동사냥 실행 / 동시실행: 순환에서 빠지고 다른 캐릭이 사냥하는 동안 메인화면 칸첸·대야를 병행 실행 (전환 순간에만 잠깐 멈췄다 이어서 돎)</span>
-                            </div>
-                            <div class="form-row" id="row-char-area">
-                                <label>사냥터 이름</label>
-                                <input type="text" id="char-area" placeholder="예: 아젠타석굴">
-                            </div>
-                            <div class="form-row" id="row-char-dropdown">
-                                <label>사냥터 드롭다운 순서 (0부터)</label>
-                                <input type="number" id="char-dropdown-index" value="0" min="0" max="20">
-                                <span class="form-hint">드롭다운에서 위에서부터 몇 번째 항목인지 (0 = 첫 번째)</span>
+                                <span class="form-hint">자동사냥: 순환에 참여해 게임 내 자동사냥 실행 / 동시실행: 순환에서 빠지고 다른 캐릭이 사냥하는 동안 메인화면 칸첸·대야를 병행 실행 (전환 순간에만 잠깐 멈췄다 이어서 돎). 동시실행 캐릭도 아래 "동시실행 후 자동사냥 시간"을 설정하면 다른 캐릭들이 다 끝난 뒤 맨 마지막에 자동사냥 턴을 받습니다</span>
                             </div>
                             <div class="form-row">
                                 <label id="char-duration-label">사냥 시간 (분)</label>
                                 <input type="number" id="char-duration" value="120" min="1" max="600">
+                            </div>
+                            <div class="form-row" id="row-char-hunt-after" style="display:none">
+                                <label>동시실행 후 자동사냥 시간 (분)</label>
+                                <input type="number" id="char-hunt-after" value="0" min="0" max="600">
+                                <span class="form-hint">
+                                    실행 순서: ① 다른 캐릭들이 순서대로 자동사냥 (이 캐릭은 그동안 동시실행)
+                                    → ② 동시실행 시간이 다 되면 종료하고 대기
+                                    → ③ 다른 캐릭 자동사냥이 <b>모두 끝나면 맨 마지막에</b> 이 캐릭이 이 시간만큼 자동사냥.<br>
+                                    0 = 동시실행만 하고 자동사냥 안 함.
+                                    예: 캐릭1 사냥 180분(이 캐릭 칸첸 95분 병행) → 캐릭3 사냥 180분 → <b>이 캐릭 자동사냥 85분</b> → 전체 완료.
+                                    자동사냥할 사냥터는 아래에 입력.
+                                </span>
+                            </div>
+                            <div class="form-row" id="row-char-area">
+                                <label id="char-area-label">사냥터 이름</label>
+                                <input type="text" id="char-area" placeholder="예: 아젠타석굴">
+                            </div>
+                            <div class="form-row" id="row-char-dropdown">
+                                <label id="char-dropdown-label">사냥터 드롭다운 순서 (0부터)</label>
+                                <input type="number" id="char-dropdown-index" value="0" min="0" max="20">
+                                <span class="form-hint">드롭다운에서 위에서부터 몇 번째 항목인지 (0 = 첫 번째)</span>
                             </div>
                             <div class="form-row" id="row-char-peach">
                                 <label>복숭아</label>

@@ -30,6 +30,7 @@ type RotationCharacter struct {
 	WindowHWND     uint64
 	PeachType      string // "" / "silla" / "king" / "india"
 	CompanionMode  string // "" / "kanchen" / "daeya" — 설정 시 자동사냥 순환에서 빠지고 DurationMins 동안 메인화면 자동화를 병행 실행
+	HuntAfterMins  int    // 동시실행 캐릭 전용: 다른 캐릭 사냥이 다 끝난 뒤 이 시간(분)만큼 자동사냥 (0 = 동시실행만)
 }
 
 // RotationStatus 현재 자동 사냥 상태 정보
@@ -261,6 +262,39 @@ func (rm *RotationManager) companionFinishCurrentLocked() {
 	rm.compRemaining = time.Duration(rm.compChars[rm.compIdx].DurationMins) * time.Minute
 }
 
+// companionYieldFor 사냥 턴이 온 캐릭이 현재 동시실행 중인 캐릭과 같으면
+// 동시실행을 종료 처리한다 (남은 시간은 버리고 자동사냥으로 전환).
+func (rm *RotationManager) companionYieldFor(hwnd uint64) {
+	rm.compMu.Lock()
+	defer rm.compMu.Unlock()
+	if rm.compStopped || rm.compIdx >= len(rm.compChars) {
+		return
+	}
+	cur := rm.compChars[rm.compIdx]
+	if cur.WindowHWND != hwnd {
+		return
+	}
+	if rm.compRunning {
+		if rm.compTimer != nil {
+			rm.compTimer.Stop()
+			rm.compTimer = nil
+		}
+		if rm.companionCtl != nil {
+			rm.companionCtl.StopCompanion()
+		}
+		rm.compRemaining -= time.Since(rm.compSegStart)
+		rm.compRunning = false
+	}
+	if rm.compRemaining > 0 {
+		rm.emitEvent("rotationLog", map[string]string{
+			"message": fmt.Sprintf("[동시실행] %s — 자기 자동사냥 차례가 되어 동시실행 종료 (남은 %.0f분 생략)",
+				cur.Name, rm.compRemaining.Minutes()),
+		})
+	}
+	rm.compRemaining = 0
+	rm.companionFinishCurrentLocked()
+}
+
 // companionShutdown 동시실행 완전 종료 (로테이션 종료/중지 시)
 func (rm *RotationManager) companionShutdown() {
 	rm.compMu.Lock()
@@ -305,15 +339,24 @@ func (rm *RotationManager) Start(characters []RotationCharacter, coords GameUICo
 		}
 	}
 
-	// 동시실행 캐릭(CompanionMode 설정) 분리 — 자동사냥 순환에는 나머지만 참여
-	var huntChars, compChars []RotationCharacter
+	// 동시실행 캐릭(CompanionMode 설정) 분리 — 자동사냥 순환에는 나머지만 참여.
+	// 단, HuntAfterMins가 설정된 동시실행 캐릭은 다른 캐릭 사냥이 모두 끝난 뒤
+	// 그 시간만큼 자동사냥 턴을 받는다 (사냥 큐 맨 뒤에 추가).
+	var huntChars, compChars, afterHunts []RotationCharacter
 	for _, c := range characters {
 		if c.CompanionMode == "kanchen" || c.CompanionMode == "daeya" {
 			compChars = append(compChars, c)
+			if c.HuntAfterMins > 0 {
+				h := c
+				h.CompanionMode = "" // 사냥 턴 엔트리
+				h.DurationMins = c.HuntAfterMins
+				afterHunts = append(afterHunts, h)
+			}
 		} else {
 			huntChars = append(huntChars, c)
 		}
 	}
+	huntChars = append(huntChars, afterHunts...)
 
 	rm.characters = huntChars
 	rm.coords = coords
@@ -455,8 +498,10 @@ func (rm *RotationManager) runRotation() {
 		char := rm.characters[rm.currentIndex]
 		rm.mu.RUnlock()
 
-		// 0. 동시실행 일시정지 — 창 전환/사냥 시작 동안 키 입력이 새지 않도록
+		// 0. 이 캐릭이 현재 동시실행 중이면 종료 처리 (자기 사냥 턴 — HuntAfterMins 케이스),
+		//    그 외 동시실행은 일시정지 — 창 전환/사냥 시작 동안 키 입력이 새지 않도록
 		//    (잔여 키 입력 소진까지 블로킹). 남은 시간은 전환 후 재개.
+		rm.companionYieldFor(char.WindowHWND)
 		rm.companionSuspend()
 
 		// 1. 창 활성화

@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>바람포인트 고피 계산기</title>
+<style>
+:root {
+  --bg: #0e1015;
+  --card: #171a22;
+  --card2: #1d2230;
+  --border: #2a3040;
+  --text: #e6e9f0;
+  --muted: #8b93a7;
+  --accent: #f5a623;      /* 호박 주황 */
+  --plus: #34d399;
+  --minus: #f87171;
+  --highlight: rgba(245, 166, 35, 0.14);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+  padding: 1rem;
+  max-width: 1080px;
+  margin: 0 auto;
+  font-size: 15px;
+}
+h1 { font-size: 1.25rem; margin: 0.3rem 0 1rem; display: flex; align-items: center; gap: 0.5rem; }
+h1 .sub { font-size: 0.75rem; color: var(--muted); font-weight: normal; }
+h2 { font-size: 0.95rem; margin-bottom: 0.7rem; color: var(--accent); }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+/* 상단 요약 타일 */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.stat {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.8rem;
+}
+.stat .label { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.3rem; }
+.stat .value { font-size: 1.15rem; font-weight: 700; word-break: keep-all; }
+.stat .extra { font-size: 0.7rem; color: var(--muted); margin-top: 0.25rem; }
+.plus { color: var(--plus); }
+.minus { color: var(--minus); }
+/* 입력 */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+}
+.field label { display: block; font-size: 0.72rem; color: var(--muted); margin-bottom: 0.25rem; }
+.field input, .field select {
+  width: 100%;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.95rem;
+}
+.field input:focus, .field select:focus { outline: 1px solid var(--accent); }
+.toggle-row { display: flex; align-items: center; gap: 0.5rem; padding-top: 1.2rem; }
+.toggle-row input { width: auto; }
+/* 표 */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.82rem; white-space: nowrap; }
+th, td { padding: 0.45rem 0.6rem; text-align: right; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 0.75rem; }
+th:first-child, td:first-child { text-align: left; }
+tr.best td { background: var(--highlight); }
+td.best-cell { background: var(--highlight); font-weight: 700; }
+.badge {
+  display: inline-block; font-size: 0.65rem; padding: 0.1rem 0.4rem;
+  border-radius: 6px; background: var(--accent); color: #000; margin-left: 0.35rem; vertical-align: middle;
+}
+.hint { font-size: 0.72rem; color: var(--muted); margin-top: 0.5rem; line-height: 1.6; }
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+.result-item { background: var(--card2); border-radius: 8px; padding: 0.6rem; }
+.result-item .label { font-size: 0.7rem; color: var(--muted); }
+.result-item .value { font-size: 0.95rem; font-weight: 600; margin-top: 0.2rem; }
+.quick-btns { display: flex; gap: 0.4rem; margin-top: 0.4rem; flex-wrap: wrap; }
+.quick-btns button {
+  background: var(--card2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 0.3rem 0.7rem; font-size: 0.78rem; cursor: pointer;
+}
+.quick-btns button:hover { border-color: var(--accent); }
+@media (max-width: 600px) {
+  body { padding: 0.6rem; }
+  .stat .value { font-size: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<h1>🎃 바람포인트 고피 계산기 <span class="sub">고급피로도회복물약 수익 분석</span></h1>
+
+<!-- 상단 핵심 요약 -->
+<div class="stats" id="stats"></div>
+
+<!-- 현재 설정 -->
+<div class="card">
+  <h2>현재 설정</h2>
+  <div class="grid">
+    <div class="field">
+      <label>고피 가격 (P)</label>
+      <input type="number" id="in-gopi" value="2500" step="10">
+    </div>
+    <div class="field">
+      <label>왕의무덤 호박 가격 (전/개)</label>
+      <input type="number" id="in-price-w" value="14500" step="100">
+    </div>
+    <div class="field">
+      <label>신라왕궁 호박 가격 (전/개)</label>
+      <input type="number" id="in-price-g" value="15400" step="100">
+    </div>
+    <div class="field">
+      <label>고피 1개당 실제 호박 (개)</label>
+      <input type="number" id="in-base" value="200" step="10">
+    </div>
+    <div class="field">
+      <label>멤버십 배율</label>
+      <input type="number" id="in-mult" value="2" step="0.5" min="1">
+    </div>
+    <div class="field toggle-row">
+      <input type="checkbox" id="in-member" checked>
+      <label for="in-member" style="margin:0;font-size:0.85rem;color:var(--text)">호박 2배 멤버십 ON</label>
+    </div>
+    <div class="field">
+      <label>계산 기간 (일)</label>
+      <input type="number" id="in-days" value="30" min="1">
+    </div>
+  </div>
+</div>
+
+<!-- 하루 사냥터 구성 -->
+<div class="card">
+  <h2>하루 사냥터 구성</h2>
+  <div class="grid">
+    <div class="field">
+      <label>왕의무덤 고피 (개/일)</label>
+      <input type="number" id="in-cnt-w" value="4" min="0">
+    </div>
+    <div class="field">
+      <label>신라왕궁 고피 (개/일)</label>
+      <input type="number" id="in-cnt-g" value="0" min="0">
+    </div>
+  </div>
+  <div class="result-grid" id="daily-result"></div>
+  <div class="hint">
+    ⚠️ 고피 1개 = 실제 호박 <b id="hint-actual">200</b>개 획득 /
+    멤버십 적용 경제적 가치 = <b id="hint-eff">400</b>개분.
+    "실제 획득량"과 "경제적 가치"는 다릅니다.
+  </div>
+</div>
+
+<!-- 월간 수익 -->
+<div class="card">
+  <h2>월간 수익 (<span id="days-label">30</span>일 기준)</h2>
+  <div class="result-grid" id="monthly-result"></div>
+</div>
+
+<!-- 사냥터 조합 비교 -->
+<div class="card">
+  <h2>사냥터 조합 비교 <span class="sub" style="font-size:0.72rem;color:var(--muted)">(하루 총 <span id="combo-total">4</span>개 기준)</span></h2>
+  <div class="table-wrap"><table id="combo-table"></table></div>
+</div>
+
+<!-- 환율별 비교표 -->
+<div class="card">
+  <h2>환율별 월 순이익 비교 (+100P 단위)</h2>
+  <div class="table-wrap"><table id="rate-table"></table></div>
+  <div class="hint">각 셀은 해당 환율일 때의 <b>월 순이익</b>. 행마다 가장 유리한 조합이 강조됩니다.</div>
+</div>
+
+<!-- 손익분기점 -->
+<div class="card">
+  <h2>바람포인트 손익분기점</h2>
+  <div class="result-grid" id="breakeven-result"></div>
+  <div class="hint">1,000만전당 바람포인트가 이 값 <b>이하로 내려가면</b> 해당 사냥터는 고피를 살수록 손해입니다.</div>
+</div>
+
+<!-- 캐릭터 관리 (구매 기록 구분용) -->
+<div class="card">
+  <h2>캐릭터 관리</h2>
+  <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
+    <input type="text" id="char-new-name" placeholder="캐릭터 이름" style="flex:1;min-width:120px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:0.45rem 0.55rem;font-size:0.9rem">
+    <select id="char-new-map" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:0.45rem 0.55rem;font-size:0.9rem">
+      <option value="wangmu">왕의무덤만</option>
+      <option value="wanggung">신라왕궁만</option>
+    </select>
+    <button id="char-add-btn" style="background:var(--card2);border:1px solid var(--accent);color:var(--accent);border-radius:8px;padding:0.45rem 0.9rem;font-size:0.85rem;font-weight:600;cursor:pointer">+ 추가</button>
+  </div>
+  <div class="result-grid" id="char-list"></div>
+  <div class="hint">캐릭터마다 도는 사냥터를 지정하면, 그 캐릭터로 기록한 구매의 순이익은 <b>해당 사냥터 호박 가격</b>으로 계산됩니다. 같은 이름으로 추가하면 사냥터가 수정됩니다.</div>
+</div>
+
+<!-- 바돈 → 포인트 구매 계산기 -->
+<div class="card">
+  <h2>바돈 → 포인트 구매 계산기</h2>
+  <div class="grid">
+    <div class="field">
+      <label>바람포인트 환율 (1,000만전당 표시 P)</label>
+      <input type="number" id="in-rate" value="5098" step="1">
+    </div>
+    <div class="field">
+      <label>수수료 (%) — 표시 환율에서 차감</label>
+      <input type="number" id="in-fee" value="1.0" step="0.1" min="0" max="50">
+    </div>
+    <div class="field">
+      <label>실수령 환율 (수수료 차감 후)</label>
+      <div id="buy-eff-rate" style="padding:0.45rem 0.55rem;background:var(--card2);border:1px solid var(--border);border-radius:8px;font-size:0.95rem;font-weight:700;color:var(--accent)">-</div>
+    </div>
+    <div class="field">
+      <label>구매할 바돈 (만전 단위, 예: 2000 = 2,000만전)</label>
+      <input type="number" id="in-buy" value="2000" step="100" min="0">
+      <div class="quick-btns">
+        <button data-buy="2000">2,000만전</button>
+        <button data-buy="3000">3,000만전</button>
+        <button data-buy="5000">5,000만전</button>
+        <button data-buy="10000">1억전</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>구매할 고피 개수 (비우면 최대)</label>
+      <input type="number" id="in-buy-gopi" placeholder="최대" min="0" step="1">
+    </div>
+    <div class="field">
+      <label>캐릭터 (누구 걸로 살지)</label>
+      <select id="in-buy-char"><option value="">(미지정)</option></select>
+    </div>
+    <div class="field">
+      <label>호박 판매 기준</label>
+      <select id="in-buy-map">
+        <option value="mix">현재 구성 비율</option>
+        <option value="wangmu">왕의무덤만</option>
+        <option value="wanggung">신라왕궁만</option>
+      </select>
+    </div>
+  </div>
+  <div class="result-grid" id="buy-result"></div>
+  <div class="quick-btns" style="margin-top:0.7rem">
+    <button id="btn-record" style="border-color:var(--accent);color:var(--accent);font-weight:600">📝 이 구매 기록하기 (오늘 날짜)</button>
+  </div>
+</div>
+
+<!-- 구매 히스토리 -->
+<div class="card">
+  <h2>구매 히스토리</h2>
+  <div class="result-grid" id="history-summary"></div>
+  <div class="result-grid" id="history-char-summary" style="margin-top:0.5rem"></div>
+  <div style="margin-top:0.7rem">
+    <select id="history-char-filter" style="padding:0.35rem 0.5rem;font-size:0.8rem;border-radius:6px;border:1px solid var(--border);background:var(--card2);color:inherit">
+      <option value="">전체 캐릭터</option>
+    </select>
+  </div>
+  <div class="table-wrap" style="margin-top:0.8rem"><table id="history-table"></table></div>
+  <div class="hint">
+    기록은 이 브라우저(localStorage)에 저장됩니다 — 같은 PC/브라우저에서 다시 열면 유지됩니다.<br>
+    ⚠️ <b>순이익은 고피로 쓴 포인트에서만 발생</b>합니다. 잔여 포인트는 바돈 가치 그대로 자산 처리(손익 0)라서,
+    바돈을 아무리 많이 넣어도 <b>고피 개수가 같으면 순이익이 같게</b> 나옵니다.
+    구매 계산기의 "구매할 고피 개수"가 이전 값으로 남아있지 않은지 확인하세요 (비우면 최대로 구매).<br>
+    환율·수수료는 <b>기록 당시 값으로 고정</b>해 평가합니다 — 이후 환율 입력을 바꿔도 과거 기록의 순이익은 변하지 않습니다 (호박 시세·멤버십 변경만 재평가에 반영).
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+ * 계산 로직 (순수 함수 — UI와 분리)
+ * ============================================================ */
+const Calc = {
+  // P 포인트의 바돈 가치 (전)
+  pointsToBadon(points, rate) {
+    if (rate <= 0) return 0;
+    return points / rate * 10000000;
+  },
+  // 바돈(전) → 바람포인트
+  badonToPoints(badon, rate) {
+    return badon / 10000000 * rate;
+  },
+  // 고피 1개의 경제적 가치용 호박 개수 (멤버십 반영)
+  effPumpkins(s) {
+    return s.basePumpkin * (s.membershipOn ? s.multiplier : 1);
+  },
+  // 고피 1개의 호박 가치 (전) — 사냥터 가격 기준
+  gopiValue(s, price) {
+    return this.effPumpkins(s) * price;
+  },
+  // 하루 계산: cntW/cntG = 왕무/왕궁 고피 개수
+  daily(s, cntW, cntG) {
+    const total = cntW + cntG;
+    const value = cntW * this.gopiValue(s, s.priceW) + cntG * this.gopiValue(s, s.priceG);
+    const costP = total * s.gopiP;
+    const costBadon = this.pointsToBadon(costP, s.effRate); // 수수료 반영 실수령 환율 기준
+    return {
+      cntW, cntG, total,
+      value,                       // 하루 호박 가치 (전)
+      costP,                       // 하루 고피 포인트 비용 (P)
+      costBadon,                   // 하루 고피 바돈 비용 (전)
+      profit: value - costBadon,   // 하루 순이익 (전)
+      actualPumpkins: total * s.basePumpkin,      // 실제 획득 호박
+      effPumpkins: total * this.effPumpkins(s)    // 경제적 가치 기준 호박
+    };
+  },
+  // 기간 계산
+  period(s, cntW, cntG, days) {
+    const d = this.daily(s, cntW, cntG);
+    return {
+      ...d,
+      days,
+      value: d.value * days,
+      costP: d.costP * days,
+      costBadon: d.costBadon * days,
+      profit: d.profit * days,
+      actualPumpkins: d.actualPumpkins * days,
+      effPumpkins: d.effPumpkins * days
+    };
+  },
+  // 손익분기 환율: 고피 1개 가치(전) == 고피 가격의 바돈 가치가 되는 환율
+  // gopiP / rate * 1e7 = value  →  rate = gopiP * 1e7 / value
+  breakevenRate(s, price) {
+    const value = this.gopiValue(s, price);
+    if (value <= 0) return Infinity;
+    return s.gopiP * 10000000 / value;
+  },
+  // 조합 목록 (하루 총 N개를 왕무:왕궁 비율로 배분)
+  combos(N) {
+    const raw = [
+      [N, 0],
+      [Math.round(N * 3 / 4), N - Math.round(N * 3 / 4)],
+      [Math.round(N / 2), N - Math.round(N / 2)],
+      [N - Math.round(N * 3 / 4), Math.round(N * 3 / 4)],
+      [0, N]
+    ];
+    // 중복 제거 (N이 작을 때)
+    const seen = new Set(), out = [];
+    for (const [w, g] of raw) {
+      const k = w + ":" + g;
+      if (!seen.has(k)) { seen.add(k); out.push([w, g]); }
+    }
+    return out;
+  },
+  // 판매 기준 가격 (혼합이면 현재 구성 가중평균)
+  sellPrice(s, mapMode, cntW, cntG) {
+    if (mapMode === "wangmu") return s.priceW;
+    if (mapMode === "wanggung") return s.priceG;
+    const t = cntW + cntG;
+    return t > 0 ? (cntW * s.priceW + cntG * s.priceG) / t : s.priceW;
+  },
+  // 구매 계산기 (실수령 환율 기준 — 수수료 차감 후 받는 포인트).
+  // gopiLimit: 실제 구매할 고피 개수 (null이면 포인트로 살 수 있는 최대)
+  purchase(s, badon, mapMode, cntW, cntG, gopiLimit) {
+    const points = Math.floor(this.badonToPoints(badon, s.effRate));
+    const maxGopi = s.gopiP > 0 ? Math.floor(points / s.gopiP) : 0;
+    const gopiCount = (gopiLimit == null) ? maxGopi : Math.min(maxGopi, gopiLimit);
+    const leftoverP = points - gopiCount * s.gopiP;
+    const price = this.sellPrice(s, mapMode, cntW, cntG);
+
+    const pumpkinValue = gopiCount * this.effPumpkins(s) * price;
+    const leftoverBadon = this.pointsToBadon(leftoverP, s.effRate);
+    const totalAsset = pumpkinValue + leftoverBadon;
+    return {
+      badon, points, gopiCount, maxGopi, leftoverP,
+      actualPumpkins: gopiCount * s.basePumpkin,
+      effPumpkins: gopiCount * this.effPumpkins(s),
+      pumpkinValue, leftoverBadon, totalAsset,
+      profit: totalAsset - badon,
+      roi: badon > 0 ? (totalAsset - badon) / badon * 100 : 0
+    };
+  }
+};
+
+/* ============================================================
+ * 포맷터
+ * ============================================================ */
+const Fmt = {
+  comma(n) { return Math.round(n).toLocaleString("ko-KR"); },
+  // 한국식 금액: +1억 753만전 (만 단위 미만 반올림)
+  korean(n, signed = true) {
+    const sign = n < 0 ? "-" : (signed ? "+" : "");
+    let v = Math.abs(Math.round(n));
+    if (v < 10000) return sign + this.comma(v) + "전";
+    v = Math.round(v / 10000) * 10000; // 만 단위 반올림
+    const eok = Math.floor(v / 100000000);
+    const man = Math.round((v % 100000000) / 10000);
+    const parts = [];
+    if (eok > 0) parts.push(this.comma(eok) + "억");
+    if (man > 0) parts.push(this.comma(man) + "만");
+    if (parts.length === 0) parts.push("0");
+    return sign + parts.join(" ") + "전";
+  },
+  profitClass(n) { return n >= 0 ? "plus" : "minus"; }
+};
+
+/* ============================================================
+ * 상태 + UI 렌더
+ * ============================================================ */
+function readState() {
+  const num = id => parseFloat(document.getElementById(id).value) || 0;
+  const s = {
+    rate: num("in-rate"),
+    fee: Math.max(0, num("in-fee")),
+    gopiP: num("in-gopi"),
+    priceW: num("in-price-w"),
+    priceG: num("in-price-g"),
+    basePumpkin: num("in-base"),
+    multiplier: num("in-mult") || 1,
+    membershipOn: document.getElementById("in-member").checked,
+    days: Math.max(1, num("in-days")),
+    cntW: Math.max(0, num("in-cnt-w")),
+    cntG: Math.max(0, num("in-cnt-g")),
+    buyBadon: num("in-buy") * 10000, // 만전 → 전
+    buyMap: document.getElementById("in-buy-map").value
+  };
+  // 캐릭터 지정 시 판매 기준 = 그 캐릭터의 사냥터
+  s.buyChar = document.getElementById("in-buy-char")?.value || "";
+  const bc = (typeof Chars !== "undefined") ? Chars.find(s.buyChar) : null;
+  if (bc) s.buyMap = bc.map;
+  // 구매할 고피 개수 (빈 값 = 최대)
+  const buyGopiRaw = document.getElementById("in-buy-gopi").value;
+  s.buyGopi = buyGopiRaw === "" ? null : Math.max(0, parseInt(buyGopiRaw) || 0);
+  // 실수령 환율 = 표시 환율 × (1 - 수수료%) — 모든 손익 계산은 이 값 기준
+  s.effRate = s.rate * (1 - s.fee / 100);
+  return s;
+}
+
+function comboLabel(w, g) {
+  if (g === 0) return `왕무 ${w}`;
+  if (w === 0) return `왕궁 ${g}`;
+  return `왕무 ${w} + 왕궁 ${g}`;
+}
+
+function render() {
+  const s = readState();
+  const daily = Calc.daily(s, s.cntW, s.cntG);
+  const month = Calc.period(s, s.cntW, s.cntG, s.days);
+  // 손익분기: 실수령 기준 → 표시 환율 기준으로 환산 (상점에 보이는 값과 비교 가능하게)
+  const feeK = 1 - s.fee / 100;
+  const beW = Calc.breakevenRate(s, s.priceW);
+  const beG = Calc.breakevenRate(s, s.priceG);
+  const beWq = feeK > 0 ? beW / feeK : Infinity; // 표시 환율 기준
+  const beGq = feeK > 0 ? beG / feeK : Infinity;
+
+  // --- 상단 요약 타일 ---
+  document.getElementById("stats").innerHTML = `
+    <div class="stat"><div class="label">현재 환율</div>
+      <div class="value">${Fmt.comma(s.rate)}P</div>
+      <div class="extra">실수령 ${Fmt.comma(Math.floor(s.effRate))}P (수수료 ${s.fee}%)</div></div>
+    <div class="stat"><div class="label">고피 가격</div>
+      <div class="value">${Fmt.comma(s.gopiP)}P</div>
+      <div class="extra">≈ ${Fmt.korean(Calc.pointsToBadon(s.gopiP, s.effRate), false)}</div></div>
+    <div class="stat"><div class="label">하루 순이익</div>
+      <div class="value ${Fmt.profitClass(daily.profit)}">${Fmt.korean(daily.profit)}</div>
+      <div class="extra">고피 ${daily.total}개/일</div></div>
+    <div class="stat"><div class="label">월 순이익 (${s.days}일)</div>
+      <div class="value ${Fmt.profitClass(month.profit)}">${Fmt.korean(month.profit)}</div>
+      <div class="extra">하루 × ${s.days}일</div></div>
+    <div class="stat"><div class="label">손익분기 환율 (표시 기준)</div>
+      <div class="value">${isFinite(beWq) ? Fmt.comma(Math.ceil(beWq)) : "-"}P</div>
+      <div class="extra">왕무 기준 / 왕궁 ${isFinite(beGq) ? Fmt.comma(Math.ceil(beGq)) : "-"}P</div></div>
+  `;
+
+  // --- 힌트 (실제 vs 가치) ---
+  document.getElementById("hint-actual").textContent = Fmt.comma(s.basePumpkin);
+  document.getElementById("hint-eff").textContent = Fmt.comma(Calc.effPumpkins(s));
+  document.getElementById("days-label").textContent = s.days;
+  document.getElementById("combo-total").textContent = daily.total;
+
+  // --- 하루 결과 ---
+  document.getElementById("daily-result").innerHTML = `
+    <div class="result-item"><div class="label">하루 호박 가치</div>
+      <div class="value">${Fmt.korean(daily.value, false)}</div></div>
+    <div class="result-item"><div class="label">하루 고피 비용</div>
+      <div class="value">${Fmt.comma(daily.costP)}P ≈ ${Fmt.korean(daily.costBadon, false)}</div></div>
+    <div class="result-item"><div class="label">하루 순이익</div>
+      <div class="value ${Fmt.profitClass(daily.profit)}">${Fmt.korean(daily.profit)}</div></div>
+    <div class="result-item"><div class="label">하루 실제 호박</div>
+      <div class="value">${Fmt.comma(daily.actualPumpkins)}개 <span style="font-size:0.7rem;color:var(--muted)">(가치 ${Fmt.comma(daily.effPumpkins)}개분)</span></div></div>
+  `;
+
+  // --- 월간 결과 ---
+  document.getElementById("monthly-result").innerHTML = `
+    <div class="result-item"><div class="label">${s.days}일 호박 가치</div>
+      <div class="value">${Fmt.korean(month.value, false)}</div></div>
+    <div class="result-item"><div class="label">${s.days}일 고피 비용</div>
+      <div class="value">${Fmt.comma(month.costP)}P ≈ ${Fmt.korean(month.costBadon, false)}</div></div>
+    <div class="result-item"><div class="label">${s.days}일 순이익</div>
+      <div class="value ${Fmt.profitClass(month.profit)}">${Fmt.korean(month.profit)}</div></div>
+    <div class="result-item"><div class="label">${s.days}일 실제 호박</div>
+      <div class="value">${Fmt.comma(month.actualPumpkins)}개 <span style="font-size:0.7rem;color:var(--muted)">(가치 ${Fmt.comma(month.effPumpkins)}개분)</span></div></div>
+  `;
+
+  // --- 조합 비교표 ---
+  const N = Math.max(1, daily.total);
+  const combos = Calc.combos(N);
+  const comboResults = combos.map(([w, g]) => ({ w, g, r: Calc.period(s, w, g, s.days) }));
+  const bestIdx = comboResults.reduce((bi, c, i, a) => c.r.profit > a[bi].r.profit ? i : bi, 0);
+  document.getElementById("combo-table").innerHTML = `
+    <tr><th>조합</th><th>하루 호박 가치</th><th>하루 비용(P)</th><th>하루 비용(바돈)</th>
+        <th>하루 순이익</th><th>${s.days}일 호박 가치</th><th>${s.days}일 비용</th><th>${s.days}일 순이익</th></tr>
+    ${comboResults.map((c, i) => {
+      const d = Calc.daily(s, c.w, c.g);
+      return `<tr class="${i === bestIdx ? "best" : ""}">
+        <td>${comboLabel(c.w, c.g)}${i === bestIdx ? '<span class="badge">최고</span>' : ""}</td>
+        <td>${Fmt.korean(d.value, false)}</td>
+        <td>${Fmt.comma(d.costP)}P</td>
+        <td>${Fmt.korean(d.costBadon, false)}</td>
+        <td class="${Fmt.profitClass(d.profit)}">${Fmt.korean(d.profit)}</td>
+        <td>${Fmt.korean(c.r.value, false)}</td>
+        <td>${Fmt.korean(c.r.costBadon, false)}</td>
+        <td class="${Fmt.profitClass(c.r.profit)}">${Fmt.korean(c.r.profit)}</td>
+      </tr>`;
+    }).join("")}
+  `;
+
+  // --- 환율별 비교표 (현재 환율부터 +100P × 10행) ---
+  const rows = [];
+  for (let i = 0; i < 10; i++) rows.push(s.rate + i * 100);
+  document.getElementById("rate-table").innerHTML = `
+    <tr><th>바람포인트</th>${combos.map(([w, g]) => `<th>${comboLabel(w, g)}</th>`).join("")}</tr>
+    ${rows.map(rate => {
+      const s2 = { ...s, rate, effRate: rate * feeK }; // 수수료 반영
+      const profits = combos.map(([w, g]) => Calc.period(s2, w, g, s.days).profit);
+      const best = profits.indexOf(Math.max(...profits));
+      return `<tr>
+        <td>${Fmt.comma(rate)}P${rate === s.rate ? '<span class="badge">현재</span>' : ""}</td>
+        ${profits.map((p, i) => `<td class="${Fmt.profitClass(p)} ${i === best ? "best-cell" : ""}">${Fmt.korean(p)}</td>`).join("")}
+      </tr>`;
+    }).join("")}
+  `;
+
+  // --- 손익분기 ---
+  document.getElementById("breakeven-result").innerHTML = `
+    <div class="result-item"><div class="label">왕의무덤 손익분기 (표시 환율)</div>
+      <div class="value">${isFinite(beWq) ? Fmt.comma(Math.ceil(beWq)) + "P" : "-"}</div>
+      <div class="label" style="margin-top:0.2rem">실수령 기준 ${isFinite(beW) ? Fmt.comma(Math.ceil(beW)) + "P" : "-"} /
+        현재 ${Fmt.comma(s.rate)}P → ${s.effRate > beW ? '<span class="plus">이익</span>' : '<span class="minus">손해</span>'}</div></div>
+    <div class="result-item"><div class="label">신라왕궁 손익분기 (표시 환율)</div>
+      <div class="value">${isFinite(beGq) ? Fmt.comma(Math.ceil(beGq)) + "P" : "-"}</div>
+      <div class="label" style="margin-top:0.2rem">실수령 기준 ${isFinite(beG) ? Fmt.comma(Math.ceil(beG)) + "P" : "-"} /
+        현재 ${Fmt.comma(s.rate)}P → ${s.effRate > beG ? '<span class="plus">이익</span>' : '<span class="minus">손해</span>'}</div></div>
+  `;
+
+  // --- 구매 계산기 ---
+  // 실수령 환율 표시 (수수료 차감 후 1,000만전당 P)
+  document.getElementById("buy-eff-rate").textContent =
+    `${Fmt.comma(Math.floor(s.effRate))}P (−${s.fee}%)`;
+  const buy = Calc.purchase(s, s.buyBadon, s.buyMap, s.cntW, s.cntG, s.buyGopi);
+  document.getElementById("buy-result").innerHTML = `
+    <div class="result-item"><div class="label">투입 바돈</div>
+      <div class="value">${Fmt.korean(buy.badon, false)}</div></div>
+    <div class="result-item"><div class="label">획득 바람포인트 (실수령)</div>
+      <div class="value">${Fmt.comma(buy.points)}P
+        <span style="font-size:0.7rem;color:var(--muted)">표시 ${Fmt.comma(Math.floor(Calc.badonToPoints(buy.badon, s.rate)))}P − 수수료 ${s.fee}%</span></div></div>
+    <div class="result-item"><div class="label">구매 고피</div>
+      <div class="value">${Fmt.comma(buy.gopiCount)}개
+        ${buy.gopiCount < buy.maxGopi ? `<span style="font-size:0.7rem;color:var(--muted)">(최대 ${Fmt.comma(buy.maxGopi)}개 가능)</span>` : ""}</div></div>
+    <div class="result-item"><div class="label">남은 포인트</div>
+      <div class="value">${Fmt.comma(buy.leftoverP)}P <span style="font-size:0.7rem;color:var(--muted)">≈ ${Fmt.korean(buy.leftoverBadon, false)}</span></div></div>
+    <div class="result-item"><div class="label">실제 호박</div>
+      <div class="value">${Fmt.comma(buy.actualPumpkins)}개</div></div>
+    <div class="result-item"><div class="label">멤버십 적용 가치</div>
+      <div class="value">${Fmt.comma(buy.effPumpkins)}개분</div></div>
+    <div class="result-item"><div class="label">총 호박 가치</div>
+      <div class="value">${Fmt.korean(buy.pumpkinValue, false)}</div></div>
+    <div class="result-item"><div class="label">총 자산 가치 (호박+잔여P)</div>
+      <div class="value">${Fmt.korean(buy.totalAsset, false)}</div></div>
+    <div class="result-item"><div class="label">순이익</div>
+      <div class="value ${Fmt.profitClass(buy.profit)}">${Fmt.korean(buy.profit)}</div></div>
+    <div class="result-item"><div class="label">ROI</div>
+      <div class="value ${Fmt.profitClass(buy.profit)}">${buy.roi >= 0 ? "+" : ""}${buy.roi.toFixed(2)}%</div></div>
+  `;
+}
+
+/* ============================================================
+ * 캐릭터 (구매 기록 구분용, localStorage)
+ * ============================================================ */
+const Chars = {
+  KEY: "gopiCalcCharacters",
+  load() {
+    try { return JSON.parse(localStorage.getItem(this.KEY)) || []; }
+    catch (e) { return []; }
+  },
+  save(list) { localStorage.setItem(this.KEY, JSON.stringify(list)); },
+  find(name) { return name ? (this.load().find(c => c.name === name) || null) : null; }
+};
+
+function escText(t) {
+  return String(t).replace(/[&<>"']/g, ch =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+function mapLabel(m) { return m === "wanggung" ? "신라왕궁" : "왕의무덤"; }
+
+function renderChars() {
+  const list = Chars.load();
+  const box = document.getElementById("char-list");
+  if (box) {
+    box.innerHTML = list.length === 0
+      ? '<div class="result-item"><div class="label">등록된 캐릭터 없음</div><div class="value" style="font-size:0.8rem;color:var(--muted)">이름 입력 후 추가하세요</div></div>'
+      : list.map(c => `<div class="result-item">
+          <div class="label">${mapLabel(c.map)} 전용</div>
+          <div class="value">${escText(c.name)}
+            <button onclick="delChar('${escText(c.name)}')" style="background:none;border:1px solid var(--border);color:var(--minus);border-radius:6px;padding:0.05rem 0.4rem;cursor:pointer;font-size:0.7rem;margin-left:0.4rem">삭제</button>
+          </div></div>`).join("");
+  }
+  // 구매 계산기 캐릭터 select (선택 유지)
+  const sel = document.getElementById("in-buy-char");
+  if (sel) {
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">(미지정)</option>' +
+      list.map(c => `<option value="${escText(c.name)}">${escText(c.name)} — ${mapLabel(c.map)}</option>`).join("");
+    if (prev && list.some(c => c.name === prev)) sel.value = prev;
+  }
+  // 히스토리 필터 select (선택 유지)
+  const f = document.getElementById("history-char-filter");
+  if (f) {
+    const prev = f.value;
+    f.innerHTML = '<option value="">전체 캐릭터</option>' +
+      list.map(c => `<option value="${escText(c.name)}">${escText(c.name)}</option>`).join("");
+    if (prev && list.some(c => c.name === prev)) f.value = prev;
+  }
+}
+
+function addChar() {
+  const nameEl = document.getElementById("char-new-name");
+  const name = (nameEl?.value || "").trim();
+  if (!name) { alert("캐릭터 이름을 입력해주세요."); return; }
+  const map = document.getElementById("char-new-map")?.value || "wangmu";
+  const list = Chars.load();
+  const idx = list.findIndex(c => c.name === name);
+  if (idx >= 0) list[idx].map = map; else list.push({ name, map });
+  Chars.save(list);
+  nameEl.value = "";
+  renderChars();
+  render();
+  renderHistory();
+}
+
+window.delChar = function(name) {
+  if (!confirm(`캐릭터 '${name}'을(를) 삭제할까요?\n(구매 기록은 남고, 그 기록의 순이익은 전역 판매 기준으로 계산됩니다)`)) return;
+  Chars.save(Chars.load().filter(c => c.name !== name));
+  renderChars();
+  render();
+  renderHistory();
+};
+
+// 캐릭터별 누적 요약 (전체 기록 기준, 필터와 무관)
+function renderCharSummary(allEntries, s) {
+  const box = document.getElementById("history-char-summary");
+  if (!box) return;
+  const chars = Chars.load();
+  if (chars.length === 0) { box.innerHTML = ""; return; }
+  box.innerHTML = chars.map(c => {
+    const entries = allEntries.filter(e => e.char === c.name);
+    const badon = entries.reduce((a, e) => a + e.badon, 0);
+    const gopi = entries.reduce((a, e) => a + e.gopi, 0);
+    const leftover = entries.reduce((a, e) => a + entryLeftoverP(e, s), 0);
+    const profit = entries.reduce((a, e) => a + entryProfit(e, s), 0);
+    return `<div class="result-item" style="border-left:3px solid var(--accent)">
+      <div class="label">${escText(c.name)} · ${mapLabel(c.map)} (${entries.length}회)</div>
+      <div class="value" style="font-size:0.82rem">${Fmt.korean(badon, false)} · 고피 ${Fmt.comma(gopi)}개 · 잔여 ${Fmt.comma(leftover)}P</div>
+      <div class="value ${Fmt.profitClass(profit)}" style="font-size:0.9rem">순이익 ${Fmt.korean(profit)}</div>
+    </div>`;
+  }).join("");
+}
+
+/* ============================================================
+ * 구매 히스토리 (localStorage)
+ * ============================================================ */
+const History = {
+  KEY: "gopiPurchaseHistory",
+  load() {
+    try { return JSON.parse(localStorage.getItem(this.KEY)) || []; }
+    catch (e) { return []; }
+  },
+  save(list) { localStorage.setItem(this.KEY, JSON.stringify(list)); },
+  add(entry) { const l = this.load(); l.push(entry); this.save(l); },
+  remove(idx) { const l = this.load(); l.splice(idx, 1); this.save(l); }
+};
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function recordPurchase() {
+  const s = readState();
+  if (s.buyBadon <= 0) { alert("구매할 바돈을 입력해주세요."); return; }
+  const buy = Calc.purchase(s, s.buyBadon, s.buyMap, s.cntW, s.cntG, s.buyGopi);
+  History.add({
+    date: todayStr(),
+    badon: s.buyBadon,       // 전
+    rate: s.rate,            // 표시 환율
+    fee: s.fee,
+    points: buy.points,      // 실수령 P
+    gopi: buy.gopiCount,
+    leftoverP: buy.leftoverP, // 고피 사고 남은 포인트
+    char: s.buyChar || ""     // 어느 캐릭터 구매인지
+  });
+  renderHistory();
+  // 기록 완료 피드백 (몇 개로 기록됐는지 바로 보이게)
+  const btn = document.getElementById("btn-record");
+  if (btn) {
+    const orig = "📝 이 구매 기록하기 (오늘 날짜)";
+    btn.textContent = `✓ 기록됨 — 고피 ${buy.gopiCount}개, 잔여 ${Fmt.comma(buy.leftoverP)}P`;
+    setTimeout(() => { btn.textContent = orig; }, 2500);
+  }
+}
+
+// 기록 1건의 순이익 (현재 시세/설정 기준 평가):
+// 고피 가치(현재 호박가·멤버십·판매 기준) + 잔여 포인트의 바돈 가치 − 투입 바돈
+function entryProfit(e, s) {
+  // 캐릭터가 지정된 기록은 그 캐릭터의 전용 사냥터 가격으로 평가
+  const ch = Chars.find(e.char);
+  const price = Calc.sellPrice(s, ch ? ch.map : s.buyMap, s.cntW, s.cntG);
+  const leftoverP = entryLeftoverP(e, s);
+  // 잔여 포인트는 "그 기록 당시의 실수령 환율"로 평가한다 (기록에 rate/fee 저장됨).
+  // 현재 환율 입력으로 평가하면 새 구매를 위해 환율을 바꿀 때마다 과거 기록의
+  // 순이익이 같이 흔들리는 모순이 생긴다. 호박 가치만 현재 시세로 재평가.
+  const entryFee = (e.fee != null) ? e.fee : s.fee;
+  const entryEffRate = (e.rate || s.rate) * (1 - entryFee / 100);
+  const value = e.gopi * Calc.effPumpkins(s) * price + Calc.pointsToBadon(leftoverP, entryEffRate);
+  return value - e.badon;
+}
+
+// 기록의 잔여 포인트 (기록 시 저장값 우선, 구버전 기록은 현재 고피가로 역산)
+function entryLeftoverP(e, s) {
+  return (e.leftoverP != null) ? e.leftoverP : Math.max(0, e.points - e.gopi * s.gopiP);
+}
+
+function renderHistory() {
+  const s = readState();
+  const fullList = History.load();
+  const charFilter = document.getElementById("history-char-filter")?.value || "";
+  const list = charFilter ? fullList.filter(e => (e.char || "") === charFilter) : fullList;
+  const today = todayStr();
+  const sum = arr => arr.reduce((a, e) => ({
+    badon: a.badon + e.badon, points: a.points + e.points, gopi: a.gopi + e.gopi,
+    profit: a.profit + entryProfit(e, s), n: a.n + 1
+  }), { badon: 0, points: 0, gopi: 0, profit: 0, n: 0 });
+  const t = sum(list.filter(e => e.date === today));
+  const all = sum(list);
+
+  document.getElementById("history-summary").innerHTML = `
+    <div class="result-item"><div class="label">오늘 구매 (${today})</div>
+      <div class="value">${Fmt.korean(t.badon, false)} <span style="font-size:0.7rem;color:var(--muted)">(${t.n}회)</span></div></div>
+    <div class="result-item"><div class="label">오늘 획득 포인트 / 고피</div>
+      <div class="value">${Fmt.comma(t.points)}P · ${Fmt.comma(t.gopi)}개</div></div>
+    <div class="result-item"><div class="label">오늘 순이익 (현재 시세)</div>
+      <div class="value ${Fmt.profitClass(t.profit)}">${Fmt.korean(t.profit)}</div></div>
+    <div class="result-item"><div class="label">누적 구매 (전체 ${all.n}회)</div>
+      <div class="value">${Fmt.korean(all.badon, false)} · ${Fmt.comma(all.gopi)}개</div></div>
+    <div class="result-item"><div class="label">누적 순이익 (현재 시세)</div>
+      <div class="value ${Fmt.profitClass(all.profit)}">${Fmt.korean(all.profit)}</div></div>
+  `;
+
+  // 캐릭터별 누적 (필터와 무관하게 전체 기록 기준)
+  renderCharSummary(fullList, s);
+
+  if (list.length === 0) {
+    document.getElementById("history-table").innerHTML =
+      `<tr><td style="color:var(--muted)">기록이 없습니다 — 구매 계산 후 "이 구매 기록하기"를 눌러주세요.</td></tr>`;
+    return;
+  }
+  // 최신순 표시 (원본 인덱스 유지 — 삭제용)
+  const rows = list.map((e, i) => ({ ...e, i })).reverse();
+  document.getElementById("history-table").innerHTML = `
+    <tr><th>날짜</th><th>캐릭터</th><th>바돈</th><th>환율(표시)</th><th>실수령 P</th><th>고피</th><th>잔여 P</th><th>순이익(현재)</th><th></th></tr>
+    ${rows.map(e => {
+      const p = entryProfit(e, s);
+      const lo = entryLeftoverP(e, s);
+      return `<tr ${e.date === today ? 'style="background:rgba(245,166,35,0.06)"' : ""}>
+      <td>${e.date}</td>
+      <td>${e.char ? escText(e.char) : '<span style="color:var(--muted)">-</span>'}</td>
+      <td>${Fmt.korean(e.badon, false)}</td>
+      <td>${Fmt.comma(e.rate)}P</td>
+      <td>${Fmt.comma(e.points)}P</td>
+      <td>${Fmt.comma(e.gopi)}개</td>
+      <td style="color:var(--muted)">${Fmt.comma(lo)}P</td>
+      <td class="${Fmt.profitClass(p)}">${Fmt.korean(p)}</td>
+      <td><button onclick="delHistory(${e.i})" style="background:none;border:1px solid var(--border);color:var(--minus);border-radius:6px;padding:0.1rem 0.45rem;cursor:pointer;font-size:0.72rem">삭제</button></td>
+    </tr>`;
+    }).join("")}
+  `;
+}
+
+window.delHistory = function(idx) {
+  History.remove(idx);
+  renderHistory();
+};
+
+/* ============================================================
+ * 입력값 저장/복원 (localStorage) — 껐다 켜도 설정 유지
+ * ============================================================ */
+const Settings = {
+  KEY: "gopiCalcSettings",
+  FIELDS: ["in-rate", "in-fee", "in-gopi", "in-price-w", "in-price-g", "in-base",
+           "in-mult", "in-member", "in-days", "in-cnt-w", "in-cnt-g", "in-buy", "in-buy-gopi", "in-buy-map", "in-buy-char"],
+  save() {
+    const data = {};
+    for (const id of this.FIELDS) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      data[id] = el.type === "checkbox" ? el.checked : el.value;
+    }
+    localStorage.setItem(this.KEY, JSON.stringify(data));
+  },
+  restore() {
+    let data = null;
+    try { data = JSON.parse(localStorage.getItem(this.KEY)); } catch (e) {}
+    if (!data) return;
+    for (const id of this.FIELDS) {
+      const el = document.getElementById(id);
+      if (!el || !(id in data)) continue;
+      if (el.type === "checkbox") el.checked = !!data[id];
+      else el.value = data[id];
+    }
+  }
+};
+
+// 모든 입력 변경 시: 저장 + 즉시 재계산 (히스토리 순이익은 현재 시세 기준이므로 함께 갱신)
+const renderAll = () => { Settings.save(); render(); renderHistory(); };
+document.querySelectorAll("input, select").forEach(el => {
+  el.addEventListener("input", renderAll);
+  el.addEventListener("change", renderAll);
+});
+// 빠른 구매 금액 버튼
+document.querySelectorAll(".quick-btns button[data-buy]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.getElementById("in-buy").value = btn.dataset.buy;
+    renderAll();
+  });
+});
+// 구매 기록 버튼
+document.getElementById("btn-record").addEventListener("click", recordPurchase);
+// 캐릭터 추가 버튼 + 캐릭터 선택 시 판매 기준 표시 동기화
+document.getElementById("char-add-btn")?.addEventListener("click", addChar);
+document.getElementById("char-new-name")?.addEventListener("keydown", e => { if (e.key === "Enter") addChar(); });
+document.getElementById("in-buy-char")?.addEventListener("change", () => {
+  const c = Chars.find(document.getElementById("in-buy-char").value);
+  if (c) document.getElementById("in-buy-map").value = c.map;
+});
+
+renderChars();      // 캐릭터 목록/select 구성 (Settings.restore 전에 옵션이 있어야 복원됨)
+Settings.restore(); // 저장된 입력값 복원 후 첫 렌더
+render();
+renderHistory();
+</script>
+</body>
+</html>
