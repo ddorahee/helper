@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -2233,10 +2234,37 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			json.NewEncoder(w).Encode(resp)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		// GET ?hwnd=N — 그 창을 지금 읽어보고 결과와 크롭 이미지를 돌려준다.
+		// 학습 전에 "지금 뭐라고 읽히는지"를 눈으로 확인할 수 있어야 실패 원인이 보인다.
+		resp := map[string]interface{}{
 			"total": automation.GlyphDictSize(),
 			"chars": automation.GlyphDictChars(),
-		})
+		}
+		if v := r.URL.Query().Get("hwnd"); v != "" {
+			hwnd, err := strconv.ParseUint(v, 10, 64)
+			if err != nil {
+				http.Error(w, "hwnd 형식 오류", http.StatusBadRequest)
+				return
+			}
+			snap, err := app.OCRManager.GlyphInspect(hwnd, false)
+			if err != nil {
+				resp["error"] = err.Error()
+			} else {
+				resp["mapText"], resp["mapOK"] = snap.MapName, snap.MapOK
+				resp["nickText"], resp["nickOK"] = snap.NickName, snap.NickOK
+				if snap.MapImage != nil {
+					if b64 := encodePNGScaled(snap.MapImage, 2); b64 != "" {
+						resp["mapCrop"] = "data:image/png;base64," + b64
+					}
+				}
+				if snap.NickImage != nil {
+					if b64 := encodePNGScaled(snap.NickImage, 2); b64 != "" {
+						resp["nickCrop"] = "data:image/png;base64," + b64
+					}
+				}
+			}
+		}
+		json.NewEncoder(w).Encode(resp)
 	})
 
 	// 바람로그 시련 모집 감시 상태 (GET) / 수동 제어 (POST {action:"start"|"stop"|"sync"|"test"|"interval"})

@@ -420,12 +420,9 @@ func (om *OCRManager) DetectCharacterNameRightTop(hwnd uint64) (string, error) {
 // 창별로 두 번 캡처하지 않게 한다. OCR은 기존 DetectCharacterName과 동일(config 영역).
 func (om *OCRManager) DetectNameWithCrop(hwnd uint64) (string, image.Image, error) {
 	// 창 감지는 창을 활성화해 확실히 렌더된 화면을 캡처한다
-	// (백그라운드 캡처는 실행 루프에서만 사용).
-	om.wm.ActivateWindow(hwnd)
-	time.Sleep(400 * time.Millisecond)
-	img, _, err := om.wm.CaptureWindowRaw(hwnd)
+	img, err := om.captureRead(hwnd, true)
 	if err != nil {
-		return "", nil, fmt.Errorf("창 캡처 실패: %v", err)
+		return "", nil, err
 	}
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
@@ -507,12 +504,9 @@ func (om *OCRManager) cropNicknameRegion(img *image.RGBA, hwnd uint64) image.Ima
 //   신뢰 불가로 판단 → 이미지만 반환하고 창 구분은 눈으로 한다.
 func (om *OCRManager) NicknameCrop(hwnd uint64) (image.Image, error) {
 	// 창 감지는 창을 활성화해 확실히 렌더된 화면을 캡처한다
-	om.wm.ActivateWindow(hwnd)
-	time.Sleep(400 * time.Millisecond)
-
-	img, _, err := om.wm.CaptureWindowRaw(hwnd)
+	img, err := om.captureRead(hwnd, true)
 	if err != nil {
-		return nil, fmt.Errorf("창 캡처 실패: %v", err)
+		return nil, err
 	}
 	nick := om.cropNicknameRegion(img, hwnd)
 	if nick == nil {

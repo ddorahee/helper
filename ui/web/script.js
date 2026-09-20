@@ -109,10 +109,6 @@ function updateMultiCenterRow() {
     const pickupCard = document.getElementById('item-pickup-card');
     if (pickupCard) pickupCard.style.display = anyKanchen ? '' : 'none';
 }
-
-// 카드 접기/펴기.
-// 설정 카드들이 항상 펼쳐져 있으면 화면을 잡아먹어 불편하므로 기본은 접힘이고,
-// 접고 편 상태는 브라우저에 기억해 다음에도 유지한다.
 // 글자 학습 — 사전에 없는 글자를 화면에서 배운다.
 // 게임 폰트가 고정 비트맵이라, 한 번 배우면 그 글자는 이후 픽셀 단위로 정확히 읽힌다.
 function setupGlyphLearn() {
@@ -122,30 +118,63 @@ function setupGlyphLearn() {
     const mapIn = document.getElementById('glyph-learn-map');
     const nickIn = document.getElementById('glyph-learn-nick');
     const saveBtn = document.getElementById('glyph-learn-save');
+    const preview = document.getElementById('glyph-learn-preview');
     const result = document.getElementById('glyph-learn-result');
     if (!toggle || !body || !sel || !saveBtn) return;
 
+    // 창 목록은 '창 감지' 결과에서 가져온다. 어느 창인지 헷갈리지 않게
+    // 번호 + 읽힌 닉네임 + hwnd 를 전부 라벨에 넣는다.
     function fillWindows() {
-        const boxes = document.querySelectorAll('#multi-entry-list input[type="checkbox"]');
+        const rows = document.querySelectorAll('#multi-entry-list input[type="checkbox"]');
         const cur = sel.value;
-        sel.innerHTML = '<option value="">창 선택</option>' +
-            Array.from(boxes).map((b, i) => `<option value="${b.value}">창 ${i + 1}</option>`).join('');
-        if (cur) sel.value = cur;
+        const opts = Array.from(rows).map((cb, i) => {
+            const label = cb.closest('label');
+            const nickEl = label ? label.querySelector('span[style*="font-weight:600"]') : null;
+            const nick = nickEl ? nickEl.textContent.trim() : '';
+            const tag = nick && nick.indexOf('학습') < 0 ? ` · ${nick}` : '';
+            return `<option value="${cb.value}">창 ${i + 1}${tag} (hwnd ${cb.value})</option>`;
+        });
+        sel.innerHTML = '<option value="">창 선택</option>' + opts.join('');
+        if (cur && Array.from(sel.options).some(o => o.value === cur)) sel.value = cur;
+        if (opts.length === 0) {
+            result.textContent = "'창 감지'를 먼저 눌러주세요.";
+        }
     }
 
-    async function showStatus() {
+    // 지금 그 창이 뭐라고 읽히는지 미리 보여준다 — 실패했을 때 원인을 눈으로 볼 수 있어야 한다
+    async function inspect(hwnd) {
+        preview.style.display = 'none';
+        preview.innerHTML = '';
+        if (!hwnd) return;
+        result.textContent = '읽는 중…';
         try {
-            const res = await fetch('/api/glyph');
+            const res = await fetch('/api/glyph?hwnd=' + encodeURIComponent(hwnd));
             const s = await res.json();
+            if (s.error) { result.textContent = '읽기 실패: ' + s.error; return; }
+            const cell = (title, txt, ok, crop) => `
+                <div style="display:flex;flex-direction:column;gap:0.2rem">
+                    <span style="font-size:0.7rem;color:var(--text-muted)">${title}</span>
+                    ${crop ? `<img src="${crop}" style="height:26px;image-rendering:pixelated;border:1px solid var(--border-color);border-radius:3px;background:#000">` : ''}
+                    <span style="font-size:0.78rem;font-weight:600;color:${ok ? 'inherit' : 'var(--text-muted)'}">${ok ? escapeHtmlMin(txt) : '(모름)'}</span>
+                </div>`;
+            preview.innerHTML = cell('맵 이름', s.mapText, s.mapOK, s.mapCrop) + cell('닉네임', s.nickText, s.nickOK, s.nickCrop);
+            preview.style.display = 'flex';
+            // 이미 읽히는 건 굳이 다시 칠 필요 없으니 비워두고, 모르는 쪽만 입력하게 둔다
+            if (s.mapOK) mapIn.value = s.mapText; else mapIn.value = '';
+            if (s.nickOK) nickIn.value = s.nickText; else nickIn.value = '';
             result.textContent = `사전 ${s.total}개 글리프 / 아는 글자 ${(s.chars || '').length}자`;
-        } catch (e) { /* 상태 표시는 실패해도 무시 */ }
+        } catch (e) {
+            result.textContent = '읽기 실패: ' + e.message;
+        }
     }
 
     toggle.addEventListener('click', () => {
         const open = body.style.display === 'none';
         body.style.display = open ? '' : 'none';
-        if (open) { fillWindows(); showStatus(); }
+        if (open) fillWindows();
     });
+
+    sel.addEventListener('change', () => inspect(sel.value));
 
     saveBtn.addEventListener('click', async () => {
         const hwnd = sel.value;
@@ -168,8 +197,7 @@ function setupGlyphLearn() {
                 result.textContent = `실패: ${s.error}${notes ? ' — ' + notes : ''}`;
             } else if (s.added > 0) {
                 result.textContent = `새 글자 ${s.added}개 저장 (사전 ${s.total}개) ${notes}`;
-                mapIn.value = '';
-                nickIn.value = '';
+                await inspect(hwnd);
             } else {
                 result.textContent = notes || '새로 배운 글자가 없습니다 (이미 다 아는 글자).';
             }
@@ -181,6 +209,9 @@ function setupGlyphLearn() {
     });
 }
 
+// 카드 접기/펴기.
+// 설정 카드들이 항상 펼쳐져 있으면 화면을 잡아먹어 불편하므로 기본은 접힘이고,
+// 접고 편 상태는 브라우저에 기억해 다음에도 유지한다.
 function setupCollapsibles() {
     document.querySelectorAll('.collapse-btn[data-collapse]').forEach(btn => {
         const bodyId = btn.dataset.collapse;

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"log"
-	"time"
 )
 
 // OCRManager 에 붙는 글리프 읽기 진입점.
@@ -68,24 +67,10 @@ func glyphCropImage(img image.Image, r GlyphRegion) image.Image {
 	return sub.SubImage(image.Rect(r.X0, r.Y0, r.X1, r.Y1))
 }
 
-// glyphCapture 창 한 장 캡처.
-// 포그라운드 캡처(CaptureWindowRaw)는 화면 DC 를 BitBlt 하므로 창이 가려져 있으면
-// 앞 창 픽셀이 찍힌다 → 먼저 활성화한다. 백그라운드는 PrintWindow 라 그럴 필요가 없다.
+// glyphCapture 창 한 장 캡처. bg=false 면 창을 앞으로 가져온다(사용자가 눈으로 확인하도록).
+// 실제 픽셀은 Z-order 와 무관한 PrintWindow 를 우선 쓴다 — captureRead 주석 참고.
 func (om *OCRManager) glyphCapture(hwnd uint64, bg bool) (image.Image, error) {
-	if bg {
-		img, _, err := om.wm.CaptureWindowBG(hwnd)
-		if err != nil {
-			return nil, fmt.Errorf("창 캡처 실패: %v", err)
-		}
-		return img, nil
-	}
-	om.wm.ActivateWindow(hwnd)
-	time.Sleep(400 * time.Millisecond)
-	img, _, err := om.wm.CaptureWindowRaw(hwnd)
-	if err != nil {
-		return nil, fmt.Errorf("창 캡처 실패: %v", err)
-	}
-	return img, nil
+	return om.captureRead(hwnd, !bg)
 }
 
 // GlyphInspect 창을 한 번 캡처해 맵/닉네임 인식 결과와 크롭 이미지를 함께 돌려준다.
