@@ -389,11 +389,28 @@ func LoadGlyphDict() GlyphDict {
 		d = GlyphDict{}
 	}
 	base := len(d)
+	// 학습 사전(사용자가 UI 에서 가르친 것)을 덧씌운다.
+	// 단, 내장 사전이 이미 아는 글자는 건너뛴다 — 내장 사전은 폰트에서 직접 생성한
+	// 것이라 그게 정답이고, 예전 증분 학습은 이웃 글자에 오염된 비트맵을 저장한
+	// 전력이 있다(실제로 9자가 틀렸다). 정말 새로운 글자만 받는다.
 	if raw, err := os.ReadFile(glyphDictPath); err == nil {
 		user := GlyphDict{}
 		if err := json.Unmarshal(raw, &user); err == nil {
+			known := map[string]bool{}
+			for _, v := range d {
+				known[v] = true
+			}
+			kept, dropped := 0, 0
 			for k, v := range user {
+				if known[v] {
+					dropped++
+					continue
+				}
 				d[k] = v
+				kept++
+			}
+			if dropped > 0 {
+				log.Printf("[글리프] 학습 사전: %d개 반영, %d개 무시(내장 사전이 이미 아는 글자)", kept, dropped)
 			}
 		} else {
 			log.Printf("[글리프] 학습 사전 파싱 실패: %v", err)
@@ -461,4 +478,14 @@ func GlyphDictSize() int {
 	glyphDictMu.RLock()
 	defer glyphDictMu.RUnlock()
 	return len(d)
+}
+
+// CutGlyph 영역의 텍스트 밴드 안에서 열 [x0,x1) 을 잘라 타이트 글리프를 만든다.
+// 사전 생성·대조 도구(cmd/glyphteach, cmd/fontprobe)에서 쓴다.
+func CutGlyph(b *GlyphBin, x0, x1 int) (Glyph, bool) {
+	top, bot, ok := glyphBand(b)
+	if !ok {
+		return Glyph{}, false
+	}
+	return glyphCut(b, top, bot, x0, x1)
 }

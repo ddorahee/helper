@@ -42,14 +42,19 @@ func shrink(src image.Image, scale int) *image.RGBA {
 
 func main() {
 	if len(os.Args) < 5 {
-		fmt.Println("사용법: glyphteach <map|nick> <png> <배율> <정답 문자열>")
+		fmt.Println("사용법: glyphteach <map|nick> <png> <배율|full> <정답 문자열>")
 		os.Exit(2)
 	}
 	kind, path, text := os.Args[1], os.Args[2], strings.Join(os.Args[4:], " ")
-	scale, err := strconv.Atoi(os.Args[3])
-	if err != nil || scale < 1 {
-		fmt.Println("배율이 잘못됐다:", os.Args[3])
-		os.Exit(2)
+	full := os.Args[3] == "full"
+	scale := 1
+	if !full {
+		var err error
+		scale, err = strconv.Atoi(os.Args[3])
+		if err != nil || scale < 1 {
+			fmt.Println("배율이 잘못됐다:", os.Args[3])
+			os.Exit(2)
+		}
 	}
 
 	fh, err := os.Open(path)
@@ -63,12 +68,31 @@ func main() {
 		fmt.Println("PNG 디코드 실패:", err)
 		os.Exit(1)
 	}
-	img := shrink(src, scale)
-	b := img.Bounds()
-	reg := automation.GlyphRegion{X0: 0, Y0: 0, X1: b.Dx(), Y1: b.Dy(), White: kind == "nick"}
-	bin := automation.BinarizeGlyph(img, reg)
-	fmt.Printf("크롭 %dx%d (원본 %dx%d), 극성=%s\n", src.Bounds().Dx(), src.Bounds().Dy(), b.Dx(), b.Dy(),
-		map[bool]string{true: "흰 글자", false: "어두운 글자"}[reg.White])
+
+	var bin *automation.GlyphBin
+	if full {
+		// 창 전체 캡처: 게임 클라이언트가 1600x900 고정이라 테두리 두께로 오프셋을 역산한다
+		b := src.Bounds()
+		offX := (b.Dx() - 1600) / 2
+		offY := b.Dy() - 900 - offX
+		var reg automation.GlyphRegion
+		if kind == "nick" {
+			reg = automation.GlyphNickRegion(offX, offY, 1600, 900)
+		} else {
+			reg = automation.GlyphMapRegion(src, offX, offY, 1600, 900)
+		}
+		bin = automation.BinarizeGlyph(src, reg)
+		fmt.Printf("창 %dx%d, 클라이언트 오프셋 (%d,%d), 영역 (%d,%d)-(%d,%d)\n",
+			b.Dx(), b.Dy(), offX, offY, reg.X0, reg.Y0, reg.X1, reg.Y1)
+	} else {
+		img := shrink(src, scale)
+		b := img.Bounds()
+		reg := automation.GlyphRegion{X0: 0, Y0: 0, X1: b.Dx(), Y1: b.Dy(), White: kind == "nick"}
+		bin = automation.BinarizeGlyph(img, reg)
+		fmt.Printf("크롭 %dx%d (원본 %dx%d), 극성=%s\n",
+			src.Bounds().Dx(), src.Bounds().Dy(), b.Dx(), b.Dy(),
+			map[bool]string{true: "흰 글자", false: "어두운 글자"}[reg.White])
+	}
 
 	dict := automation.LoadGlyphDict()
 	if got, ok := automation.RecognizeGlyphs(bin, dict); ok {
