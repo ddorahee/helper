@@ -2046,22 +2046,34 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		type MultiWin struct {
 			HWND    uint64 `json:"hwnd"`
 			Crop    string `json:"crop"`    // data URL (닉네임 영역 이미지 — 창 구분용)
-			MapText string `json:"mapText"` // 맵 이름 OCR 결과 (진단용)
+			Nick    string `json:"nick"`    // 글리프 매칭으로 읽은 닉네임 (못 읽으면 빈 문자열)
+			MapText string `json:"mapText"` // 맵 이름 (진단용)
 			MapCrop string `json:"mapCrop"` // data URL (맵 이름 영역 이미지 — 진단용)
 		}
 		results := make([]MultiWin, 0, len(windows))
 		for _, win := range windows {
 			mw := MultiWin{HWND: win.HWND}
-			crop, err := app.OCRManager.NicknameCrop(win.HWND)
-			if err == nil && crop != nil {
+			// GlyphInspect 가 포그라운드 캡처 전에 창을 활성화한다 (창 감지 시 창 전부 활성화)
+			snap, err := app.OCRManager.GlyphInspect(win.HWND, false)
+			if err != nil {
+				log.Printf("[다중창] 창 캡처 실패 (hwnd=%d): %v", win.HWND, err)
+				results = append(results, mw)
+				continue
+			}
+			if snap.NickImage != nil {
 				// 닉네임 크롭을 3배 확대해 PNG base64 data URL로
-				if b64 := encodePNGScaled(crop, 3); b64 != "" {
+				if b64 := encodePNGScaled(snap.NickImage, 3); b64 != "" {
 					mw.Crop = "data:image/png;base64," + b64
 				}
-			} else if err != nil {
-				log.Printf("[다중창] 닉네임 크롭 실패 (hwnd=%d): %v", win.HWND, err)
 			}
-
+			if snap.NickOK {
+				mw.Nick = snap.NickName
+			}
+			if snap.MapOK {
+				mw.MapText = snap.MapName
+			}
+			log.Printf("[다중창] hwnd=%d 닉='%s'(%v) 맵='%s'(%v)",
+				win.HWND, snap.NickName, snap.NickOK, snap.MapName, snap.MapOK)
 			results = append(results, mw)
 		}
 		json.NewEncoder(w).Encode(results)
@@ -2128,29 +2140,103 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			return
 		}
 		type MapInfo struct {
-			HWND    uint64 `json:"hwnd"`
-			MapText string `json:"mapText"`
-			MapCrop string `json:"mapCrop"`
-			Error   string `json:"error,omitempty"`
+			HWND     uint64 `json:"hwnd"`
+			MapText  string `json:"mapText"`
+			MapCrop  string `json:"mapCrop"`
+			NickText string `json:"nickText"`
+			NickCrop string `json:"nickCrop"`
+			Method   string `json:"method"` // "글리프" | "OCR"
+			Error    string `json:"error,omitempty"`
 		}
 		results := make([]MapInfo, 0, len(windows))
 		for _, win := range windows {
 			mi := MapInfo{HWND: win.HWND}
-			if mapText, mapImg, err := app.MultiEntry.DebugMapInfo(win.HWND); err == nil {
-				mi.MapText = mapText
-				if mapImg != nil {
-					if b64 := encodePNGScaled(mapImg, 1); b64 != "" {
+			// 글리프 매칭 먼저 (0.2ms·정확도 100%)
+			if snap, err := app.OCRManager.GlyphInspect(win.HWND, false); err == nil {
+				mi.Method = "글리프"
+				if snap.MapOK {
+					mi.MapText = snap.MapName
+				}
+				if snap.NickOK {
+					mi.NickText = snap.NickName
+				}
+				if snap.MapImage != nil {
+					if b64 := encodePNGScaled(snap.MapImage, 1); b64 != "" {
 						mi.MapCrop = "data:image/png;base64," + b64
 					}
 				}
-				log.Printf("[다중창] 맵 OCR (hwnd=%d): '%s'", win.HWND, mapText)
-			} else {
-				mi.Error = err.Error()
-				log.Printf("[다중창] 맵 OCR 실패 (hwnd=%d): %v", win.HWND, err)
+				if snap.NickImage != nil {
+					if b64 := encodePNGScaled(snap.NickImage, 1); b64 != "" {
+						mi.NickCrop = "data:image/png;base64," + b64
+					}
+				}
+				log.Printf("[다중창] 글리프 (hwnd=%d): 맵='%s'(%v) 닉='%s'(%v)",
+					win.HWND, snap.MapName, snap.MapOK, snap.NickName, snap.NickOK)
+			}
+			// 글리프가 맵을 못 읽었으면(사전에 없는 글자) 기존 OCR로 보완
+			if mi.MapText == "" {
+				if mapText, mapImg, err := app.MultiEntry.DebugMapInfo(win.HWND); err == nil {
+					mi.MapText = mapText
+					mi.Method = "OCR"
+					if mi.MapCrop == "" && mapImg != nil {
+						if b64 := encodePNGScaled(mapImg, 1); b64 != "" {
+							mi.MapCrop = "data:image/png;base64," + b64
+						}
+					}
+					log.Printf("[다중창] 맵 OCR 보완 (hwnd=%d): '%s'", win.HWND, mapText)
+				} else {
+					mi.Error = err.Error()
+					log.Printf("[다중창] 맵 인식 실패 (hwnd=%d): %v", win.HWND, err)
+				}
 			}
 			results = append(results, mi)
 		}
 		json.NewEncoder(w).Encode(results)
+	})
+
+	// 글자 사전 상태 (GET) / 학습 (POST {hwnd, map, nick})
+	// 게임 폰트가 고정 비트맵이라, 한 번 본 글자는 이후 픽셀 단위로 정확히 읽힌다.
+	http.HandleFunc("/api/glyph", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost {
+			var req struct {
+				HWND uint64 `json:"hwnd"`
+				Map  string `json:"map"`
+				Nick string `json:"nick"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "요청 해석 실패", http.StatusBadRequest)
+				return
+			}
+			if req.HWND == 0 {
+				http.Error(w, "창을 선택해주세요", http.StatusBadRequest)
+				return
+			}
+			if strings.TrimSpace(req.Map) == "" && strings.TrimSpace(req.Nick) == "" {
+				http.Error(w, "맵 이름이나 닉네임 중 하나는 입력해야 합니다", http.StatusBadRequest)
+				return
+			}
+			added, notes, err := app.OCRManager.GlyphLearn(req.HWND, false,
+				strings.TrimSpace(req.Map), strings.TrimSpace(req.Nick))
+			resp := map[string]interface{}{
+				"added": added,
+				"notes": notes,
+				"total": automation.GlyphDictSize(),
+				"chars": automation.GlyphDictChars(),
+			}
+			if err != nil {
+				resp["error"] = err.Error()
+				sendEvent(app, "logMessage", map[string]string{"message": fmt.Sprintf("[글자학습] 실패: %v", err)})
+			} else if added > 0 {
+				sendEvent(app, "logMessage", map[string]string{"message": fmt.Sprintf("[글자학습] 새 글자 %d개 (총 %d개)", added, automation.GlyphDictSize())})
+			}
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"total": automation.GlyphDictSize(),
+			"chars": automation.GlyphDictChars(),
+		})
 	})
 
 	// 바람로그 시련 모집 감시 상태 (GET) / 수동 제어 (POST {action:"start"|"stop"|"sync"|"test"|"interval"})

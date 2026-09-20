@@ -507,6 +507,10 @@ func (me *MultiEntry) cropMapRegion(hwnd uint64, img *image.RGBA) image.Image {
 // detectMapName 상단 중앙 맵 이름 OCR — 아이템 스캐너와 동일한 8x 방식
 // (RecognizeText의 흰색 이진화는 칸첸 맵 이름 색상을 지워 빈 값이 나옴).
 func (me *MultiEntry) detectMapName(hwnd uint64, img *image.RGBA) string {
+	// 글리프 매칭 우선 (0.2ms·정확도 100%). 사전에 없는 글자가 있으면 기존 OCR로 넘어간다.
+	if name, ok := me.om.ReadMapGlyph(img, hwnd); ok {
+		return name
+	}
 	cropped := me.cropMapRegion(hwnd, img)
 	if cropped == nil {
 		return ""

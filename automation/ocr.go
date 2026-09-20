@@ -430,7 +430,15 @@ func (om *OCRManager) DetectNameWithCrop(hwnd uint64) (string, image.Image, erro
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
 
-	// --- 1) 이름 OCR용 크롭 (CaptureNameRegion과 동일 로직) ---
+	// --- 1) 닉네임: 글리프 매칭 우선 ---
+	// 게임 폰트가 고정 비트맵이라 우상단 닉네임은 픽셀 단위로 정확히 읽힌다
+	// (dataset 714장 100%, 0.2ms). 사전에 없는 글자가 있을 때만 아래 OCR로 넘어간다.
+	if nickName, ok := om.ReadNickGlyph(img, hwnd); ok {
+		log.Printf("[글리프] 닉네임 '%s'", nickName)
+		return nickName, om.cropNicknameRegion(img, hwnd), nil
+	}
+
+	// --- 1-b) 이름 OCR용 크롭 (CaptureNameRegion과 동일 로직) ---
 	name := ""
 	cfg := om.config
 	cropX, cropY, cropW, cropH := cfg.NameRegionX, cfg.NameRegionY, cfg.NameRegionWidth, cfg.NameRegionHeight

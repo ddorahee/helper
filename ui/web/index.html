@@ -220,7 +220,8 @@
                         <h2 style="font-size:1rem">다중 창 입장 (최대 4개)</h2>
                         <div style="display:flex;gap:0.35rem">
                             <button id="multi-entry-detect" class="detect-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem">창 감지</button>
-                            <button id="multi-entry-mapdebug" class="detect-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem" title="창마다 상단 맵 이름을 OCR로 읽어 표시합니다. 느리므로 필요할 때만 누르세요.">맵 디버그</button>
+                            <button id="multi-entry-mapdebug" class="detect-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem" title="창마다 상단 맵 이름을 읽어 표시합니다.">맵 디버그</button>
+                            <button id="glyph-learn-toggle" class="detect-btn" style="padding:0.3rem 0.7rem;font-size:0.78rem" title="사전에 없는 글자를 가르칩니다">글자 학습</button>
                         </div>
                     </div>
                     <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.5rem;line-height:1.5">
@@ -231,6 +232,24 @@
                     </p>
                     <div id="multi-entry-list" style="display:flex;flex-direction:column;gap:0.3rem">
                         <span style="font-size:0.78rem;color:var(--text-muted)">'창 감지'를 눌러 게임 창을 확인하세요</span>
+                    </div>
+
+                    <!-- 글자 학습 — 게임 폰트가 고정 비트맵이라 한 번 본 글자는 이후 픽셀 단위로 정확히 읽힌다 -->
+                    <div id="glyph-learn-body" style="display:none;margin-top:0.6rem;padding:0.6rem;border:1px solid var(--border-color);border-radius:6px">
+                        <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.5rem;line-height:1.5">
+                            맵 이름이 <b>(모름)</b>으로 나오면 그 창을 고르고 <b>화면에 보이는 그대로</b> 입력해 저장하세요.
+                            한 번 배우면 그 글자가 들어간 다른 맵·닉네임도 바로 읽습니다.
+                            틀리게 읽느니 모른다고 하도록 만들어져서, 읽히기만 하면 그 값은 맞습니다.
+                        </p>
+                        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
+                            <select id="glyph-learn-hwnd" style="font-size:0.78rem;padding:0.25rem 0.4rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit">
+                                <option value="">창 선택</option>
+                            </select>
+                            <input id="glyph-learn-map" type="text" placeholder="현재 맵 이름" style="font-size:0.78rem;padding:0.25rem 0.4rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit;width:11rem">
+                            <input id="glyph-learn-nick" type="text" placeholder="닉네임 (선택)" style="font-size:0.78rem;padding:0.25rem 0.4rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit;width:9rem">
+                            <button id="glyph-learn-save" class="apply-btn" style="padding:0.25rem 0.7rem;font-size:0.78rem">학습</button>
+                        </div>
+                        <div id="glyph-learn-result" style="font-size:0.74rem;color:var(--text-muted);margin-top:0.45rem"></div>
                     </div>
                     <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem">
                         <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.8rem;cursor:pointer">

@@ -84,6 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupBaramlog();
     setupDaeyaConfig();
     setupCollapsibles();
+    setupGlyphLearn();
 
     if (logsContainer && currentContentSection === 'logs') {
         refreshLogs();
@@ -112,6 +113,74 @@ function updateMultiCenterRow() {
 // 카드 접기/펴기.
 // 설정 카드들이 항상 펼쳐져 있으면 화면을 잡아먹어 불편하므로 기본은 접힘이고,
 // 접고 편 상태는 브라우저에 기억해 다음에도 유지한다.
+// 글자 학습 — 사전에 없는 글자를 화면에서 배운다.
+// 게임 폰트가 고정 비트맵이라, 한 번 배우면 그 글자는 이후 픽셀 단위로 정확히 읽힌다.
+function setupGlyphLearn() {
+    const toggle = document.getElementById('glyph-learn-toggle');
+    const body = document.getElementById('glyph-learn-body');
+    const sel = document.getElementById('glyph-learn-hwnd');
+    const mapIn = document.getElementById('glyph-learn-map');
+    const nickIn = document.getElementById('glyph-learn-nick');
+    const saveBtn = document.getElementById('glyph-learn-save');
+    const result = document.getElementById('glyph-learn-result');
+    if (!toggle || !body || !sel || !saveBtn) return;
+
+    function fillWindows() {
+        const boxes = document.querySelectorAll('#multi-entry-list input[type="checkbox"]');
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">창 선택</option>' +
+            Array.from(boxes).map((b, i) => `<option value="${b.value}">창 ${i + 1}</option>`).join('');
+        if (cur) sel.value = cur;
+    }
+
+    async function showStatus() {
+        try {
+            const res = await fetch('/api/glyph');
+            const s = await res.json();
+            result.textContent = `사전 ${s.total}개 글리프 / 아는 글자 ${(s.chars || '').length}자`;
+        } catch (e) { /* 상태 표시는 실패해도 무시 */ }
+    }
+
+    toggle.addEventListener('click', () => {
+        const open = body.style.display === 'none';
+        body.style.display = open ? '' : 'none';
+        if (open) { fillWindows(); showStatus(); }
+    });
+
+    saveBtn.addEventListener('click', async () => {
+        const hwnd = sel.value;
+        if (!hwnd) { result.textContent = '창을 먼저 선택하세요.'; return; }
+        const map = (mapIn.value || '').trim();
+        const nick = (nickIn.value || '').trim();
+        if (!map && !nick) { result.textContent = '맵 이름이나 닉네임 중 하나는 입력하세요.'; return; }
+        saveBtn.disabled = true;
+        const orig = saveBtn.textContent;
+        saveBtn.textContent = '학습 중…';
+        try {
+            const res = await fetch('/api/glyph', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hwnd: Number(hwnd), map, nick })
+            });
+            const s = await res.json();
+            const notes = (s.notes || []).join(' / ');
+            if (s.error) {
+                result.textContent = `실패: ${s.error}${notes ? ' — ' + notes : ''}`;
+            } else if (s.added > 0) {
+                result.textContent = `새 글자 ${s.added}개 저장 (사전 ${s.total}개) ${notes}`;
+                mapIn.value = '';
+                nickIn.value = '';
+            } else {
+                result.textContent = notes || '새로 배운 글자가 없습니다 (이미 다 아는 글자).';
+            }
+        } catch (e) {
+            result.textContent = '실패: ' + e.message;
+        }
+        saveBtn.textContent = orig;
+        saveBtn.disabled = false;
+    });
+}
+
 function setupCollapsibles() {
     document.querySelectorAll('.collapse-btn[data-collapse]').forEach(btn => {
         const bodyId = btn.dataset.collapse;
@@ -457,10 +526,14 @@ function setupMultiEntry() {
                     const img = m.mapCrop
                         ? `<img src="${m.mapCrop}" alt="맵" style="height:22px;border:1px solid var(--border-color);border-radius:3px;background:#000">`
                         : '';
-                    div.innerHTML = `${img}<span style="font-size:0.72rem;color:var(--text-muted)">맵: ${escapeHtmlMin(m.mapText || '(인식 실패)')}</span>`;
+                    const mapTxt = m.mapText
+                        ? `${escapeHtmlMin(m.mapText)}${m.method ? ` <span style="opacity:.6">(${escapeHtmlMin(m.method)})</span>` : ''}`
+                        : '(모름 — 글자 학습 필요)';
+                    const nickTxt = m.nickText ? ` · 닉: ${escapeHtmlMin(m.nickText)}` : '';
+                    div.innerHTML = `${img}<span style="font-size:0.72rem;color:var(--text-muted)">맵: ${mapTxt}${nickTxt}</span>`;
                     div.style.display = 'flex';
                 });
-                addLogMessage(`맵 디버그: ${(infos || []).length}개 창 맵 인식 완료`);
+                addLogMessage(`맵 디버그: ${(infos || []).length}개 창 인식 완료`);
             } catch (e) {
                 addLogMessage('맵 디버그 실패: ' + e.message);
             }
@@ -479,7 +552,8 @@ function setupMultiEntry() {
             if (!wins || wins.length === 0) {
                 list.innerHTML = '<span style="font-size:0.78rem;color:var(--text-muted)">게임 창을 찾을 수 없습니다</span>';
             } else {
-                // OCR 텍스트는 이 게임 폰트에서 부정확(재↔새 등)해서 닉네임 크롭 이미지로 구분한다.
+                // 닉네임은 글리프 매칭으로 정확히 읽는다(사전에 없는 글자만 빈 값).
+                // 크롭 이미지도 같이 보여줘서 눈으로도 확인할 수 있게 둔다.
                 // 창마다 대야/칸첸 드롭다운 — 혼합 가능 (예: 2창 대야 + 1창 칸첸)
                 const defMode = 'daeya';
                 const defInput = 'fg'; // 새 행 기본값은 포그라운드 (창마다 개별 변경)
@@ -493,6 +567,7 @@ function setupMultiEntry() {
                         <input type="checkbox" value="${w.hwnd}" ${i < 4 ? 'checked' : ''}>
                         <span style="color:var(--text-muted);white-space:nowrap">창 ${i + 1}</span>
                         ${cropImg}
+                        <span style="white-space:nowrap;font-weight:600">${w.nick ? escapeHtmlMin(w.nick) : '<span style="font-weight:400;color:var(--text-muted);font-size:0.75rem">(글자 학습 필요)</span>'}</span>
                         <select class="multi-mode-select" style="font-size:0.78rem;padding:0.15rem 0.3rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit">
                             <option value="daeya" ${defMode === 'daeya' ? 'selected' : ''}>대야</option>
                             <option value="kanchen" ${defMode === 'kanchen' ? 'selected' : ''}>칸첸</option>
