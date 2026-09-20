@@ -586,26 +586,33 @@ function setupMultiEntry() {
                 // 닉네임은 글리프 매칭으로 정확히 읽는다(사전에 없는 글자만 빈 값).
                 // 크롭 이미지도 같이 보여줘서 눈으로도 확인할 수 있게 둔다.
                 // 창마다 대야/칸첸 드롭다운 — 혼합 가능 (예: 2창 대야 + 1창 칸첸)
-                const defMode = 'daeya';
-                const defInput = 'fg'; // 새 행 기본값은 포그라운드 (창마다 개별 변경)
+                // 창별 설정(대야/칸첸, 포그라운드/백그라운드, 선택 여부)은 hwnd 가 아니라
+                // 닉네임으로 기억한다. 게임을 껐다 켜면 hwnd 는 바뀌지만 이름은 그대로다.
+                const prefs = loadMultiWinPrefs();
+                let restored = 0;
                 list.innerHTML = wins.map((w, i) => {
+                    const pref = w.nick ? prefs[w.nick] : null;
+                    if (pref) restored++;
+                    const mode = (pref && pref.mode) || 'daeya';
+                    const input = (pref && pref.input) || 'fg';
+                    const checked = pref ? !!pref.checked : i < 4;
                     const cropImg = w.crop
                         ? `<img src="${w.crop}" alt="닉네임" style="height:34px;border:1px solid var(--border-color);border-radius:4px;image-rendering:pixelated;background:#000">`
                         : '<span style="font-size:0.72rem;color:var(--text-muted)">(캡처 실패)</span>';
                     // 맵 정보는 "맵 디버그" 버튼을 눌렀을 때만 이 자리에 채워진다
                     const mapInfo = `<div class="multi-map-info" data-hwnd="${w.hwnd}" style="display:none;align-items:center;gap:0.5rem;padding:0 0.2rem 0.35rem 2rem"></div>`;
-                    return `<label style="display:flex;align-items:center;gap:0.6rem;font-size:0.85rem;padding:0.35rem 0.2rem;cursor:pointer">
-                        <input type="checkbox" value="${w.hwnd}" ${i < 4 ? 'checked' : ''}>
+                    return `<label data-nick="${w.nick ? escapeHtmlMin(w.nick) : ''}" style="display:flex;align-items:center;gap:0.6rem;font-size:0.85rem;padding:0.35rem 0.2rem;cursor:pointer">
+                        <input type="checkbox" value="${w.hwnd}" ${checked ? 'checked' : ''}>
                         <span style="color:var(--text-muted);white-space:nowrap">창 ${i + 1}</span>
                         ${cropImg}
                         <span style="white-space:nowrap;font-weight:600">${w.nick ? escapeHtmlMin(w.nick) : '<span style="font-weight:400;color:var(--text-muted);font-size:0.75rem">(글자 학습 필요)</span>'}</span>
                         <select class="multi-mode-select" style="font-size:0.78rem;padding:0.15rem 0.3rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit">
-                            <option value="daeya" ${defMode === 'daeya' ? 'selected' : ''}>대야</option>
-                            <option value="kanchen" ${defMode === 'kanchen' ? 'selected' : ''}>칸첸</option>
+                            <option value="daeya" ${mode === 'daeya' ? 'selected' : ''}>대야</option>
+                            <option value="kanchen" ${mode === 'kanchen' ? 'selected' : ''}>칸첸</option>
                         </select>
-                        <select class="multi-input-select" title="포그라운드: 창을 앞으로 가져와 입력 / 백그라운드: 창을 띄우지 않고 입력·캡처" style="font-size:0.78rem;padding:0.15rem 0.3rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit;display:${i < 4 ? '' : 'none'}">
-                            <option value="fg" ${defInput === 'fg' ? 'selected' : ''}>포그라운드</option>
-                            <option value="bg" ${defInput === 'bg' ? 'selected' : ''}>백그라운드</option>
+                        <select class="multi-input-select" title="포그라운드: 창을 앞으로 가져와 입력 / 백그라운드: 창을 띄우지 않고 입력·캡처" style="font-size:0.78rem;padding:0.15rem 0.3rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit;display:${checked ? '' : 'none'}">
+                            <option value="fg" ${input === 'fg' ? 'selected' : ''}>포그라운드</option>
+                            <option value="bg" ${input === 'bg' ? 'selected' : ''}>백그라운드</option>
                         </select>
                         <span style="color:var(--text-muted);font-size:0.72rem;margin-left:auto">hwnd ${w.hwnd}</span>
                     </label>${mapInfo}`;
@@ -617,21 +624,29 @@ function setupMultiEntry() {
                 };
                 list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                     cb.addEventListener('change', () => {
-                        const checked = list.querySelectorAll('input[type="checkbox"]:checked');
-                        if (checked.length > 4) {
+                        const checkedBoxes = list.querySelectorAll('input[type="checkbox"]:checked');
+                        if (checkedBoxes.length > 4) {
                             cb.checked = false;
                             addLogMessage('다중 창 입장은 최대 4개까지입니다.');
                         }
                         syncInputVisibility(cb);
+                        saveMultiWinPrefs(list);
                     });
                     syncInputVisibility(cb);
                 });
                 // 모드 드롭다운 변경 시 중앙좌표 입력란 표시 갱신
                 // (select는 인터랙티브 요소라 label의 체크박스 토글을 트리거하지 않음)
                 list.querySelectorAll('select.multi-mode-select').forEach(sel => {
-                    sel.addEventListener('change', updateMultiCenterRow);
+                    sel.addEventListener('change', () => {
+                        updateMultiCenterRow();
+                        saveMultiWinPrefs(list);
+                    });
+                });
+                list.querySelectorAll('select.multi-input-select').forEach(sel => {
+                    sel.addEventListener('change', () => saveMultiWinPrefs(list));
                 });
                 updateMultiCenterRow();
+                if (restored > 0) addLogMessage(`다중 창 입장: 창 ${restored}개의 지난 설정을 복원했습니다.`);
                 if (window.refreshMultiInputMode) window.refreshMultiInputMode();
             }
             addLogMessage(`다중 창 입장: 창 ${(wins || []).length}개 감지됨`);
@@ -1733,3 +1748,35 @@ function setAutoStartupApi(enabled) {
     loadTelegramConfig();
 })();
 
+
+// 다중 창 입장의 창별 설정을 닉네임 기준으로 기억한다.
+// 게임을 껐다 켜면 hwnd 는 바뀌지만 캐릭터 이름은 그대로라, 이름으로 묶어야 복원이 된다.
+// (닉네임을 못 읽은 창은 기억하지 않는다 — 어느 창인지 특정할 수 없어서)
+const MULTI_WIN_PREFS_KEY = 'multiWinPrefs';
+
+function loadMultiWinPrefs() {
+    try {
+        return JSON.parse(localStorage.getItem(MULTI_WIN_PREFS_KEY) || '{}') || {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function saveMultiWinPrefs(list) {
+    const prefs = loadMultiWinPrefs();
+    list.querySelectorAll('label[data-nick]').forEach(lb => {
+        const nick = lb.dataset.nick;
+        if (!nick) return;
+        const mode = lb.querySelector('select.multi-mode-select');
+        const input = lb.querySelector('select.multi-input-select');
+        const cb = lb.querySelector('input[type="checkbox"]');
+        prefs[nick] = {
+            mode: mode ? mode.value : 'daeya',
+            input: input ? input.value : 'fg',
+            checked: cb ? !!cb.checked : false,
+        };
+    });
+    try {
+        localStorage.setItem(MULTI_WIN_PREFS_KEY, JSON.stringify(prefs));
+    } catch (e) { /* 저장 못 해도 이번 실행에는 지장 없다 */ }
+}
