@@ -241,13 +241,19 @@
                             한 번 배우면 그 글자가 들어간 다른 맵·닉네임도 바로 읽습니다.
                             틀리게 읽느니 모른다고 하도록 만들어져서, 읽히기만 하면 그 값은 맞습니다.
                         </p>
-                        <div style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center">
-                            <select id="glyph-learn-hwnd" style="font-size:0.78rem;padding:0.25rem 0.4rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit">
-                                <option value="">창 선택</option>
-                            </select>
-                            <input id="glyph-learn-map" type="text" placeholder="현재 맵 이름" style="font-size:0.78rem;padding:0.25rem 0.4rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit;width:11rem">
-                            <input id="glyph-learn-nick" type="text" placeholder="닉네임 (선택)" style="font-size:0.78rem;padding:0.25rem 0.4rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit;width:9rem">
-                            <button id="glyph-learn-save" class="apply-btn" style="padding:0.25rem 0.7rem;font-size:0.78rem">학습</button>
+                        <div style="display:flex;flex-wrap:wrap;gap:0.6rem;align-items:flex-end">
+                            <label style="display:flex;flex-direction:column;gap:0.15rem;font-size:0.7rem;color:var(--text-muted)">창
+                                <select id="glyph-learn-hwnd" style="font-size:0.78rem;padding:0.25rem 0.4rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit">
+                                    <option value="">창 선택</option>
+                                </select>
+                            </label>
+                            <label style="display:flex;flex-direction:column;gap:0.15rem;font-size:0.7rem;color:var(--text-muted)">맵 이름 (상단 가운데 띠)
+                                <input id="glyph-learn-map" type="text" placeholder="예: 대야산기슭" style="font-size:0.78rem;padding:0.25rem 0.4rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit;width:11rem">
+                            </label>
+                            <label style="display:flex;flex-direction:column;gap:0.15rem;font-size:0.7rem;color:var(--text-muted)">닉네임 (우측 상단)
+                                <input id="glyph-learn-nick" type="text" placeholder="예: 명멸멸" style="font-size:0.78rem;padding:0.25rem 0.4rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit;width:9rem">
+                            </label>
+                            <button id="glyph-learn-save" class="apply-btn" style="padding:0.3rem 0.8rem;font-size:0.78rem">학습</button>
                         </div>
                         <div id="glyph-learn-preview" style="display:none;align-items:center;gap:0.6rem;margin-top:0.5rem;flex-wrap:wrap"></div>
                         <div id="glyph-learn-result" style="font-size:0.74rem;color:var(--text-muted);margin-top:0.45rem"></div>

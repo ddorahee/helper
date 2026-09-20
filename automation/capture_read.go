@@ -7,39 +7,53 @@ import (
 	"time"
 )
 
+// 캡처 방식에 대한 메모
+//
+// CaptureWindowRaw 는 두 가지를 한다: (1) 창을 전면으로 끌어오고 (2) 화면 DC 를 창 RECT
+// 위치에서 BitBlt 한다. 그래서 두 가지 문제가 있다.
+//
+//   - 앞 창이 덮고 있으면 그 창의 픽셀이 찍힌다. 여러 창을 연달아 읽을 때
+//     SetForegroundWindow 가 제때 반영되지 않으면 직전 창 화면이 그대로 찍혀
+//     결과가 한 칸씩 밀린다 (창2 자리에 창1 닉네임 — 실제로 발생했다).
+//   - 주기적으로 도는 감시기가 쓰면 백그라운드로 돌리라고 해둔 창을 계속 전면으로 끌어온다.
+//
+// CaptureWindowQuiet(PrintWindow, PW_RENDERFULLCONTENT)는 Z-order 와 무관하게 해당 창만
+// 그리므로 둘 다 없다. 다만 게임이 관리자 권한으로 떠 있으면 UIPI 로 막히고(err=5)
+// 최소화된 창도 못 찍는다. 그런 상황은 애초에 백그라운드 입력도 안 되는 환경이라,
+// 그때만 기존 방식으로 떨어진다.
+
+// CaptureWindowQuiet 창을 앞으로 끌어오지 않는 캡처. 실패하거나 결과가 사실상 단색이면 오류.
+func (wm *WindowManager) CaptureWindowQuiet(hwnd uint64) (*image.RGBA, error) {
+	img, _, err := wm.CaptureWindowBG(hwnd)
+	if err != nil {
+		return nil, err
+	}
+	if imageMostlyBlank(img) {
+		return nil, fmt.Errorf("PrintWindow 결과가 비어 있음")
+	}
+	return img, nil
+}
+
 // captureRead 읽기(인식)용 창 캡처.
-//
-// 주의: CaptureWindowRaw 는 화면 DC 를 창 RECT 위치에서 BitBlt 한다. 그래서 그 자리에
-// 다른 창이 덮고 있으면 앞 창 픽셀이 찍힌다. 여러 창을 연달아 읽을 때 SetForegroundWindow
-// 가 제때 반영되지 않으면 직전 창 화면이 그대로 찍혀 결과가 한 칸씩 밀린다
-// (창2 자리에 창1 닉네임이 나오는 현상 — 실제로 발생했다).
-//
-// PrintWindow(PW_RENDERFULLCONTENT) 는 Z-order 와 무관하게 해당 창만 그리므로 이쪽을 먼저 쓴다.
-// 다만 게임이 관리자 권한으로 떠 있으면 UIPI 로 막히고(err=5) 최소화된 창도 못 찍는다.
-// 그런 경우엔 기존 방식으로 떨어진다.
+// activate=false 면 무슨 일이 있어도 창을 전면으로 끌어오지 않는다 — 실패하면 오류를 낸다.
 func (om *OCRManager) captureRead(hwnd uint64, activate bool) (*image.RGBA, error) {
 	if activate {
 		om.wm.ActivateWindow(hwnd)
 		time.Sleep(400 * time.Millisecond)
 	}
-	if img, _, err := om.wm.CaptureWindowBG(hwnd); err == nil {
-		if !imageMostlyBlank(img) {
-			return img, nil
-		}
-		log.Printf("[캡처] PrintWindow 결과가 비어 있음 (hwnd=%d) → 화면 캡처로 대체", hwnd)
-	} else {
-		log.Printf("[캡처] PrintWindow 실패 (hwnd=%d): %v → 화면 캡처로 대체", hwnd, err)
+	img, qerr := om.wm.CaptureWindowQuiet(hwnd)
+	if qerr == nil {
+		return img, nil
 	}
 	if !activate {
-		// 화면 캡처로 떨어지는 이상 창이 앞에 있어야 제대로 찍힌다
-		om.wm.ActivateWindow(hwnd)
-		time.Sleep(400 * time.Millisecond)
+		return nil, fmt.Errorf("백그라운드 캡처 실패: %v", qerr)
 	}
-	img, _, err := om.wm.CaptureWindowRaw(hwnd)
+	log.Printf("[캡처] PrintWindow 실패 (hwnd=%d): %v → 화면 캡처로 대체", hwnd, qerr)
+	raw, _, err := om.wm.CaptureWindowRaw(hwnd)
 	if err != nil {
 		return nil, fmt.Errorf("창 캡처 실패: %v", err)
 	}
-	return img, nil
+	return raw, nil
 }
 
 // imageMostlyBlank PrintWindow 가 실패 대신 새까만(또는 단색) 비트맵을 돌려주는 경우를 거른다.

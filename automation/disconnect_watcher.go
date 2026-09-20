@@ -155,9 +155,23 @@ func (dw *DisconnectWatcher) checkAll() {
 	}
 }
 
+// capture 감지용 캡처 — 창을 앞으로 끌어오지 않는다.
+// 이 감시기는 주기적으로 모든 창을 훑으므로, 내부에서 ActivateWindow 를 호출하는
+// CaptureWindowRaw 를 쓰면 백그라운드로 돌리라고 해둔 창을 계속 전면으로 끌어온다
+// (사용자 보고: "칸첸 백그라운드로 돌렸는데 자꾸 포그라운드로 바뀜").
+// PrintWindow 가 막히는 환경(게임이 관리자 권한 / 최소화)에서는 어차피 백그라운드
+// 운용이 불가능하므로 그때만 기존 방식으로 떨어진다.
+func (dw *DisconnectWatcher) capture(hwnd uint64) (*image.RGBA, error) {
+	if img, err := dw.wm.CaptureWindowQuiet(hwnd); err == nil {
+		return img, nil
+	}
+	img, _, err := dw.wm.CaptureWindowRaw(hwnd)
+	return img, err
+}
+
 // checkOne 단일 hwnd 검사 + 재접속 처리
 func (dw *DisconnectWatcher) checkOne(hwnd uint64) {
-	raw, _, err := dw.wm.CaptureWindowRaw(hwnd)
+	raw, err := dw.capture(hwnd)
 	if err != nil {
 		dw.log(fmt.Sprintf("hwnd=0x%X 캡처 실패: %v", hwnd, err))
 		return
@@ -195,7 +209,7 @@ func (dw *DisconnectWatcher) waitForCharSelect(hwnd uint64, timeout time.Duratio
 		if !dw.IsRunning() {
 			return
 		}
-		raw, _, err := dw.wm.CaptureWindowRaw(hwnd)
+		raw, err := dw.capture(hwnd)
 		if err == nil {
 			if _, _, _, found := FindImageMultiScale(raw, dw.charSelNeedle, nil, 60, 0.85); found {
 				dw.handleCharSelect(hwnd)
