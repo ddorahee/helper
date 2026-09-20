@@ -139,3 +139,13 @@ func (om *OCRManager) GlyphLearn(hwnd uint64, bg bool, mapText, nickText string)
 	log.Printf("[글리프] 학습 완료: %d개 추가 (총 %d개)", added, GlyphDictSize())
 	return added, notes, nil
 }
+
+// ReadNickname 창 하나를 캡처해 우상단 캐릭터 이름을 읽는다.
+// 창을 앞으로 끌어오지 않는다(PrintWindow) — 게임 창이 아니면 그냥 실패한다.
+func (om *OCRManager) ReadNickname(hwnd uint64) (string, bool) {
+	img, err := om.captureRead(hwnd, false)
+	if err != nil {
+		return "", false
+	}
+	return om.ReadNickGlyph(img, hwnd)
+}

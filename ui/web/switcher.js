@@ -42,7 +42,7 @@
                 (filled ? '  <button class="slot-clear" data-slot="' + i + '">비우기</button>' : '') +
                 '</div>' +
                 '<label class="slot-cliplabel">전환 시 복사할 텍스트</label>' +
-                '<textarea class="slot-clip" data-slot="' + i + '" rows="2" placeholder="여기 적어두면 이 창으로 전환할 때 클립보드에 복사됩니다 (붙여넣기는 직접)">' +
+                '<textarea class="slot-clip" data-slot="' + i + '" rows="2" placeholder="게임 창을 등록하면 캐릭터 이름이 자동으로 들어옵니다. 직접 고쳐도 됩니다.">' +
                 escapeHtml(s.clipText || '') + '</textarea>';
             wrap.appendChild(card);
         }

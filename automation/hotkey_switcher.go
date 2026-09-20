@@ -12,8 +12,10 @@ import (
 )
 
 // WindowSwitcher 전역 핫키로 창을 슬롯에 기억하고 그 창으로 전환하는 기능.
-//   이동: Shift+F1, Shift+F2, Shift+F3, Shift+F4, Alt+5  → 슬롯의 창으로 활성화
-//   등록: Ctrl+Shift+1~5                                  → 현재 맨 앞 창을 슬롯에 기억
+//
+//	이동: Shift+F1, Shift+F2, Shift+F3, Shift+F4, Alt+5  → 슬롯의 창으로 활성화
+//	등록: Ctrl+Shift+1~5                                  → 현재 맨 앞 창을 슬롯에 기억
+//
 // 바람의나라뿐 아니라 카카오톡 등 임의의 창을 대상으로 한다.
 // 추가: 슬롯마다 "복사 텍스트"를 둘 수 있어, 그 창으로 전환할 때 클립보드에 복사한다
 // (붙여넣기는 사용자가 직접). HWND/텍스트 모두 앱 실행 중에만 유지(영속화 X).
@@ -86,12 +88,17 @@ type WindowSwitcher struct {
 	slots    [SwitcherSlots]uint64 // HWND, 0 = 빈 슬롯
 	titles   [SwitcherSlots]string
 	clipText [SwitcherSlots]string // 전환 시 클립보드에 복사할 텍스트(비면 복사 안 함)
+	clipAuto [SwitcherSlots]bool   // 그 텍스트를 우리가 자동으로 채웠는지(사용자가 고치면 false)
 	running  bool
 	threadID uint32 // 메시지 루프 스레드 ID(종료 신호용)
 	selfHWND uint64 // helper 자기 창 — 등록에서 제외
 
 	logFunc  func(string)
 	onChange func() // 슬롯 변경 시 UI 갱신용 콜백
+
+	// nickReader 슬롯에 창을 등록할 때 그 창의 캐릭터 이름을 읽는다(없으면 자동 채움 안 함).
+	// 게임 창이 아니면 실패를 돌려주므로 카톡 같은 창은 자연스럽게 건너뛴다.
+	nickReader func(hwnd uint64) (string, bool)
 }
 
 // NewWindowSwitcher 생성
@@ -99,8 +106,16 @@ func NewWindowSwitcher(wm *WindowManager) *WindowSwitcher {
 	return &WindowSwitcher{wm: wm}
 }
 
+// SetNickReader 슬롯 등록 시 캐릭터 이름을 읽어 '복사할 텍스트'를 자동으로 채우게 한다.
+// 사용자가 그 칸을 직접 고친 뒤에는 다시 덮어쓰지 않는다.
+func (ws *WindowSwitcher) SetNickReader(fn func(hwnd uint64) (string, bool)) {
+	ws.mu.Lock()
+	ws.nickReader = fn
+	ws.mu.Unlock()
+}
+
 func (ws *WindowSwitcher) SetLogFunc(f func(string)) { ws.logFunc = f }
-func (ws *WindowSwitcher) SetOnChange(f func())       { ws.onChange = f }
+func (ws *WindowSwitcher) SetOnChange(f func())      { ws.onChange = f }
 
 // SetSelfHWND helper 자기 창 HWND 설정 — 등록 시 자기 자신은 제외(실수 방지).
 func (ws *WindowSwitcher) SetSelfHWND(hwnd uint64) {
@@ -233,8 +248,33 @@ func (ws *WindowSwitcher) register(slot int) {
 	ws.mu.Unlock()
 
 	ws.emit("슬롯 %d 기억: %q (hwnd=%d)", slot+1, title, hwnd)
+	ws.autofillClip(slot, hwnd)
 	if ws.onChange != nil {
 		ws.onChange()
+	}
+}
+
+// autofillClip 게임 창이면 캐릭터 이름을 읽어 '전환 시 복사할 텍스트'를 대신 채운다.
+// 사용자가 직접 고친 칸(clipAuto=false)은 건드리지 않는다. 칸을 비우면 다시 대상이 된다.
+func (ws *WindowSwitcher) autofillClip(slot int, hwnd uint64) {
+	ws.mu.Lock()
+	reader := ws.nickReader
+	canFill := ws.clipText[slot] == "" || ws.clipAuto[slot]
+	ws.mu.Unlock()
+	if reader == nil || !canFill {
+		return
+	}
+	nick, ok := reader(hwnd)
+	if !ok || nick == "" {
+		return
+	}
+	ws.mu.Lock()
+	changed := ws.clipText[slot] != nick
+	ws.clipText[slot] = nick
+	ws.clipAuto[slot] = true
+	ws.mu.Unlock()
+	if changed {
+		ws.emit("슬롯 %d 복사 텍스트 자동 입력: %q (직접 고치면 그 뒤론 안 건드립니다)", slot+1, nick)
 	}
 }
 
@@ -293,6 +333,9 @@ func (ws *WindowSwitcher) SetText(slot1Based int, text string) error {
 	}
 	ws.mu.Lock()
 	ws.clipText[slot1Based-1] = text
+	// 사용자가 직접 넣은 값이므로 다음 등록 때 자동으로 덮어쓰지 않는다.
+	// 비우면 다시 자동 채움 대상이 된다.
+	ws.clipAuto[slot1Based-1] = text == ""
 	ws.mu.Unlock()
 	if ws.onChange != nil {
 		ws.onChange()

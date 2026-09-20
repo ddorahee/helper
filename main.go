@@ -348,9 +348,17 @@ func main() {
 	app.WindowSwitcher = automation.NewWindowSwitcher(windowManager)
 	app.WindowSwitcher.SetLogFunc(func(msg string) {
 		sendEvent(app, "switcherLog", map[string]string{"message": msg})
-	})
 	app.WindowSwitcher.SetOnChange(func() {
 		sendEvent(app, "switcherSlots", app.WindowSwitcher.GetSlots())
+	})
+	// 게임 창을 등록하면 '전환 시 복사할 텍스트'에 캐릭터 이름을 대신 넣어준다.
+	// (그룹 초대 등에 이름을 붙여넣게 되는데, 매번 손으로 치던 것이다)
+	app.WindowSwitcher.SetNickReader(func(hwnd uint64) (string, bool) {
+		if app.OCRManager == nil {
+			return "", false
+		}
+		return app.OCRManager.ReadNickname(hwnd)
+	})
 	})
 	app.WindowSwitcher.Start()
 
