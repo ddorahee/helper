@@ -83,7 +83,7 @@ type baramlogResponse struct {
 
 // baramlogStaleThreshold 이 시간 동안 새 글이 없으면 사이트 고장으로 본다.
 // (HTTP는 200이지만 데이터가 갱신되지 않는 상태 — 실제로 11시간 정체한 적 있음)
-const baramlogStaleThreshold = 10 * time.Minute
+const baramlogStaleThreshold = 30 * time.Minute
 
 // baramlogMaxRecent 화면에 보관할 최근 발견 건수
 const baramlogMaxRecent = 50
