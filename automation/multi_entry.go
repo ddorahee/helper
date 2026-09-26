@@ -73,9 +73,19 @@ type MultiEntry struct {
 	centerY   int
 	centerSet bool
 
+	// lastEntry 창별 마지막 입장 시도 시각 — 입구맵 감시가 로딩 중인 창에 키를 연타하지 않게.
+	// run 고루틴 하나에서만 읽고 쓴다.
+	lastEntry map[uint64]time.Time
+
 	roundInterval time.Duration // 한 바퀴 주기 (기본 30초)
 	logFunc       func(string)
 }
+
+// 최소화가 아닐 때 입구맵 감시 주기와, 입장 시도 후 같은 창을 다시 건드리기까지 쉬는 시간
+const (
+	meWatchInterval = 2 * time.Second
+	meEntryCooldown = 15 * time.Second
+)
 
 // NewMultiEntry 생성
 func NewMultiEntry(wm *WindowManager, om *OCRManager) *MultiEntry {
@@ -146,6 +156,7 @@ func (me *MultiEntry) StartEntries(entries []EntryWindow, minimize bool, centerX
 	me.minimize = minimize
 	me.centerX, me.centerY = centerX, centerY
 	me.centerSet = centerX > 0 || centerY > 0
+	me.lastEntry = map[uint64]time.Time{}
 	me.running = true
 	me.stopChan = make(chan struct{})
 	stop := me.stopChan
@@ -178,7 +189,12 @@ func (me *MultiEntry) StartEntries(entries []EntryWindow, minimize bool, centerX
 	if me.centerSet {
 		extra += fmt.Sprintf(" +칸첸중앙(%d,%d)", centerX, centerY)
 	}
-	me.log("다중 입장 유지 시작 — %s, 약 %.0f초 주기%s", summary, me.roundInterval.Seconds(), extra)
+	cycle := fmt.Sprintf("약 %.0f초 주기", me.roundInterval.Seconds())
+	if !me.minimize {
+		cycle = fmt.Sprintf("입구맵 %.0f초마다 감시 + 약 %.0f초마다 전체 점검",
+			meWatchInterval.Seconds(), me.roundInterval.Seconds())
+	}
+	me.log("다중 입장 유지 시작 — %s, %s%s", summary, cycle, extra)
 	return nil
 }
 
@@ -245,8 +261,18 @@ func (me *MultiEntry) run(stop chan struct{}) {
 		if remain < 3*time.Second {
 			remain = 3 * time.Second
 		}
-		me.log("한 바퀴 완료 — %.0f초 후 재점검", remain.Seconds())
-		if !me.sleepOrStop(stop, remain) {
+		if me.minimize {
+			// 최소화된 창은 읽을 수 없다 — 기존처럼 다음 바퀴에 활성화해서 확인
+			me.log("한 바퀴 완료 — %.0f초 후 재점검", remain.Seconds())
+			if !me.sleepOrStop(stop, remain) {
+				return
+			}
+			continue
+		}
+		// 창이 늘 떠 있으니, 기다리는 동안 입구맵으로 나온 창을 2초마다 찾아 바로 입장시킨다
+		me.log("한 바퀴 완료 — 입구맵은 %.0f초마다 감시, %.0f초 후 전체 재점검",
+			meWatchInterval.Seconds(), remain.Seconds())
+		if !me.watchEntrances(stop, entries, remain) {
 			return
 		}
 	}
@@ -299,7 +325,12 @@ func (me *MultiEntry) readCoords(hwnd uint64, bg bool) (GameCoords, error) {
 	return c, err
 }
 
-// handleWindow 창 1개 점검: 활성화 → 맵 판별(창별 모드) → 입구면 입장 → 최소화.
+// handleWindow 창 1개 점검: 맵 판별(창별 모드) → 입구면 입장 → (칸첸) 중앙 이동 → (옵션) 최소화.
+//
+// 최소화 모드가 아니면 창이 늘 떠 있으므로 PrintWindow 로 조용히 읽는다. 포그라운드 창도
+// **할 일(입장·중앙 이동)이 있을 때만** 앞으로 가져온다 — 예전엔 확인만 하려고 30초마다
+// 모든 포그라운드 창을 번갈아 띄웠다. 최소화 모드는 창이 내려가 있어 읽을 수 없으니
+// 기존처럼 먼저 활성화한다.
 func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindow) {
 	hwnd := entry.HWND
 	cfg, err := meCfgFor(entry.Mode)
@@ -314,14 +345,29 @@ func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindo
 	}
 
 	bg := entry.BG
-	if !bg {
-		me.wm.ActivateWindow(hwnd)
-		if !me.sleepOrStop(stop, 900*time.Millisecond) { // 복원/렌더 대기
-			return
+	quiet := !me.minimize
+	activated := false
+	// activate 포그라운드 창을 앞으로(한 번만). 백그라운드는 할 필요 없다.
+	activate := func() bool {
+		if bg || activated {
+			return true
 		}
+		activated = true
+		me.wm.ActivateWindow(hwnd)
+		return me.sleepOrStop(stop, 900*time.Millisecond) // 복원/렌더 대기
+	}
+	if !quiet && !activate() {
+		return
 	}
 
-	state, raw := me.detectState(hwnd, bg, cfg)
+	state, raw := me.detectState(hwnd, bg || quiet, cfg)
+	if quiet && !bg && state == "unknown" {
+		// 조용한 캡처로 못 읽었으면(PrintWindow 가 막히는 환경 등) 기존 방식으로 한 번 더
+		if !activate() {
+			return
+		}
+		state, raw = me.detectState(hwnd, false, cfg)
+	}
 	inputName := "포그라운드"
 	if bg {
 		inputName = "백그라운드"
@@ -330,30 +376,38 @@ func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindo
 
 	switch state {
 	case "entrance":
+		if !activate() {
+			return
+		}
+		me.lastEntry[hwnd] = time.Now()
 		me.enterOnce(stop, hwnd, bg)
 		// 입장/로딩 대기 후 확인
 		if !me.sleepOrStop(stop, 4*time.Second) {
 			return
 		}
-		state, raw = me.detectState(hwnd, bg, cfg)
+		state, raw = me.detectState(hwnd, bg || quiet, cfg)
 		if state == "inside" {
 			me.log("창%d[%s] 입장 성공 (%s)", idx, cfg.modeName, raw)
 		} else {
-			me.log("창%d[%s] 입장 확인 안 됨 (%s) — 다음 바퀴 재시도", idx, cfg.modeName, raw)
+			me.log("창%d[%s] 입장 확인 안 됨 (%s) — 다시 시도합니다", idx, cfg.modeName, raw)
 		}
 	case "inside":
 		// 이미 사냥터
 	default:
 		// 맵 미상 — 칸첸은 단일창 모드(km.KanchenEnter)가 맵 확인 없이 입장 키를
 		// 반복해도 안전하다고 검증됐으므로(사냥맵 안에서 눌러도 무해) 입장을 시도한다.
-		// 대야는 OCR 분류가 안정적이므로 기존대로 다음 바퀴 재확인.
+		// 대야는 기존대로 다음 바퀴 재확인.
 		if entry.Mode == "kanchen" {
+			if !activate() {
+				return
+			}
 			me.log("창%d[칸첸] 맵 미상 (OCR='%s') — 단일창 방식으로 입장 시도", idx, raw)
+			me.lastEntry[hwnd] = time.Now()
 			me.enterOnce(stop, hwnd, bg)
 			if !me.sleepOrStop(stop, 4*time.Second) {
 				return
 			}
-			state, raw = me.detectState(hwnd, bg, cfg)
+			state, raw = me.detectState(hwnd, bg || quiet, cfg)
 			me.log("창%d[칸첸] 입장 시도 후 맵='%s' → %s", idx, raw, state)
 		} else {
 			me.log("창%d[%s] 맵 미상 — 다음 바퀴 재확인", idx, cfg.modeName)
@@ -362,7 +416,7 @@ func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindo
 
 	// 칸첸 창: 사냥맵이면 중앙 좌표로 이동 (아이템은 안 먹고 자리만). 대야 창은 이동 안 함.
 	if me.centerSet && entry.Mode == "kanchen" && state == "inside" {
-		me.moveToCenter(stop, idx, hwnd, bg)
+		me.moveToCenter(stop, idx, hwnd, bg, activate)
 	}
 
 	// 최소화는 옵션 (기본 꺼짐). 최소화를 켜면 위에서 모든 창을 포그라운드로
@@ -373,9 +427,26 @@ func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindo
 	me.sleepOrStop(stop, 300*time.Millisecond)
 }
 
-// moveToCenter Ctrl+D 좌표창을 열어 현재 좌표를 읽고 중앙 좌표로 방향키 이동(1회).
-// 오버슈팅해도 다음 바퀴에 보정. 아이템 습득은 하지 않는다.
-func (me *MultiEntry) moveToCenter(stop chan struct{}, idx int, hwnd uint64, bg bool) {
+// moveToCenter 칸첸 사냥맵에서 중앙 좌표로 이동(1회). 오버슈팅해도 다음 바퀴에 보정.
+//
+// 좌표는 화면 우하단 HUD(지도 아이콘 옆 "X 034 Y 037")에 항상 떠 있으므로, 먼저 키를 안
+// 누르고 조용히 읽어서 **이미 중앙이면 아무것도 하지 않는다**. 예전엔 좌표를 보려고
+// 매번 Ctrl+D 부터 눌렀다. 이동이 필요할 때만 Ctrl+D 좌표창(타일모드)을 열어
+// 방향키로 목표를 찍고 Enter — 이 흐름은 그대로다.
+func (me *MultiEntry) moveToCenter(stop chan struct{}, idx int, hwnd uint64, bg bool, activate func() bool) {
+	if img, err := me.wm.CaptureWindowQuiet(hwnd); err == nil {
+		if c, _, err := me.om.ReadCoordinatesFromImage(img); err == nil && (c.X > 0 || c.Y > 0) {
+			dx, dy := me.centerX-c.X, me.centerY-c.Y
+			if meAbs(dx) <= 1 && meAbs(dy) <= 1 {
+				me.log("창%d (%d,%d) 이미 중앙 — 키 입력 없이 넘어감", idx, c.X, c.Y)
+				return
+			}
+		}
+	}
+
+	if !activate() {
+		return
+	}
 	// Ctrl+D 좌표창 열기
 	me.tap(hwnd, bg, "d", "ctrl")
 	if !me.sleepOrStop(stop, 500*time.Millisecond) {
@@ -400,6 +471,48 @@ func (me *MultiEntry) moveToCenter(stop chan struct{}, idx int, hwnd uint64, bg 
 	me.tap(hwnd, bg, "escape") // 좌표창 닫기
 }
 
+// watchEntrances 최소화가 아닐 때, 다음 바퀴까지 남은 시간 동안 2초마다 창들의 맵을 조용히
+// 읽다가 입구맵에 나온 창이 있으면 그 창만 바로 입장시킨다 — 30초를 기다리지 않는다.
+// 최소화 모드는 창이 내려가 있어 읽을 수 없으므로 이 감시를 쓰지 않는다(기존 30초 주기 그대로).
+func (me *MultiEntry) watchEntrances(stop chan struct{}, entries []EntryWindow, d time.Duration) bool {
+	deadline := time.Now().Add(d)
+	for {
+		left := time.Until(deadline)
+		if left <= 0 {
+			return true
+		}
+		wait := meWatchInterval
+		if left < wait {
+			wait = left
+		}
+		if !me.sleepOrStop(stop, wait) {
+			return false
+		}
+		for i, e := range entries {
+			if me.stopped(stop) {
+				return false
+			}
+			// 방금 입장을 시도한 창은 로딩·재시도 중일 수 있어 잠깐 쉰다(키 연타 방지)
+			if time.Since(me.lastEntry[e.HWND]) < meEntryCooldown {
+				continue
+			}
+			cfg, err := meCfgFor(e.Mode)
+			if err != nil || !me.wm.IsWindowValid(e.HWND) {
+				continue
+			}
+			img, err := me.wm.CaptureWindowQuiet(e.HWND)
+			if err != nil {
+				continue
+			}
+			name, ok := me.om.ReadMapGlyph(img, e.HWND)
+			if !ok || me.classify(name, cfg) != "entrance" {
+				continue
+			}
+			me.log("창%d[%s] 입구맵(%s) 감지 — 바로 입장", i+1, cfg.modeName, name)
+			me.handleWindow(stop, i+1, e)
+		}
+	}
+}
 // arrows 좌표창(Ctrl+D) 타일모드 방향키 이동 후 엔터.
 func (me *MultiEntry) arrows(hwnd uint64, bg bool, dx, dy int) {
 	if dx != 0 {
