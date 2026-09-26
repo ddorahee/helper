@@ -102,12 +102,43 @@ function anyKanchenSelected() {
         .some(s => s.value === 'kanchen');
 }
 
+// 모드별 설정 카드(대야/칸첸) 헤더에 "이 모드로 돌릴 창 수"를 보여준다.
+// 체크된 창만 센다. 0개면 카드를 흐리게 할 뿐 숨기지는 않는다 — 미리 설정해둘 수 있게.
+// 칸첸 카드엔 아이템 자동 습득이 이번 구성에서 실제로 도는지도 같이 적는다
+// (마우스로 줍는 기능이라 포그라운드로 창 1개만 돌릴 때만 동작한다).
 function updateMultiCenterRow() {
-    const anyKanchen = anyKanchenSelected();
-    const centerRow = document.getElementById('multi-center-row');
-    if (centerRow) centerRow.style.display = anyKanchen ? 'flex' : 'none';
-    const pickupCard = document.getElementById('item-pickup-card');
-    if (pickupCard) pickupCard.style.display = anyKanchen ? '' : 'none';
+    const counts = { daeya: 0, kanchen: 0 };
+    let kanchenBg = 0;
+    document.querySelectorAll('#multi-entry-list label[data-hwnd]').forEach(lb => {
+        const cb = lb.querySelector('input[type="checkbox"]');
+        const mode = lb.querySelector('select.multi-mode-select');
+        const inp = lb.querySelector('select.multi-input-select');
+        if (!cb || !cb.checked || !mode || counts[mode.value] === undefined) return;
+        counts[mode.value]++;
+        if (mode.value === 'kanchen' && inp && inp.value === 'bg') kanchenBg++;
+    });
+    const total = counts.daeya + counts.kanchen;
+
+    const paint = (usageId, cardId, n, extra) => {
+        const usage = document.getElementById(usageId);
+        const card = document.getElementById(cardId);
+        if (usage) {
+            usage.textContent = (n > 0 ? `선택된 창 ${n}개` : '선택된 창 없음') + (extra ? ' · ' + extra : '');
+            usage.classList.toggle('on', n > 0);
+        }
+        if (card) card.classList.toggle('inactive', n === 0);
+    };
+
+    paint('daeya-usage', 'daeya-config-card', counts.daeya, '');
+
+    const toggle = document.getElementById('item-pickup-toggle');
+    let pickup = '';
+    if (toggle && toggle.checked && counts.kanchen > 0) {
+        pickup = (total === 1 && kanchenBg === 0)
+            ? '아이템 습득 켜짐'
+            : '아이템 습득은 포그라운드 창 1개일 때만';
+    }
+    paint('kanchen-usage', 'item-pickup-card', counts.kanchen, pickup);
 }
 // 글자 학습 — 사전에 없는 글자를 화면에서 배운다.
 // 게임 폰트가 고정 비트맵이라, 한 번 배우면 그 글자는 이후 픽셀 단위로 정확히 읽힌다.
@@ -669,6 +700,7 @@ function setupMultiEntry() {
                 }
                 syncInputVisibility(cb);
                 saveMultiWinPrefs(list);
+                updateMultiCenterRow(); // 모드별 카드의 "선택된 창 수" 갱신
             });
             syncInputVisibility(cb);
         });
@@ -680,7 +712,10 @@ function setupMultiEntry() {
             });
         });
         list.querySelectorAll('select.multi-input-select').forEach(sel => {
-            sel.addEventListener('change', () => saveMultiWinPrefs(list));
+            sel.addEventListener('change', () => {
+                saveMultiWinPrefs(list);
+                updateMultiCenterRow(); // 백그라운드면 아이템 습득이 안 돈다는 표시가 바뀐다
+            });
         });
         updateMultiCenterRow();
         if (window.refreshMultiInputMode) window.refreshMultiInputMode();
@@ -1588,6 +1623,7 @@ function setAutoStartupApi(enabled) {
             if (!res.ok) return;
             const data = await res.json();
             if (pickupToggle) pickupToggle.checked = data.enabled || false;
+            updateMultiCenterRow(); // 칸첸 카드 헤더의 아이템 습득 표시
             // Items 배열 로드
             if (data.items && Array.isArray(data.items) && data.items.length > 0) {
                 itemList = data.items.map(it => ({ name: it.name || '', color: it.color || 'green' }));
@@ -1620,6 +1656,15 @@ function setAutoStartupApi(enabled) {
             name: it.name.trim(),
             color: it.color || 'green'
         }));
+    }
+
+    // 토글은 바꾸는 즉시 저장한다 — 예전엔 본문 안 '저장'을 눌러야만 반영돼서,
+    // 스위치를 켜놓고도 실제로는 꺼진 채로 도는 일이 생길 수 있었다.
+    if (pickupToggle && pickupSaveBtn) {
+        pickupToggle.addEventListener('change', () => {
+            pickupSaveBtn.click();
+            updateMultiCenterRow();
+        });
     }
 
     // 설정 저장

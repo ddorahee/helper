@@ -2565,3 +2565,81 @@ input:checked + .slider:before {
     transition: color 0.15s;
 }
 .collapse-btn:hover { color: var(--primary-light); }
+
+/* ===== 모드별 설정 카드 (대야/칸첸) — 두 카드를 같은 틀로 ===== */
+.mode-chip {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.5;
+}
+.mode-chip-daeya   { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+.mode-chip-kanchen { background: rgba(56, 189, 248, 0.18); color: #7dd3fc; }
+.mode-usage {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.mode-usage.on { color: var(--text-color, inherit); }
+.mode-setting-card.inactive { opacity: 0.6; }
+.mode-section-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin: 0.2rem 0 0.4rem;
+}
+.mode-section-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.mode-hint {
+    font-weight: 400;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-left: 0.3rem;
+}
+.mode-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 0.7rem;
+}
+.mode-grid label {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-bottom: 0.2rem;
+}
+.mode-grid input[type="text"],
+.mode-grid input[type="number"] {
+    width: 100%;
+    padding: 0.35rem 0.45rem;
+    font-size: 0.85rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.05);
+    color: inherit;
+    box-sizing: border-box;
+}
+.mode-grid input[type="range"] { width: 100%; }
+.mode-help {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    line-height: 1.7;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    padding: 0.5rem 0.7rem;
+    margin-bottom: 0.7rem;
+}
+.mode-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+.mode-actions > button {
+    flex: 1;
+    padding: 0.4rem;
+    font-size: 0.8rem;
+}
