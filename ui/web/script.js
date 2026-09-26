@@ -642,6 +642,7 @@ function setupMultiEntry() {
         const prefs = loadMultiWinPrefs();
         let restored = 0;
         const moved = [];
+        let checkedCount = 0;
         const rows = wins.map((w, i) => {
             const key = String(w.hwnd);
             const was = prev[key];
@@ -650,12 +651,19 @@ function setupMultiEntry() {
             let checked = was ? was.checked : pref ? !!pref.checked : i < 4;
             let mode = (was && was.mode) || (pref && pref.mode) || w.area || 'daeya';
             const input = (was && was.input) || (pref && pref.input) || 'fg';
-            // 사냥터가 바뀌었으면(처음 본 것 포함) 모드를 캐릭터 위치에 맞춘다
+            // 캐릭터가 대야/칸첸 맵에 서 있으면(처음 본 것 포함, 사냥터가 바뀐 것 포함)
+            // 그 창을 선택하고 모드를 그 사냥터로 맞춘다. 지난번에 꺼뒀던 기록보다 지금 위치가 우선이다.
+            // 같은 사냥터에 있는 동안 손으로 바꾼 건(체크 해제·모드 변경) 그대로 둔다.
             if (w.area && areaSeen[key] !== w.area) {
-                if (mode !== w.area) moved.push(`창 ${i + 1}${w.nick ? '(' + w.nick + ')' : ''} → ${AREA_LABEL[w.area]}`);
+                const what = [];
+                if (mode !== w.area) what.push(AREA_LABEL[w.area]);
+                if (!checked && checkedCount < 4) { checked = true; what.push('선택'); }
+                if (what.length) moved.push(`창 ${i + 1}${w.nick ? '(' + w.nick + ')' : ''} ${what.join('·')}`);
                 mode = w.area;
                 areaSeen[key] = w.area;
             }
+            if (checked && checkedCount >= 4) checked = false; // 최대 4개
+            if (checked) checkedCount++;
             const nameCell = w.nick
                 ? `<b style="white-space:nowrap">${escapeHtmlMin(w.nick)}</b>`
                 : w.crop
@@ -722,7 +730,7 @@ function setupMultiEntry() {
 
         if (moved.length) {
             saveMultiWinPrefs(list);
-            addLogMessage('다중 창 입장: 캐릭터 위치에 맞춰 모드 변경 — ' + moved.join(', '));
+            addLogMessage('다중 창 입장: 캐릭터 위치에 맞춤 — ' + moved.join(', '));
         }
         if (announce && restored > 0) addLogMessage(`다중 창 입장: 창 ${restored}개의 지난 설정을 복원했습니다.`);
     }
@@ -1416,8 +1424,9 @@ function startOperation(wasTimerPaused) {
     }
     // 칸첸 창이 하나라도 있으면 복귀 좌표 전송 (칸첸 창에만 적용됨, 기본 34,37)
     if (rows.some(r => r.mode === 'kanchen')) {
-        const cx = (document.getElementById('multi-center-x') || {}).value || '34';
-        const cy = (document.getElementById('multi-center-y') || {}).value || '37';
+        // 칸첸 '사냥 자리' — 입장 후 이동과 아이템 습득 후 복귀가 같은 좌표를 쓴다
+        const cx = (document.getElementById('item-pickup-origin-x') || {}).value || '34';
+        const cy = (document.getElementById('item-pickup-origin-y') || {}).value || '37';
         body += `&center_x=${cx}&center_y=${cy}`;
     }
     const nDaeya = rows.filter(r => r.mode === 'daeya').length;
@@ -1642,8 +1651,9 @@ function setAutoStartupApi(enabled) {
             }
             if (pickupTileW && data.tilePixelW) pickupTileW.value = data.tilePixelW;
             if (pickupTileH && data.tilePixelH) pickupTileH.value = data.tilePixelH;
-            if (pickupOriginX) pickupOriginX.value = data.originX || 0;
-            if (pickupOriginY) pickupOriginY.value = data.originY || 0;
+            // 저장된 적 없으면(0,0) 기본 사냥 자리 34,37 — 예전 '입장 후 이동' 좌표의 기본값
+            if (pickupOriginX) pickupOriginX.value = data.originX || 34;
+            if (pickupOriginY) pickupOriginY.value = data.originY || 37;
             if (pickupTargetMap) pickupTargetMap.value = data.targetMap || '';
             if (pickupWrongMap) pickupWrongMap.value = data.wrongMap || '';
             if (pickupSkillKeys) pickupSkillKeys.value = (data.skillKeys && data.skillKeys.length > 0) ? data.skillKeys.join(',') : '';
@@ -1666,6 +1676,11 @@ function setAutoStartupApi(enabled) {
             updateMultiCenterRow();
         });
     }
+    // 사냥 자리 좌표도 바꾸면 바로 저장 — 입장 후 이동(시작할 때 화면 값을 보냄)과
+    // 아이템 습득 후 복귀(저장된 설정을 씀)가 항상 같은 좌표를 쓰게 한다.
+    [pickupOriginX, pickupOriginY].forEach(el => {
+        if (el && pickupSaveBtn) el.addEventListener('change', () => pickupSaveBtn.click());
+    });
 
     // 설정 저장
     if (pickupSaveBtn) {

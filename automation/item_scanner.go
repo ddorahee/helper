@@ -134,8 +134,9 @@ func DefaultItemScannerConfig() ItemScannerConfig {
 		ScanInterval: 1,
 		TilePixelW:   48,
 		TilePixelH:   24,
-		OriginX:      0,
-		OriginY:      0,
+		// 사냥 자리 기본값 — 다중 창의 "입장 후 이동" 좌표와 같은 자리(칸첸 설정에서 하나로 합침)
+		OriginX:      34,
+		OriginY:      37,
 		TargetMap:    "칸첸중가설산",
 		WrongMap:     "칸첸중가설산초입",
 	}

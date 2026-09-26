@@ -274,15 +274,15 @@
                         <span class="mode-usage" id="kanchen-usage">선택된 창 없음</span>
                     </div>
                     <div id="item-pickup-body" style="display:none">
-                        <div class="mode-section-title">입장 후 이동 <span class="mode-hint">사냥맵에 들어간 뒤 이 좌표로 가서 선다 (다중 창·백그라운드)</span></div>
+                        <div class="mode-section-title">사냥 자리 <span class="mode-hint">입장한 뒤 여기로 가서 서고, 아이템을 주운 뒤에도 여기로 돌아옵니다 (게임 좌표)</span></div>
                         <div class="mode-grid">
                             <div>
-                                <label>이동 좌표 X</label>
-                                <input type="text" id="multi-center-x" value="34" maxlength="3" inputmode="numeric">
+                                <label>좌표 X</label>
+                                <input type="text" id="item-pickup-origin-x" value="34" maxlength="3" pattern="[0-9]{1,3}" inputmode="numeric">
                             </div>
                             <div>
-                                <label>이동 좌표 Y</label>
-                                <input type="text" id="multi-center-y" value="37" maxlength="3" inputmode="numeric">
+                                <label>좌표 Y</label>
+                                <input type="text" id="item-pickup-origin-y" value="37" maxlength="3" pattern="[0-9]{1,3}" inputmode="numeric">
                             </div>
                         </div>
 
@@ -299,14 +299,6 @@
                             <div>
                                 <label>스캔 주기 <b id="item-pickup-interval-display">1</b>초</label>
                                 <input type="range" id="item-pickup-interval" min="1" max="15" value="1" step="1">
-                            </div>
-                            <div>
-                                <label>습득 후 복귀 X (게임좌표)</label>
-                                <input type="text" id="item-pickup-origin-x" placeholder="101" value="0" maxlength="3" pattern="[0-9]{1,3}" inputmode="numeric">
-                            </div>
-                            <div>
-                                <label>습득 후 복귀 Y (게임좌표)</label>
-                                <input type="text" id="item-pickup-origin-y" placeholder="186" value="0" maxlength="3" pattern="[0-9]{1,3}" inputmode="numeric">
                             </div>
                             <div>
                                 <label>스킬 키 (쉼표 구분)</label>
