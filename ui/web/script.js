@@ -129,9 +129,8 @@ function setupGlyphLearn() {
         const cur = sel.value;
         const opts = Array.from(rows).map((cb, i) => {
             const label = cb.closest('label');
-            const nickEl = label ? label.querySelector('span[style*="font-weight:600"]') : null;
-            const nick = nickEl ? nickEl.textContent.trim() : '';
-            const tag = nick && nick.indexOf('학습') < 0 ? ` · ${nick}` : '';
+            const nick = label && label.dataset.nick ? label.dataset.nick : '';
+            const tag = nick ? ` · ${nick}` : '';
             return `<option value="${cb.value}">창 ${i + 1}${tag} (hwnd ${cb.value})</option>`;
         });
         sel.innerHTML = '<option value="">창 선택</option>' + opts.join('');
@@ -519,7 +518,7 @@ function setupInputModeSelect() {
         if (desc) {
             desc.innerHTML = locked
                 ? '<b>포그라운드 고정</b>: "입장 후 창 최소화"가 켜져 있습니다. 최소화된 창은 백그라운드 캡처가 불가능하므로 백그라운드를 쓸 수 없습니다. 백그라운드로 돌리려면 최소화를 꺼주세요.'
-                : '입력 방식은 <b>창마다</b> 고릅니다. 백그라운드는 창을 앞으로 가져오지 않아 봇이 도는 동안 다른 작업을 할 수 있습니다(게임이 관리자 권한이면 도우미도 관리자로 실행). 창 감지 때는 화면 확인을 위해 창을 활성화합니다.';
+                : '입력 방식은 <b>창마다</b> 고릅니다. 백그라운드는 창을 앞으로 가져오지 않아 봇이 도는 동안 다른 작업을 할 수 있습니다(게임이 관리자 권한이면 도우미도 관리자로 실행). 창 목록은 창을 띄우지 않고 읽으며, 메인화면을 보고 있는 동안 2초마다 자동으로 갱신됩니다.';
         }
     }
 
@@ -573,89 +572,191 @@ function setupMultiEntry() {
         });
     }
 
+    // ===== 창 목록 (baram-yolo 방식) =====
+    // - 감지할 때 창을 앞으로 끌어오지 않는다 (서버가 PrintWindow 로 조용히 찍는다)
+    // - 캐릭터 이름과 지금 서 있는 맵을 글자로 한 줄에 보여준다
+    // - 메인화면이 보이고 자동화가 멈춰 있는 동안 2초마다 알아서 다시 읽는다 — '창 감지'를 안 눌러도
+    //   새로 켠 창이 나타나고, 캐릭터가 움직이면 맵이 따라 바뀐다
+    // - 캐릭터가 대야/칸첸 맵으로 옮겨가면 그 창의 모드를 거기에 맞춘다. 손으로 바꾼 모드는
+    //   캐릭터가 다른 사냥터로 옮겨가기 전까지 그대로 둔다
+    const AREA_LABEL = { daeya: '대야', kanchen: '칸첸' };
+    let lastWins = [];     // 마지막으로 받은 창 목록
+    let winSig = '';       // 마지막으로 그린 목록 요약 — 바뀐 게 있을 때만 다시 그린다(클릭이 씹히지 않게)
+    const mapMiss = {};    // hwnd 별 맵 연속 못 읽음 횟수
+    const areaSeen = {};   // hwnd 별 마지막으로 본 사냥터 — 바뀔 때만 모드를 맞춘다
+    let loading = false;
+
+    // 다시 그려도 방금 고른 값이 날아가지 않게, 지금 화면의 값을 hwnd 별로 모아둔다
+    function currentRowState() {
+        const st = {};
+        list.querySelectorAll('label[data-hwnd]').forEach(lb => {
+            const cb = lb.querySelector('input[type="checkbox"]');
+            const mode = lb.querySelector('select.multi-mode-select');
+            const input = lb.querySelector('select.multi-input-select');
+            st[lb.dataset.hwnd] = {
+                checked: cb ? cb.checked : false,
+                mode: mode ? mode.value : 'daeya',
+                input: input ? input.value : 'fg',
+            };
+        });
+        return st;
+    }
+
+    function render(wins, announce) {
+        if (!wins || wins.length === 0) {
+            list.innerHTML = '<span style="font-size:0.78rem;color:var(--text-muted)">게임 창을 찾을 수 없습니다</span>';
+            return;
+        }
+        const prev = currentRowState();
+        const prefs = loadMultiWinPrefs();
+        let restored = 0;
+        const moved = [];
+        const rows = wins.map((w, i) => {
+            const key = String(w.hwnd);
+            const was = prev[key];
+            const pref = !was && w.nick ? prefs[w.nick] : null;
+            if (pref) restored++;
+            let checked = was ? was.checked : pref ? !!pref.checked : i < 4;
+            let mode = (was && was.mode) || (pref && pref.mode) || w.area || 'daeya';
+            const input = (was && was.input) || (pref && pref.input) || 'fg';
+            // 사냥터가 바뀌었으면(처음 본 것 포함) 모드를 캐릭터 위치에 맞춘다
+            if (w.area && areaSeen[key] !== w.area) {
+                if (mode !== w.area) moved.push(`창 ${i + 1}${w.nick ? '(' + w.nick + ')' : ''} → ${AREA_LABEL[w.area]}`);
+                mode = w.area;
+                areaSeen[key] = w.area;
+            }
+            const nameCell = w.nick
+                ? `<b style="white-space:nowrap">${escapeHtmlMin(w.nick)}</b>`
+                : w.crop
+                    ? `<img src="${w.crop}" alt="닉네임" style="height:26px;border:1px solid var(--border-color);border-radius:4px;image-rendering:pixelated;background:#000">`
+                    : '<span style="font-size:0.75rem;color:var(--text-muted)">(이름 못 읽음)</span>';
+            const tag = !w.mapText ? ''
+                : w.area
+                    ? `<span style="margin-left:0.35rem;padding:0 0.35rem;border-radius:3px;font-size:0.68rem;background:rgba(99,102,241,0.18);color:#a5b4fc">${AREA_LABEL[w.area]}</span>`
+                    : '<span style="margin-left:0.35rem;padding:0 0.35rem;border-radius:3px;font-size:0.68rem;background:rgba(148,163,184,0.15);color:var(--text-muted)">사냥터 밖</span>';
+            const mapCell = `<span style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${w.mapText ? escapeHtmlMin(w.mapText) + tag : '(위치 못 읽음)'}</span>`;
+            const selStyle = 'font-size:0.78rem;padding:0.15rem 0.3rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit';
+            // 맵 디버그 결과는 이 자리에 채워진다
+            const mapInfo = `<div class="multi-map-info" data-hwnd="${w.hwnd}" style="display:none;align-items:center;gap:0.5rem;padding:0 0.2rem 0.35rem 2rem"></div>`;
+            return `<label data-hwnd="${w.hwnd}" data-nick="${w.nick ? escapeHtmlMin(w.nick) : ''}" style="display:grid;grid-template-columns:auto 2.6rem minmax(6rem,auto) minmax(8rem,1fr) auto auto auto;align-items:center;gap:0.55rem;font-size:0.85rem;padding:0.35rem 0.2rem;cursor:pointer">
+                        <input type="checkbox" value="${w.hwnd}" ${checked ? 'checked' : ''}>
+                        <span style="color:var(--text-muted);white-space:nowrap">창 ${i + 1}</span>
+                        ${nameCell}
+                        ${mapCell}
+                        <select class="multi-mode-select" style="${selStyle}">
+                            <option value="daeya" ${mode === 'daeya' ? 'selected' : ''}>대야</option>
+                            <option value="kanchen" ${mode === 'kanchen' ? 'selected' : ''}>칸첸</option>
+                        </select>
+                        <select class="multi-input-select" title="포그라운드: 창을 앞으로 가져와 입력 / 백그라운드: 창을 띄우지 않고 입력·캡처" style="${selStyle};visibility:${checked ? 'visible' : 'hidden'}">
+                            <option value="fg" ${input === 'fg' ? 'selected' : ''}>포그라운드</option>
+                            <option value="bg" ${input === 'bg' ? 'selected' : ''}>백그라운드</option>
+                        </select>
+                        <span style="color:var(--text-muted);font-size:0.7rem;white-space:nowrap">hwnd ${w.hwnd}</span>
+                    </label>${mapInfo}`;
+        });
+        list.innerHTML = rows.join('');
+
+        // 최대 4개 제한 + 선택된 창에만 입력 방식 드롭다운 표시
+        const syncInputVisibility = (cb) => {
+            const inp = cb.closest('label')?.querySelector('select.multi-input-select');
+            if (inp) inp.style.visibility = cb.checked ? 'visible' : 'hidden';
+        };
+        list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', () => {
+                if (list.querySelectorAll('input[type="checkbox"]:checked').length > 4) {
+                    cb.checked = false;
+                    addLogMessage('다중 창 입장은 최대 4개까지입니다.');
+                }
+                syncInputVisibility(cb);
+                saveMultiWinPrefs(list);
+            });
+            syncInputVisibility(cb);
+        });
+        // (select 는 인터랙티브 요소라 label 의 체크박스 토글을 트리거하지 않는다)
+        list.querySelectorAll('select.multi-mode-select').forEach(sel => {
+            sel.addEventListener('change', () => {
+                updateMultiCenterRow();
+                saveMultiWinPrefs(list);
+            });
+        });
+        list.querySelectorAll('select.multi-input-select').forEach(sel => {
+            sel.addEventListener('change', () => saveMultiWinPrefs(list));
+        });
+        updateMultiCenterRow();
+        if (window.refreshMultiInputMode) window.refreshMultiInputMode();
+
+        if (moved.length) {
+            saveMultiWinPrefs(list);
+            addLogMessage('다중 창 입장: 캐릭터 위치에 맞춰 모드 변경 — ' + moved.join(', '));
+        }
+        if (announce && restored > 0) addLogMessage(`다중 창 입장: 창 ${restored}개의 지난 설정을 복원했습니다.`);
+    }
+
+    // loadWindows 창 목록 갱신 — 수동 '창 감지'(poll=false)와 자동 갱신(poll=true)이 공유한다.
+    async function loadWindows(poll) {
+        if (loading) return false;
+        loading = true;
+        try {
+            const res = await fetch('/api/multi/detect' + (poll ? '?poll=1' : ''));
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const wins = await res.json();
+            if (!Array.isArray(wins)) return false;
+            // 맵 전환 암전·팝업으로 잠깐 못 읽은 창은 직전 위치를 두 번까지 유지한다
+            // (자동 갱신 때마다 "위치 못 읽음"이 깜빡이지 않게). 그 이상 못 읽으면 그대로 보여준다.
+            const prevByHwnd = {};
+            lastWins.forEach(w => { prevByHwnd[String(w.hwnd)] = w; });
+            wins.forEach(w => {
+                const k = String(w.hwnd);
+                const p = prevByHwnd[k];
+                if (w.mapText) { mapMiss[k] = 0; return; }
+                if (p && p.mapText && (mapMiss[k] || 0) < 2) {
+                    w.mapText = p.mapText;
+                    w.area = p.area;
+                    mapMiss[k] = (mapMiss[k] || 0) + 1;
+                }
+                // 이름도 한 번 읽혔던 창이면 잠깐 가려져 못 읽어도 유지
+                if (!w.nick && p && p.nick) w.nick = p.nick;
+            });
+            lastWins = wins;
+            const sig = JSON.stringify(wins.map(w => [w.hwnd, w.nick, w.mapText, w.area, w.crop ? 1 : 0]));
+            if (!poll || sig !== winSig || list.querySelector('label[data-hwnd]') === null) {
+                render(wins, !poll);
+                winSig = sig;
+            }
+            if (!poll) addLogMessage(`다중 창 입장: 창 ${wins.length}개 감지됨`);
+            return true;
+        } catch (e) {
+            if (!poll) addLogMessage('다중 창 입장: 창 감지 실패 - ' + e.message);
+            return false;
+        } finally {
+            loading = false;
+        }
+    }
+
     detectBtn.addEventListener('click', async () => {
         detectBtn.disabled = true;
         const orig = detectBtn.textContent;
         detectBtn.textContent = '감지 중…';
-        try {
-            const res = await fetch('/api/multi/detect');
-            const wins = await res.json();
-            if (!wins || wins.length === 0) {
-                list.innerHTML = '<span style="font-size:0.78rem;color:var(--text-muted)">게임 창을 찾을 수 없습니다</span>';
-            } else {
-                // 닉네임은 글리프 매칭으로 정확히 읽는다(사전에 없는 글자만 빈 값).
-                // 크롭 이미지도 같이 보여줘서 눈으로도 확인할 수 있게 둔다.
-                // 창마다 대야/칸첸 드롭다운 — 혼합 가능 (예: 2창 대야 + 1창 칸첸)
-                // 창별 설정(대야/칸첸, 포그라운드/백그라운드, 선택 여부)은 hwnd 가 아니라
-                // 닉네임으로 기억한다. 게임을 껐다 켜면 hwnd 는 바뀌지만 이름은 그대로다.
-                const prefs = loadMultiWinPrefs();
-                let restored = 0;
-                list.innerHTML = wins.map((w, i) => {
-                    const pref = w.nick ? prefs[w.nick] : null;
-                    if (pref) restored++;
-                    const mode = (pref && pref.mode) || 'daeya';
-                    const input = (pref && pref.input) || 'fg';
-                    const checked = pref ? !!pref.checked : i < 4;
-                    const cropImg = w.crop
-                        ? `<img src="${w.crop}" alt="닉네임" style="height:34px;border:1px solid var(--border-color);border-radius:4px;image-rendering:pixelated;background:#000">`
-                        : '<span style="font-size:0.72rem;color:var(--text-muted)">(캡처 실패)</span>';
-                    // 맵 정보는 "맵 디버그" 버튼을 눌렀을 때만 이 자리에 채워진다
-                    const mapInfo = `<div class="multi-map-info" data-hwnd="${w.hwnd}" style="display:none;align-items:center;gap:0.5rem;padding:0 0.2rem 0.35rem 2rem"></div>`;
-                    return `<label data-nick="${w.nick ? escapeHtmlMin(w.nick) : ''}" style="display:flex;align-items:center;gap:0.6rem;font-size:0.85rem;padding:0.35rem 0.2rem;cursor:pointer">
-                        <input type="checkbox" value="${w.hwnd}" ${checked ? 'checked' : ''}>
-                        <span style="color:var(--text-muted);white-space:nowrap">창 ${i + 1}</span>
-                        ${cropImg}
-                        <span style="white-space:nowrap;font-weight:600">${w.nick ? escapeHtmlMin(w.nick) : '<span style="font-weight:400;color:var(--text-muted);font-size:0.75rem">(글자 학습 필요)</span>'}</span>
-                        <select class="multi-mode-select" style="font-size:0.78rem;padding:0.15rem 0.3rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit">
-                            <option value="daeya" ${mode === 'daeya' ? 'selected' : ''}>대야</option>
-                            <option value="kanchen" ${mode === 'kanchen' ? 'selected' : ''}>칸첸</option>
-                        </select>
-                        <select class="multi-input-select" title="포그라운드: 창을 앞으로 가져와 입력 / 백그라운드: 창을 띄우지 않고 입력·캡처" style="font-size:0.78rem;padding:0.15rem 0.3rem;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-secondary,rgba(255,255,255,0.05));color:inherit;display:${checked ? '' : 'none'}">
-                            <option value="fg" ${input === 'fg' ? 'selected' : ''}>포그라운드</option>
-                            <option value="bg" ${input === 'bg' ? 'selected' : ''}>백그라운드</option>
-                        </select>
-                        <span style="color:var(--text-muted);font-size:0.72rem;margin-left:auto">hwnd ${w.hwnd}</span>
-                    </label>${mapInfo}`;
-                }).join('');
-                // 최대 4개 제한 + 선택된 창에만 입력 방식 드롭다운 표시
-                const syncInputVisibility = (cb) => {
-                    const inp = cb.closest('label')?.querySelector('select.multi-input-select');
-                    if (inp) inp.style.display = cb.checked ? '' : 'none';
-                };
-                list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                    cb.addEventListener('change', () => {
-                        const checkedBoxes = list.querySelectorAll('input[type="checkbox"]:checked');
-                        if (checkedBoxes.length > 4) {
-                            cb.checked = false;
-                            addLogMessage('다중 창 입장은 최대 4개까지입니다.');
-                        }
-                        syncInputVisibility(cb);
-                        saveMultiWinPrefs(list);
-                    });
-                    syncInputVisibility(cb);
-                });
-                // 모드 드롭다운 변경 시 중앙좌표 입력란 표시 갱신
-                // (select는 인터랙티브 요소라 label의 체크박스 토글을 트리거하지 않음)
-                list.querySelectorAll('select.multi-mode-select').forEach(sel => {
-                    sel.addEventListener('change', () => {
-                        updateMultiCenterRow();
-                        saveMultiWinPrefs(list);
-                    });
-                });
-                list.querySelectorAll('select.multi-input-select').forEach(sel => {
-                    sel.addEventListener('change', () => saveMultiWinPrefs(list));
-                });
-                updateMultiCenterRow();
-                if (restored > 0) addLogMessage(`다중 창 입장: 창 ${restored}개의 지난 설정을 복원했습니다.`);
-                if (window.refreshMultiInputMode) window.refreshMultiInputMode();
-            }
-            addLogMessage(`다중 창 입장: 창 ${(wins || []).length}개 감지됨`);
-        } catch (e) {
-            addLogMessage('다중 창 입장: 창 감지 실패 - ' + e.message);
-        }
+        await loadWindows(false);
         detectBtn.textContent = orig;
         detectBtn.disabled = false;
     });
+
+    // 자동 갱신 — 메인화면이 보이고, 자동화가 멈춰 있고, 드롭다운을 여는 중이 아닐 때만.
+    // (자동화가 도는 중엔 봇이 직접 창을 본다 — 굳이 같이 찍지 않는다)
+    setInterval(() => {
+        if (loading || document.hidden || isRunning) return;
+        if (currentContentSection !== 'main') return;
+        const ae = document.activeElement;
+        if (ae && ae.tagName === 'SELECT' && list.contains(ae)) return;
+        loadWindows(true);
+    }, 2000);
+    // 게임 창에 가려졌다가 다시 보이면 기다리지 않고 바로 읽는다
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && !isRunning && currentContentSection === 'main') loadWindows(true);
+    });
+    // 켜자마자 한 번 읽는다 — 2초 기다리지 않게
+    if (currentContentSection === 'main') loadWindows(true);
 }
 
 function escapeHtmlMin(s) {

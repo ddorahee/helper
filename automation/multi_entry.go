@@ -613,3 +613,16 @@ func (me *MultiEntry) enterOnce(stop chan struct{}, hwnd uint64, bg bool) {
 		}
 	}
 }
+
+// AreaOfMap 맵 이름이 어느 입장 모드에 속하는지 — "daeya" | "kanchen" | ""(그 외).
+// 창 목록에서 캐릭터가 지금 서 있는 곳을 보고 창별 모드를 맞출 때 쓴다.
+// 맵 이름은 글리프로 정확히 읽히므로 키워드 포함으로 충분하다.
+func AreaOfMap(mapName string) string {
+	switch {
+	case strings.Contains(mapName, "칸첸"):
+		return "kanchen"
+	case strings.Contains(mapName, "대야"):
+		return "daeya"
+	}
+	return ""
+}

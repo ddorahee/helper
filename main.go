@@ -2050,6 +2050,12 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 	// 다중 창 입장용 창 감지 — 닉네임 크롭 이미지 + OCR 텍스트 반환 (창 구분용)
 	http.HandleFunc("/api/multi/detect", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		// ?poll=1 = UI 의 자동 갱신(몇 초마다). 창을 절대 건드리지 않는다.
+		// 수동 '창 감지'도 기본은 PrintWindow(창을 앞으로 안 끌어옴)이고, 그게 실패한 창
+		// (최소화 등)에만 활성화 폴백을 쓴다 — 자동화가 돌고 있으면 그것도 안 한다
+		// (창을 빼앗으면 포그라운드로 치던 키가 엉뚱한 창으로 간다).
+		poll := r.URL.Query().Get("poll") == "1"
+		allowRaw := !poll && (app.TimerManager == nil || !app.TimerManager.IsRunning())
 		windows, err := app.WindowManager.FindGameWindows()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("창 감지 실패: %v", err), http.StatusInternalServerError)
@@ -2057,35 +2063,40 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		}
 		type MultiWin struct {
 			HWND    uint64 `json:"hwnd"`
-			Crop    string `json:"crop"`    // data URL (닉네임 영역 이미지 — 창 구분용)
-			Nick    string `json:"nick"`    // 글리프 매칭으로 읽은 닉네임 (못 읽으면 빈 문자열)
-			MapText string `json:"mapText"` // 맵 이름 (진단용)
-			MapCrop string `json:"mapCrop"` // data URL (맵 이름 영역 이미지 — 진단용)
+			Nick    string `json:"nick"`    // 글리프로 읽은 캐릭터 이름 (못 읽으면 "")
+			Crop    string `json:"crop"`    // 이름을 못 읽었을 때만 닉네임 영역 이미지 (눈으로 구분용)
+			MapText string `json:"mapText"` // 지금 서 있는 맵 (못 읽으면 "": 맵 전환 암전·팝업·최소화)
+			Area    string `json:"area"`    // 그 맵이 속한 입장 모드: "daeya" | "kanchen" | ""(그 외)
 		}
 		results := make([]MultiWin, 0, len(windows))
 		for _, win := range windows {
 			mw := MultiWin{HWND: win.HWND}
-			// GlyphInspect 가 포그라운드 캡처 전에 창을 활성화한다 (창 감지 시 창 전부 활성화)
-			snap, err := app.OCRManager.GlyphInspect(win.HWND, false)
+			snap, err := app.OCRManager.GlyphInspect(win.HWND, true) // PrintWindow — 창을 건드리지 않는다
+			if err != nil && allowRaw {
+				snap, err = app.OCRManager.GlyphInspect(win.HWND, false) // 최소화 등: 수동 감지일 때만 활성화 폴백
+			}
 			if err != nil {
-				log.Printf("[다중창] 창 캡처 실패 (hwnd=%d): %v", win.HWND, err)
+				if !poll {
+					log.Printf("[다중창] 창 캡처 실패 (hwnd=%d): %v", win.HWND, err)
+				}
 				results = append(results, mw)
 				continue
 			}
-			if snap.NickImage != nil {
-				// 닉네임 크롭을 3배 확대해 PNG base64 data URL로
+			if snap.NickOK {
+				mw.Nick = snap.NickName
+			} else if snap.NickImage != nil {
+				// 이름을 글자로 읽었으면 이미지는 안 보낸다 (UI 는 글자로 표시)
 				if b64 := encodePNGScaled(snap.NickImage, 3); b64 != "" {
 					mw.Crop = "data:image/png;base64," + b64
 				}
 			}
-			if snap.NickOK {
-				mw.Nick = snap.NickName
-			}
 			if snap.MapOK {
 				mw.MapText = snap.MapName
+				mw.Area = automation.AreaOfMap(snap.MapName)
 			}
-			log.Printf("[다중창] hwnd=%d 닉='%s'(%v) 맵='%s'(%v)",
-				win.HWND, snap.NickName, snap.NickOK, snap.MapName, snap.MapOK)
+			if !poll {
+				log.Printf("[다중창] hwnd=%d 닉='%s' 맵='%s'(%s)", win.HWND, mw.Nick, mw.MapText, mw.Area)
+			}
 			results = append(results, mw)
 		}
 		json.NewEncoder(w).Encode(results)

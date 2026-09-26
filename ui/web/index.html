@@ -177,11 +177,12 @@
                     <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.5rem;line-height:1.5">
                         선택한 창들을 약 30초 주기로 순환하며 <b>입구맵이면 입장</b>, 사냥맵이면 그대로 둡니다.
                         <b>2개 이상</b> 선택 시 입장 유지만(사냥은 게임 내 자동사냥),
-                        <b>1개</b>만 선택하면 그 창으로 기존 로직(대야 스킬/칸첸 아이템)이 돕니다.
-                        아무것도 선택 안 하면 기존과 동일(첫 번째 창).
+                        <b>1개</b>만 선택하면 그 창으로 기존 로직(대야 스킬/칸첸 아이템)이 돕니다 — 칸첸 아이템 습득은 포그라운드일 때만.
+                        창 목록은 <b>창을 띄우지 않고</b> 읽고, 이 화면을 보는 동안 <b>2초마다 자동 갱신</b>됩니다.
+                        캐릭터가 대야/칸첸 맵에 서 있으면 모드가 거기에 맞춰집니다.
                     </p>
                     <div id="multi-entry-list" style="display:flex;flex-direction:column;gap:0.3rem">
-                        <span style="font-size:0.78rem;color:var(--text-muted)">'창 감지'를 눌러 게임 창을 확인하세요</span>
+                        <span style="font-size:0.78rem;color:var(--text-muted)">게임 창을 찾는 중… (자동으로 갱신됩니다)</span>
                     </div>
 
                     <!-- 글자 학습 — 게임 폰트가 고정 비트맵이라 한 번 본 글자는 이후 픽셀 단위로 정확히 읽힌다 -->
