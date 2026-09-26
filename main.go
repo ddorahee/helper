@@ -704,10 +704,13 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 		// 아이템 스캐너 시작 (칸첸 단일 창만). 다중 창(2개 이상)일 땐 포그라운드를 순환
 		// 점유하므로 아이템 스캐너와 공존 불가 → 시작하지 않음.
-		// 창 1개 선택 시엔 그 창의 드롭다운 모드가 칸첸일 때만.
+		// 창 1개 선택 시엔 그 창의 드롭다운 모드가 칸첸이고 **포그라운드일 때만**.
+		// 아이템 스캐너는 마우스 클릭 + 창 활성화 캡처라 백그라운드로는 못 돈다 —
+		// 백그라운드를 골랐는데 여기서 켜면 창이 앞으로 끌려온다(사용자 보고).
+		// 백그라운드 단일 칸첸은 다중 창과 똑같이 입장 유지 + 중앙 이동만 한다.
 		kanchenSingle := internalMode == ModeKanchenParty ||
 			((internalMode == ModeKanchenEnter || internalMode == ModeDaeyaEnter) &&
-				len(multiEntries) == 1 && multiEntries[0].Mode == "kanchen") ||
+				len(multiEntries) == 1 && multiEntries[0].Mode == "kanchen" && !multiEntries[0].BG) ||
 			(internalMode == ModeKanchenEnter && len(multiEntries) == 0)
 		if kanchenSingle {
 			scanHwnd := uint64(0)
