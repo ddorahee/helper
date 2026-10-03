@@ -92,6 +92,8 @@ type Trial struct {
 	phase    string
 	mutex    sync.Mutex
 	logFunc  func(string)
+	// onComplete 정한 횟수를 다 채워 끝났을 때 부른다(중지·오류로 끝난 건 아님) — 앱이 전체 실행을 정리한다
+	onComplete func()
 
 	// 루프 고루틴 전용 (Start 에서 초기화)
 	dungeonSeen map[uint64]bool // 이번 회차에 "던전 확인" 로그를 남긴 창
@@ -130,6 +132,11 @@ func (t *Trial) SetConfig(cfg TrialConfig) {
 // SetLogFunc 로그 콜백 설정
 func (t *Trial) SetLogFunc(f func(string)) {
 	t.logFunc = f
+}
+
+// SetOnComplete 정한 횟수를 다 채웠을 때 부를 콜백 (루프 고루틴이 정리를 마친 뒤 부른다)
+func (t *Trial) SetOnComplete(f func()) {
+	t.onComplete = f
 }
 
 func (t *Trial) log(msg string) {
@@ -259,13 +266,19 @@ func (t *Trial) finish(msg string) {
 	}
 	t.mutex.Lock()
 	t.running = false
-	if t.phase != TrialPhaseDone {
+	completed := t.phase == TrialPhaseDone
+	if !completed {
 		t.phase = TrialPhaseIdle
 	}
 	done := t.done
 	t.mutex.Unlock()
 	t.log(msg)
 	close(done)
+	// 정한 횟수를 다 채웠으면 앱 전체 실행도 끝낸다 — 예전엔 시련만 멈추고 타이머는 '실행 중'으로
+	// 남아 중지를 직접 눌러야 다른 기능을 시작할 수 있었다
+	if completed && t.onComplete != nil {
+		t.onComplete()
+	}
 }
 
 // Start 솔로 시련 시작 — 던전·횟수·목표 좌표는 먼저 SetConfig 로 정한다.

@@ -288,6 +288,13 @@ func main() {
 		// 시련 탭 로그로 보낸다 (예전엔 rotationLog로 보내 자동사냥 탭에 찍혔음)
 		sendEvent(app, "trialLog", map[string]string{"message": msg})
 	})
+	// 정한 횟수를 다 채우면 중지를 누른 것처럼 전체 실행을 정리한다
+	trial.SetOnComplete(func() {
+		go func() {
+			stopOperation(app)
+			sendEvent(app, "trialLog", map[string]string{"message": "정한 횟수를 다 채워 시련을 마쳤습니다"})
+		}()
+	})
 	app.Trial = trial
 	// 저장된 시련 설정(던전·횟수) — 시작 전에도 상태 표시에 쓰인다
 	trial.SetConfig(trialEngineConfig(app, normalizeTrialSettings(characterStore.GetTrialSettings())))
