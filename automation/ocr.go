@@ -424,8 +424,6 @@ func (om *OCRManager) DetectNameWithCrop(hwnd uint64) (string, image.Image, erro
 	if err != nil {
 		return "", nil, err
 	}
-	width := img.Bounds().Dx()
-	height := img.Bounds().Dy()
 
 	// --- 1) 닉네임: 글리프 매칭 우선 ---
 	// 게임 폰트가 고정 비트맵이라 우상단 닉네임은 픽셀 단위로 정확히 읽힌다
@@ -436,6 +434,18 @@ func (om *OCRManager) DetectNameWithCrop(hwnd uint64) (string, image.Image, erro
 	}
 
 	// --- 1-b) 이름 OCR용 크롭 (CaptureNameRegion과 동일 로직) ---
+	name := om.ocrNameRegion(img, hwnd)
+
+	// --- 2) 닉네임 크롭 이미지 (client-relative, 검증된 영역) ---
+	nick := om.cropNicknameRegion(img, hwnd)
+	return name, nick, nil
+}
+
+// ocrNameRegion 설정 영역(OCR 캐릭터 감지 설정)을 잘라 예전 방식(WinRT OCR)으로 이름을 추정한다.
+// 글리프로 닉네임을 못 읽었을 때만 쓰는 보조 경로 — 오인식이 있을 수 있어 정확한 이름으로 취급하지 않는다.
+func (om *OCRManager) ocrNameRegion(img *image.RGBA, hwnd uint64) string {
+	width := img.Bounds().Dx()
+	height := img.Bounds().Dy()
 	name := ""
 	cfg := om.config
 	cropX, cropY, cropW, cropH := cfg.NameRegionX, cfg.NameRegionY, cfg.NameRegionWidth, cfg.NameRegionHeight
@@ -460,10 +470,7 @@ func (om *OCRManager) DetectNameWithCrop(hwnd uint64) (string, image.Image, erro
 		nameImg := img.SubImage(image.Rect(cropX, cropY, cropX+cropW, cropY+cropH))
 		name, _ = om.RecognizeText(nameImg)
 	}
-
-	// --- 2) 닉네임 크롭 이미지 (client-relative, 검증된 영역) ---
-	nick := om.cropNicknameRegion(img, hwnd)
-	return name, nick, nil
+	return name
 }
 
 // cropNicknameRegion 캡처된 이미지에서 우측 상단 닉네임 셀(클라이언트 기준)을 잘라 반환.

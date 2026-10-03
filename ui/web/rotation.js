@@ -36,7 +36,9 @@
     document.addEventListener('DOMContentLoaded', () => {
         if (!characterList) return;
         setupRotationListeners();
-        loadCharacters();
+        // 켤 때 한 번 창을 감지해 이름이 같은 캐릭터에 붙인다(창을 띄우지 않음).
+        // 캐릭터 목록이 있어야 배정할 수 있으니 불러온 다음에 한다. 그다음은 '감지' 버튼으로만.
+        loadCharacters().then(() => detectWindows(true));
         loadCoordinates();
         loadOCRConfig();
         checkOCRAvailability();
@@ -365,7 +367,7 @@
     // === 캐릭터 CRUD ===
 
     function loadCharacters() {
-        fetch('/api/rotation/characters')
+        return fetch('/api/rotation/characters')
             .then(r => r.json())
             .then(data => {
                 characters = data || [];
@@ -664,26 +666,29 @@
 
     // === 윈도우 감지 & 할당 ===
 
-    async function detectWindows() {
-        detectWindowsBtn.textContent = '감지 중...';
-        detectWindowsBtn.disabled = true;
+    // detectWindows 창 감지 — 켤 때 한 번(quiet)과 '감지' 버튼에서 부른다(메인화면과 같은 방식).
+    // 서버가 창을 앞으로 끌어오지 않고 읽어서 이름·맵을 돌려주고, 이름이 같은 캐릭터에 자동 할당한다.
+    // quiet 이면 최소화된 창도 띄우지 않는다. (버튼 클릭은 이벤트 객체가 넘어오므로 === true 로만 판단)
+    async function detectWindows(quiet) {
+        const isQuiet = quiet === true;
+        if (!isQuiet) {
+            detectWindowsBtn.textContent = '감지 중...';
+            detectWindowsBtn.disabled = true;
+        }
 
         try {
             let useOCR = false;
             let data;
 
-            // OCR 감지 먼저 시도
             try {
-                const r = await fetch('/api/rotation/detect-with-ocr');
+                const r = await fetch('/api/rotation/detect-with-ocr' + (isQuiet ? '?poll=1' : ''));
                 if (r.ok) {
                     data = await r.json();
                     useOCR = true;
                 }
             } catch (e) {
-                // OCR 실패 시 기존 방식 fallback
+                // 실패하면 아래에서 창 목록만 받는다
             }
-
-            // OCR 실패 시 기존 방식
             if (!useOCR) {
                 const r = await fetch('/api/rotation/windows');
                 data = await r.json();
@@ -701,8 +706,6 @@
             }
 
             renderWindows();
-            // 닉네임 크롭 이미지는 detect-with-ocr 응답(nickCrop)에 포함되어 렌더됨
-            // → 무거운 전체 스크린샷 순차 로드 제거(속도).
         } catch (e) {
             windowList.innerHTML = '<p class="empty-placeholder">창 감지에 실패했습니다.</p>';
         } finally {
@@ -723,20 +726,20 @@
                 });
                 windowAssignments[win.matchedId] = win.hwnd;
                 const matchType = win.confidence === 'exact' ? '정확' : win.confidence === 'remaining' ? '소거법' : '부분';
-                addRotationLog(`OCR: "${win.detectedName || '(미인식)'}" → ${win.matchedName} (${matchType} 일치)`);
+                addRotationLog(`창 이름 "${win.detectedName || '(못 읽음)'}" → ${win.matchedName} (${matchType}${win.confidence === 'remaining' ? '' : ' 일치'})`);
             }
         }
 
         if (assignments.length > 0) {
             sendAssignments(assignments);
-            addRotationLog(`OCR로 ${assignments.length}개 캐릭터 자동 할당 완료`);
+            addRotationLog(`이름으로 ${assignments.length}개 캐릭터 자동 할당 완료`);
         }
 
         // 매칭 실패한 캐릭터 안내
         const matchedCharIds = new Set(assignments.map(a => a.characterId));
         const unmatchedChars = characters.filter(c => !matchedCharIds.has(c.id));
         if (unmatchedChars.length > 0) {
-            addRotationLog(`${unmatchedChars.length}개 캐릭터 OCR 매칭 실패 - 수동 할당 필요`);
+            addRotationLog(`${unmatchedChars.length}개 캐릭터는 창을 못 찾음 — 게임 창이 켜져 있는지 확인하거나 수동 할당`);
         }
 
         syncCharacterEnabled();
@@ -774,44 +777,48 @@
             return;
         }
 
+        // 메인화면 창 목록과 같은 모양 — 이름을 글자로 읽었으면 굵은 글자로, 못 읽었으면 닉네임 이미지로.
+        // 지금 서 있는 맵도 같이 보여준다.
+        const MATCH_LABEL = { partial: '부분 일치', remaining: '소거법' };
         windowList.innerHTML = detectedWindows.map((w, idx) => {
             const isExcluded = excludedWindows.has(w.hwnd);
             const charOptions = characters.map(c =>
                 `<option value="${c.id}" ${windowAssignments[c.id] == w.hwnd ? 'selected' : ''}>${escapeHtml(c.name)}</option>`
             ).join('');
 
-            // OCR 감지 이름 표시
-            const detectedName = w.detectedName || '';
-            const confidence = w.confidence || '';
-            let ocrBadge = '';
-            if (detectedName) {
-                ocrBadge = `<span class="ocr-badge ${confidence}">${escapeHtml(detectedName)}</span>`;
-            } else if (w.confidence === 'none') {
-                ocrBadge = '<span class="ocr-badge none">OCR 미감지</span>';
+            const name = w.detectedName || '';
+            let nameCell;
+            if (name && w.nameExact) {
+                nameCell = `<b class="window-char-name">${escapeHtml(name)}</b>`;
+            } else if (w.nickCrop) {
+                nameCell = `<img class="window-nick" src="${w.nickCrop}" alt="닉네임" style="height:26px;image-rendering:pixelated;background:#000;border:1px solid var(--border-color);border-radius:4px">`
+                    + (name ? ` <span class="ocr-badge partial" title="글자로 못 읽어 예전 OCR로 추정한 이름">${escapeHtml(name)}?</span>` : '');
+            } else {
+                nameCell = '<span style="font-size:0.75rem;color:var(--text-muted)">(이름 못 읽음)</span>';
             }
+            const mapCell = w.mapText
+                ? `<span class="window-map" style="font-size:0.75rem;color:var(--text-muted)">${escapeHtml(w.mapText)}</span>`
+                : '<span class="window-map" style="font-size:0.75rem;color:var(--text-muted)">(위치 못 읽음)</span>';
+            const matchNote = w.matchedId && MATCH_LABEL[w.confidence]
+                ? `<span class="ocr-badge ${w.confidence}" title="이름이 정확히 같지 않아 추정으로 배정됨 — 확인하세요">${MATCH_LABEL[w.confidence]}</span>`
+                : '';
 
             return `
                 <div class="window-item-card ${isExcluded ? 'excluded' : ''}" data-hwnd="${w.hwnd}">
-                    <div class="window-item-header">
+                    <div class="window-item-header" style="display:flex;align-items:center;gap:0.5rem">
                         <label class="window-toggle">
                             <input type="checkbox" ${!isExcluded ? 'checked' : ''} onchange="rotationToggleWindow(${w.hwnd}, this.checked)">
                         </label>
                         <div class="window-order">${idx + 1}</div>
-                        <div class="window-info">
-                            <div class="window-title">${escapeHtml(w.title)}</div>
-                            ${ocrBadge ? `<div class="window-ocr-name">${ocrBadge}</div>` : ''}
+                        <div class="window-info" style="flex:1;min-width:0">
+                            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nameCell}</div>
+                            <div style="display:flex;align-items:center;gap:0.35rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${mapCell}${matchNote}</div>
                         </div>
-                        <select class="window-assign-select" data-hwnd="${w.hwnd}" ${isExcluded ? 'disabled' : ''} onchange="rotationWindowAssignChanged()">
+                        <select class="window-assign-select" data-hwnd="${w.hwnd}" ${isExcluded ? 'disabled' : ''} onchange="rotationWindowAssignChanged()" style="max-width:8rem">
                             <option value="">-- 미할당 --</option>
                             ${charOptions}
                         </select>
                     </div>
-                    <div class="window-nick-container">
-                        ${w.nickCrop
-                            ? `<img class="window-nick" src="${w.nickCrop}" alt="닉네임" style="height:34px;image-rendering:pixelated;background:#000;border:1px solid var(--border-color);border-radius:4px">`
-                            : '<span class="window-nick-empty" style="font-size:0.72rem;color:var(--text-muted)">닉네임 캡처 없음</span>'}
-                    </div>
-                </div>
             `;
         }).join('');
 

@@ -1242,6 +1242,15 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 	http.HandleFunc("/api/rotation/detect-with-ocr", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
+		// 메인화면 창 감지와 같은 방식이다.
+		// - 창을 앞으로 끌어오지 않는다(PrintWindow). 그게 실패한 창(최소화 등)만, 수동 감지이고
+		//   자동화가 안 돌 때 창을 띄워 다시 찍는다 — 돌고 있을 때 창을 빼앗으면 키가 엉뚱한 창으로 간다.
+		// - ?poll=1 (켤 때 한 번 읽기)이면 창을 절대 띄우지 않는다.
+		poll := r.URL.Query().Get("poll") == "1"
+		busy := (app.TimerManager != nil && app.TimerManager.IsRunning()) ||
+			(app.RotationManager != nil && app.RotationManager.IsRunning())
+		allowActivate := !poll && !busy
+
 		// 1. 게임 창 감지
 		windows, err := app.WindowManager.FindGameWindows()
 		if err != nil {
@@ -1252,121 +1261,42 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		// 2. 등록된 캐릭터 목록
 		chars := app.CharacterStore.GetByOrder()
 
-		// 3. 각 창에 대해 OCR 실행 및 매칭
-		type WindowOCRResult struct {
-			HWND         uint64 `json:"hwnd"`
-			Title        string `json:"title"`
-			PID          uint32 `json:"pid"`
-			DetectedName string `json:"detectedName"`
-			MatchedID    string `json:"matchedId,omitempty"`
-			MatchedName  string `json:"matchedName,omitempty"`
-			Confidence   string `json:"confidence"`
-			NickCrop     string `json:"nickCrop,omitempty"` // 닉네임 크롭 이미지(창 시각 구분용)
-			Error        string `json:"error,omitempty"`
-		}
-
-		var results []WindowOCRResult
+		// 3. 창마다 이름·맵을 읽고 캐릭터와 매칭
+		var results []rotationWindowResult
 		for _, win := range windows {
-			result := WindowOCRResult{
+			result := rotationWindowResult{
 				HWND:       win.HWND,
 				Title:      win.Title,
 				PID:        win.PID,
 				Confidence: "none",
 			}
 
-			// 1회 캡처로 이름 OCR(자동배정) + 닉네임 크롭(시각 구분) 동시 처리
-			name, cropImg, err := app.OCRManager.DetectNameWithCrop(win.HWND)
-			if cropImg != nil {
-				if b64 := encodePNGScaled(cropImg, 3); b64 != "" {
+			names, err := app.OCRManager.ReadWindowNames(win.HWND, allowActivate)
+			if err != nil {
+				if !poll {
+					log.Printf("[창감지] 캡처 실패 (hwnd=%d): %v", win.HWND, err)
+				}
+				result.Error = err.Error()
+				results = append(results, result)
+				continue
+			}
+			result.DetectedName = names.Name
+			result.NameExact = names.NameExact
+			result.MapText = names.MapName
+			if !names.NameExact && names.NickImage != nil {
+				if b64 := encodePNGScaled(names.NickImage, 3); b64 != "" {
 					result.NickCrop = "data:image/png;base64," + b64
 				}
 			}
-			if err != nil {
-				log.Printf("[OCR] 실패 (hwnd=%d): %v", win.HWND, err)
-				result.DetectedName = ""
-				result.Error = err.Error()
-			} else {
-				log.Printf("[OCR] 감지 (hwnd=%d): '%s'", win.HWND, name)
-				result.DetectedName = name
-				// 등록된 캐릭터와 매칭 (빈 문자열이면 매칭 안 함)
-				if name != "" {
-					bestDist := 999
-					nameRunes := []rune(name)
-
-					for _, c := range chars {
-						charRunes := []rune(c.Name)
-						charLen := len(charRunes)
-
-						// 1. 정확 일치
-						if c.Name == name {
-							result.MatchedID = c.ID
-							result.MatchedName = c.Name
-							result.Confidence = "exact"
-							bestDist = 0
-							break
-						}
-
-						// 2. 전체 문자열 편집 거리
-						dist := levenshtein(nameRunes, charRunes)
-						if dist <= 2 && dist < bestDist {
-							bestDist = dist
-							result.MatchedID = c.ID
-							result.MatchedName = c.Name
-							result.Confidence = "partial"
-						}
-
-						// 3. 부분 문자열 매칭: OCR 결과가 더 길 때
-						//    OCR 결과 내에서 캐릭터 이름 길이만큼의 윈도우를 슬라이딩하며 최소 거리 탐색
-						if len(nameRunes) > charLen {
-							for start := 0; start <= len(nameRunes)-charLen; start++ {
-								sub := nameRunes[start : start+charLen]
-								d := levenshtein(sub, charRunes)
-								if d <= 1 && d < bestDist {
-									bestDist = d
-									result.MatchedID = c.ID
-									result.MatchedName = c.Name
-									result.Confidence = "partial"
-								}
-							}
-						}
-					}
-					if bestDist > 0 && bestDist <= 2 && result.MatchedID != "" {
-						log.Printf("[OCR] 유사도 매칭: '%s' ≈ '%s' (거리=%d)", name, result.MatchedName, bestDist)
-					}
-				}
+			if !poll {
+				log.Printf("[창감지] hwnd=%d 이름='%s'(정확=%v) 맵='%s'", win.HWND, names.Name, names.NameExact, names.MapName)
 			}
 
 			results = append(results, result)
 		}
 
-		// 소거법: 미매칭 창이 있고 미매칭 캐릭터가 있으면 자동 배정
-		matchedIDs := make(map[string]bool)
-		for _, res := range results {
-			if res.MatchedID != "" {
-				matchedIDs[res.MatchedID] = true
-			}
-		}
-		var unmatchedChars []struct{ ID, Name string }
-		for _, c := range chars {
-			if !matchedIDs[c.ID] {
-				unmatchedChars = append(unmatchedChars, struct{ ID, Name string }{c.ID, c.Name})
-			}
-		}
-		var unmatchedIdxs []int
-		for i, res := range results {
-			if res.MatchedID == "" {
-				unmatchedIdxs = append(unmatchedIdxs, i)
-			}
-		}
-		// 미매칭 창 수와 미매칭 캐릭터 수가 같으면 순서대로 배정
-		if len(unmatchedIdxs) > 0 && len(unmatchedIdxs) == len(unmatchedChars) {
-			for j, idx := range unmatchedIdxs {
-				results[idx].MatchedID = unmatchedChars[j].ID
-				results[idx].MatchedName = unmatchedChars[j].Name
-				results[idx].Confidence = "remaining"
-				log.Printf("[OCR] 소거법 매칭: hwnd=%d → '%s'", results[idx].HWND, unmatchedChars[j].Name)
-			}
-		}
+		// 이름 → 캐릭터 배정(정확 일치 / OCR 추정은 유사도 / 못 읽은 창만 소거법)
+		matchRotationCharacters(results, chars)
 
 		json.NewEncoder(w).Encode(results)
 	})
