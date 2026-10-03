@@ -285,9 +285,12 @@ func main() {
 
 	trial := automation.NewTrial(ocrManager, keyboardManager, windowManager)
 	trial.SetLogFunc(func(msg string) {
-		sendEvent(app, "rotationLog", map[string]string{"message": msg})
+		// 시련 탭 로그로 보낸다 (예전엔 rotationLog로 보내 자동사냥 탭에 찍혔음)
+		sendEvent(app, "trialLog", map[string]string{"message": msg})
 	})
 	app.Trial = trial
+	// 저장된 시련 설정(던전·횟수) — 시작 전에도 상태 표시에 쓰인다
+	trial.SetConfig(trialEngineConfig(app, normalizeTrialSettings(characterStore.GetTrialSettings())))
 
 	rotationManager := automation.NewRotationManager(windowManager, mouseAutomation)
 	rotationManager.SetEventCallback(func(eventType string, payload interface{}) {
@@ -626,6 +629,13 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			multiEntries = append(multiEntries, e)
 		}
 
+		// 시련: 던전·목표 좌표·창별 입력 방식/스킬을 여기서 정한다 (요청 값은 고루틴 밖에서 읽는다)
+		var trialCfg automation.TrialConfig
+		var trialWins []automation.TrialWindow
+		if internalMode == ModeTrialSolo || internalMode == ModeTrialGroup {
+			trialCfg, trialWins = trialStartFromForm(app, r, internalMode == ModeTrialGroup)
+		}
+
 		// 선택된 모드에 따라 자동화 시작
 		go func() {
 			// 다중 창(2~4개): 창별 모드 혼합 입장 유지 루프 (예: 2창 대야 + 1창 칸첸).
@@ -677,49 +687,31 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			case ModeKanchenParty:
 				km.KanchenParty()
 			case ModeTrialSolo:
-				// 시련 횟수 설정
-				maxRunsStr := r.FormValue("trial_max_runs")
-				if maxRunsStr != "" {
-					var maxRuns int
-					fmt.Sscanf(maxRunsStr, "%d", &maxRuns)
-					if maxRuns > 0 {
-						cfg := app.Trial.GetConfig()
-						cfg.MaxRuns = maxRuns
-						app.Trial.SetConfig(cfg)
-					}
-				}
-				// UI에서 선택한 hwnd 사용
-				hwndStr := r.FormValue("hwnd")
-				var soloHwnd uint64
-				fmt.Sscanf(hwndStr, "%d", &soloHwnd)
-				if soloHwnd == 0 {
+				// UI에서 선택한 창 (횟수·던전·입력 방식·스킬은 위에서 정함)
+				solo := trialWins[0]
+				if solo.HWND == 0 {
 					// 폴백: 첫 번째 창
 					if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
-						soloHwnd = windows[0].HWND
+						solo.HWND = windows[0].HWND
 					}
 				}
-				if soloHwnd != 0 {
-					app.Trial.Start(soloHwnd)
+				if solo.HWND == 0 {
+					sendEvent(app, "trialLog", map[string]string{"message": "게임 창을 찾지 못해 시련을 시작하지 못했습니다"})
+					return
 				}
+				app.Trial.Stop() // 자동 종료 직후 재시작 등으로 남아 있던 루프가 있으면 정리
+				app.Trial.SetConfig(trialCfg)
+				app.Trial.Start(solo)
 			case ModeTrialGroup:
-				// 시련 횟수 설정
-				maxRunsStr := r.FormValue("trial_max_runs")
-				if maxRunsStr != "" {
-					var maxRuns int
-					fmt.Sscanf(maxRunsStr, "%d", &maxRuns)
-					if maxRuns > 0 {
-						cfg := app.Trial.GetConfig()
-						cfg.MaxRuns = maxRuns
-						app.Trial.SetConfig(cfg)
-					}
+				// UI에서 선택한 그룹장/그룹원
+				leader, member := trialWins[0], trialWins[1]
+				if leader.HWND == 0 || member.HWND == 0 {
+					sendEvent(app, "trialLog", map[string]string{"message": "그룹장/그룹원 창을 모두 골라야 그룹 시련을 시작합니다"})
+					return
 				}
-				// UI에서 선택한 그룹장/그룹원 hwnd
-				var leaderHwnd, memberHwnd uint64
-				fmt.Sscanf(r.FormValue("leader_hwnd"), "%d", &leaderHwnd)
-				fmt.Sscanf(r.FormValue("member_hwnd"), "%d", &memberHwnd)
-				if leaderHwnd != 0 && memberHwnd != 0 {
-					app.Trial.StartGroup(leaderHwnd, memberHwnd)
-				}
+				app.Trial.Stop()
+				app.Trial.SetConfig(trialCfg)
+				app.Trial.StartGroup(leader, member)
 			}
 		}()
 
@@ -2287,45 +2279,118 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		json.NewEncoder(w).Encode(app.BaramlogWatcher.GetStatus())
 	})
 
-	// 시련용 바람창 감지 (오른쪽 상단 OCR)
+	// 시련용 바람창 감지 — 메인화면 창 감지(/api/multi/detect)와 같은 조용한 글리프 방식.
+	// ?poll=1 = UI 의 자동 갱신: 창을 절대 건드리지 않는다. 수동 감지도 기본은 PrintWindow 이고,
+	// 그게 실패한 창(최소화 등)만 — 그리고 아무것도 안 돌 때만 — 창을 띄워서 다시 읽는다.
 	http.HandleFunc("/api/trial/detect", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-
+		poll := r.URL.Query().Get("poll") == "1"
+		allowRaw := !poll && (app.TimerManager == nil || !app.TimerManager.IsRunning()) &&
+			(app.RotationManager == nil || !app.RotationManager.IsRunning())
 		windows, err := app.WindowManager.FindGameWindows()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("창 감지 실패: %v", err), http.StatusInternalServerError)
 			return
 		}
-
-		type TrialWindowResult struct {
-			HWND         uint64 `json:"hwnd"`
-			DetectedName string `json:"detectedName"`
-			NickCrop     string `json:"nickCrop,omitempty"` // 닉네임 크롭 이미지(창 시각 구분용)
-			Error        string `json:"error,omitempty"`
+		type TrialWin struct {
+			HWND     uint64 `json:"hwnd"`
+			Nick     string `json:"nick"`               // 글리프로 읽은 캐릭터 이름 (못 읽으면 "")
+			NickCrop string `json:"nickCrop,omitempty"` // 이름을 못 읽었을 때만 닉네임 영역 이미지 (눈으로 구분용)
+			MapText  string `json:"mapText"`            // 지금 서 있는 맵 (못 읽으면 "")
+			Place    string `json:"place"`              // "lobby" | "kanchen" | "daeya" | ""(그 외)
 		}
-
-		var results []TrialWindowResult
+		results := make([]TrialWin, 0, len(windows))
 		for _, win := range windows {
-			result := TrialWindowResult{HWND: win.HWND}
-			// 1회 캡처로 이름 OCR + 닉네임 크롭(시각 구분) 동시 처리 — 메인화면/자동사냥과 동일 방식.
-			// OCR 텍스트는 부정확할 수 있으므로 크롭 이미지로 창을 구분한다.
-			name, cropImg, err := app.OCRManager.DetectNameWithCrop(win.HWND)
-			if cropImg != nil {
-				if b64 := encodePNGScaled(cropImg, 3); b64 != "" {
-					result.NickCrop = "data:image/png;base64," + b64
-				}
+			tw := TrialWin{HWND: win.HWND}
+			snap, err := app.OCRManager.GlyphInspect(win.HWND, true) // PrintWindow — 창을 건드리지 않는다
+			if err != nil && allowRaw {
+				snap, err = app.OCRManager.GlyphInspect(win.HWND, false) // 최소화 등: 수동 감지일 때만 활성화 폴백
 			}
 			if err != nil {
-				log.Printf("[시련OCR] 실패 (hwnd=%d): %v", win.HWND, err)
-				result.Error = err.Error()
-			} else {
-				log.Printf("[시련OCR] 감지 (hwnd=%d): '%s'", win.HWND, name)
-				result.DetectedName = name
+				if !poll {
+					log.Printf("[시련창] 창 캡처 실패 (hwnd=%d): %v", win.HWND, err)
+				}
+				results = append(results, tw)
+				continue
 			}
-			results = append(results, result)
+			if snap.NickOK {
+				tw.Nick = snap.NickName
+			} else if snap.NickImage != nil {
+				if b64 := encodePNGScaled(snap.NickImage, 3); b64 != "" {
+					tw.NickCrop = "data:image/png;base64," + b64
+				}
+			}
+			if snap.MapOK {
+				tw.MapText = snap.MapName
+				tw.Place = automation.TrialPlaceOfMap(snap.MapName)
+			}
+			if !poll {
+				log.Printf("[시련창] hwnd=%d 닉='%s' 맵='%s'(%s)", win.HWND, tw.Nick, tw.MapText, tw.Place)
+			}
+			results = append(results, tw)
 		}
-
 		json.NewEncoder(w).Encode(results)
+	})
+
+	// 시련 설정 (던전 / 횟수 / 대야 목표 좌표 / 칸첸 시련 전용 스킬 키).
+	// 칸첸 목표 좌표는 메인화면 칸첸 사냥 자리를 따르므로 읽기 전용으로만 내려준다.
+	// POST 는 보낸 항목만 바꾼다 — 빠진 항목은 저장된 값을 그대로 둔다.
+	http.HandleFunc("/api/trial/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			json.NewEncoder(w).Encode(trialConfigResponse(app, normalizeTrialSettings(app.CharacterStore.GetTrialSettings())))
+		case http.MethodPost:
+			var req struct {
+				Dungeon         *string              `json:"dungeon"`
+				MaxRuns         *int                 `json:"maxRuns"`
+				DaeyaTargetX    *int                 `json:"daeyaTargetX"`
+				DaeyaTargetY    *int                 `json:"daeyaTargetY"`
+				SkillKeys       *[]string            `json:"skillKeys"`
+				SkillKeysByChar *map[string][]string `json:"skillKeysByChar"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "잘못된 요청", http.StatusBadRequest)
+				return
+			}
+			s := app.CharacterStore.GetTrialSettings()
+			if req.Dungeon != nil {
+				s.Dungeon = *req.Dungeon
+			}
+			if req.MaxRuns != nil {
+				s.MaxRuns = *req.MaxRuns
+			}
+			if req.DaeyaTargetX != nil {
+				s.DaeyaTargetX = *req.DaeyaTargetX
+			}
+			if req.DaeyaTargetY != nil {
+				s.DaeyaTargetY = *req.DaeyaTargetY
+			}
+			if req.SkillKeys != nil {
+				s.SkillKeys = *req.SkillKeys
+			}
+			if req.SkillKeysByChar != nil {
+				s.SkillKeysByChar = *req.SkillKeysByChar
+			}
+			s = normalizeTrialSettings(s)
+			app.CharacterStore.SetTrialSettings(s)
+			if err := app.CharacterStore.Save(); err != nil {
+				log.Printf("시련 설정 저장 실패: %v", err)
+			}
+			// 다음 시작에 쓸 설정 (실행 중인 시련은 시작할 때 설정 그대로) — 대기 중 상태 표시도 바로 바뀐다
+			app.Trial.SetConfig(trialEngineConfig(app, s))
+			log.Printf("[시련] 설정 저장: 던전=%s 횟수=%d 대야목표=(%d,%d) 스킬=%v 캐릭터별 스킬=%v",
+				s.Dungeon, s.MaxRuns, s.DaeyaTargetX, s.DaeyaTargetY, s.SkillKeys, s.SkillKeysByChar)
+			json.NewEncoder(w).Encode(trialConfigResponse(app, s))
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// 시련 진행 상태 (UI 상단 표시용)
+	http.HandleFunc("/api/trial/status", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(app.Trial.Status())
 	})
 
 	// === 키 매핑 시스템 API ===
@@ -2891,6 +2956,103 @@ func stopOperation(app *Application) {
 	if app.Trial != nil {
 		app.Trial.Stop()
 	}
+}
+
+// ===== 시련 설정 =====
+
+// trialConfigJSON GET/POST /api/trial/config 응답. kanchenTarget 은 메인화면 칸첸 사냥 자리(읽기 전용).
+type trialConfigJSON struct {
+	Dungeon         string              `json:"dungeon"`
+	MaxRuns         int                 `json:"maxRuns"`
+	DaeyaTargetX    int                 `json:"daeyaTargetX"`
+	DaeyaTargetY    int                 `json:"daeyaTargetY"`
+	KanchenTargetX  int                 `json:"kanchenTargetX"`
+	KanchenTargetY  int                 `json:"kanchenTargetY"`
+	SkillKeys       []string            `json:"skillKeys"`
+	SkillKeysByChar map[string][]string `json:"skillKeysByChar"`
+}
+
+// normalizeTrialSettings 시련 설정 정리 — 던전 daeya|kanchen(그 외 daeya), 횟수 1~99(아니면 10),
+// 대야 목표 0이면 29,32, 스킬 키는 메인화면 칸첸 표와 같은 규칙(공백 제거·소문자, 키를 비운 캐릭터는 빠짐).
+func normalizeTrialSettings(s config.TrialSettings) config.TrialSettings {
+	s.Dungeon = automation.NormalizeTrialDungeon(s.Dungeon)
+	s.MaxRuns = automation.NormalizeTrialMaxRuns(s.MaxRuns)
+	s.DaeyaTargetX, s.DaeyaTargetY = automation.TrialDaeyaTarget(s.DaeyaTargetX, s.DaeyaTargetY)
+	s.SkillKeys = automation.NormalizeSkillKeys(s.SkillKeys)
+	s.SkillKeysByChar = automation.NormalizeSkillKeysByChar(s.SkillKeysByChar)
+	return s
+}
+
+// trialKanchenTarget 칸첸 시련 목표 좌표 = 메인화면 칸첸 사냥 자리(아이템 습득 원점, 0이면 34,37)
+func trialKanchenTarget(app *Application) (int, int) {
+	p := app.ItemScanner.GetConfig()
+	return automation.TrialKanchenTarget(p.OriginX, p.OriginY)
+}
+
+// trialEngineConfig 정리된 시련 설정 → 엔진 설정. 목표 좌표는 던전에 따라
+// 칸첸 = 메인화면 칸첸 사냥 자리, 대야 = 시련 설정의 대야 목표 좌표.
+func trialEngineConfig(app *Application, s config.TrialSettings) automation.TrialConfig {
+	cfg := automation.TrialConfig{MaxRuns: s.MaxRuns, Dungeon: s.Dungeon}
+	if s.Dungeon == automation.TrialDungeonKanchen {
+		cfg.TargetX, cfg.TargetY = trialKanchenTarget(app)
+	} else {
+		cfg.TargetX, cfg.TargetY = automation.TrialDaeyaTarget(s.DaeyaTargetX, s.DaeyaTargetY)
+	}
+	return cfg
+}
+
+// trialConfigResponse 정리된 시련 설정 → API 응답 (빈 키 목록도 null 대신 [] / {} 로 내려준다)
+func trialConfigResponse(app *Application, s config.TrialSettings) trialConfigJSON {
+	out := trialConfigJSON{
+		Dungeon:         s.Dungeon,
+		MaxRuns:         s.MaxRuns,
+		DaeyaTargetX:    s.DaeyaTargetX,
+		DaeyaTargetY:    s.DaeyaTargetY,
+		SkillKeys:       s.SkillKeys,
+		SkillKeysByChar: s.SkillKeysByChar,
+	}
+	out.KanchenTargetX, out.KanchenTargetY = trialKanchenTarget(app)
+	if out.SkillKeys == nil {
+		out.SkillKeys = []string{}
+	}
+	if out.SkillKeysByChar == nil {
+		out.SkillKeysByChar = map[string][]string{}
+	}
+	return out
+}
+
+// trialStartFromForm /api/start 의 시련 파라미터 → 엔진 설정 + 창 (솔로 [창] / 그룹 [그룹장, 그룹원]).
+// 새 파라미터(trial_dungeon, bg, nick …)가 없으면 예전과 같다: 포그라운드, 이름 없음, 던전·횟수는 저장된 설정.
+// 스킬은 칸첸만 — 시련 전용 표에서 창의 캐릭터 이름으로 고른다(없거나 이름을 못 읽었으면 기본 키). 대야는 안 누른다.
+func trialStartFromForm(app *Application, r *http.Request, group bool) (automation.TrialConfig, []automation.TrialWindow) {
+	s := normalizeTrialSettings(app.CharacterStore.GetTrialSettings())
+	if d := strings.TrimSpace(r.FormValue("trial_dungeon")); d != "" {
+		s.Dungeon = automation.NormalizeTrialDungeon(d)
+	}
+	var maxRuns int
+	fmt.Sscanf(r.FormValue("trial_max_runs"), "%d", &maxRuns)
+	if maxRuns > 0 {
+		s.MaxRuns = automation.NormalizeTrialMaxRuns(maxRuns)
+	}
+	window := func(hwndKey, bgKey, nickKey string) automation.TrialWindow {
+		bg := strings.TrimSpace(r.FormValue(bgKey))
+		w := automation.TrialWindow{
+			BG:   bg == "1" || bg == "true" || bg == "bg",
+			Nick: strings.TrimSpace(r.FormValue(nickKey)),
+		}
+		fmt.Sscanf(r.FormValue(hwndKey), "%d", &w.HWND)
+		if s.Dungeon == automation.TrialDungeonKanchen {
+			w.Skills = automation.TrialSkillKeysFor(s.SkillKeys, s.SkillKeysByChar, w.Nick)
+		}
+		return w
+	}
+	if group {
+		return trialEngineConfig(app, s), []automation.TrialWindow{
+			window("leader_hwnd", "leader_bg", "leader_nick"),
+			window("member_hwnd", "member_bg", "member_nick"),
+		}
+	}
+	return trialEngineConfig(app, s), []automation.TrialWindow{window("hwnd", "bg", "nick")}
 }
 
 // startRotationFromScheduler 예약된 시각에 자동사냥 시작 (감지/할당 완료 가정)

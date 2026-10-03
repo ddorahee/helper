@@ -88,12 +88,26 @@ type ItemPickupConfig struct {
 	SkillKeysByChar map[string][]string `json:"skillKeysByChar,omitempty"`
 }
 
+// TrialSettings 시련 탭 설정 (영속화용) — /api/trial/config 와 같은 이름.
+// 칸첸 시련 목표 좌표는 따로 두지 않고 메인화면 칸첸 "사냥 자리"(ItemPickupConfig.OriginX/Y)를 쓴다.
+type TrialSettings struct {
+	Dungeon      string `json:"dungeon"`      // 시련 던전: "daeya" | "kanchen" (게임 NPC에서 바꾼 던전과 맞춘다)
+	MaxRuns      int    `json:"maxRuns"`      // 반복 횟수 (1~99)
+	DaeyaTargetX int    `json:"daeyaTargetX"` // 대야 시련 목표 좌표
+	DaeyaTargetY int    `json:"daeyaTargetY"`
+	// SkillKeys 칸첸 시련 기본 스킬 키 — 메인화면 칸첸 표와 별개
+	SkillKeys []string `json:"skillKeys"`
+	// SkillKeysByChar 칸첸 시련 캐릭터별 스킬 키 (캐릭터 이름 → 키). 없는 캐릭터는 SkillKeys(기본)를 쓴다.
+	SkillKeysByChar map[string][]string `json:"skillKeysByChar,omitempty"`
+}
+
 // CharacterData JSON 저장 구조
 type CharacterData struct {
 	Characters       []CharacterProfile            `json:"characters"`
 	Coordinates      GameUICoordinates             `json:"coordinates"`
 	OCRConfig        OCRRegionConfig               `json:"ocrConfig"`
 	ItemPickupConfig ItemPickupConfig              `json:"itemPickupConfig,omitempty"`
+	TrialSettings    TrialSettings                 `json:"trialSettings,omitempty"`
 	Presets          map[string][]CharacterProfile `json:"presets,omitempty"` // 캐릭터 구성 프리셋 (이름 → 캐릭터 목록 스냅샷)
 }
 
@@ -406,4 +420,18 @@ func (cs *CharacterStore) SetItemPickupConfig(cfg ItemPickupConfig) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	cs.data.ItemPickupConfig = cfg
+}
+
+// GetTrialSettings 시련 탭 설정 반환
+func (cs *CharacterStore) GetTrialSettings() TrialSettings {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return cs.data.TrialSettings
+}
+
+// SetTrialSettings 시련 탭 설정 업데이트
+func (cs *CharacterStore) SetTrialSettings(s TrialSettings) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.data.TrialSettings = s
 }
