@@ -7,7 +7,7 @@
     let characters = [];
     let detectedWindows = [];
     let windowAssignments = {}; // characterId -> windowHwnd
-    let excludedWindows = new Set(); // 제외된 윈도우 hwnd
+    let detectedOnce = false;   // 창 감지를 한 번이라도 했는지 (그 전엔 "창 없음" 표시를 안 한다)
     let screenshotCache = {}; // idx -> base64 data URL
     let rotationRunning = false;
     let editingCharId = null;
@@ -372,6 +372,8 @@
             .then(data => {
                 characters = data || [];
                 renderCharacters();
+                // 캐릭터를 켜고 끄거나 순서를 바꾸면 윈도우 목록도 같은 순서·흐림 상태로 다시 그린다
+                if (detectedWindows.length > 0) renderWindows();
             })
             .catch(() => { characters = []; renderCharacters(); });
     }
@@ -390,7 +392,7 @@
                 </label>
                 <div class="char-order">${i + 1}</div>
                 <div class="char-info">
-                    <div class="char-name">${escapeHtml(c.name)}${c.companionMode ? ` <span style="font-size:0.68rem;padding:0.1rem 0.35rem;border-radius:4px;background:rgba(59,130,246,0.18);color:#60a5fa" title="자동사냥 순환에서 빠지고, 실행 시간 동안 메인화면 자동화를 병행 실행 (전환 순간에만 잠깐 정지 후 이어서 돎)">동시실행</span>` : ''}</div>
+                    <div class="char-name">${escapeHtml(c.name)}${detectedOnce && c.enabled !== false && !c.companionMode && !windowAssignments[c.id] ? ` <span style="font-size:0.68rem;padding:0.1rem 0.35rem;border-radius:4px;background:rgba(245,158,11,0.16);color:#fbbf24" title="켜져 있지만 이 캐릭터의 게임 창을 못 찾아 이번 순환에서 빠집니다 — 게임 창을 켜고 감지를 누르세요">창 없음</span>` : ''}${c.companionMode ? ` <span style="font-size:0.68rem;padding:0.1rem 0.35rem;border-radius:4px;background:rgba(59,130,246,0.18);color:#60a5fa" title="자동사냥 순환에서 빠지고, 실행 시간 동안 메인화면 자동화를 병행 실행 (전환 순간에만 잠깐 정지 후 이어서 돎)">동시실행</span>` : ''}</div>
                     <div class="char-detail">${c.companionMode
                         ? `메인화면 ${c.companionMode === 'kanchen' ? '칸첸' : '대야'} 병행 ${c.durationMins}분${c.huntAfterMins > 0
                             ? ` → 이후 자동사냥 ${c.huntAfterMins}분 (${escapeHtml(c.huntingArea?.name || '')}, ${c.huntingArea?.dropdownIndex || 0}번째)`
@@ -640,28 +642,15 @@
         .then(r => { if (r.ok) loadCharacters(); });
     };
 
-    // 드롭다운 선택 변경 시 즉시 할당 반영
-    window.rotationWindowAssignChanged = function() {
-        applyAssignments();
-    };
-
-    // 윈도우 포함/제외 토글
-    window.rotationToggleWindow = function(hwnd, included) {
-        if (included) {
-            excludedWindows.delete(hwnd);
-        } else {
-            excludedWindows.add(hwnd);
-            // 제외된 창에 할당된 캐릭터가 있으면 해제
-            for (const charId in windowAssignments) {
-                if (windowAssignments[charId] === hwnd) {
-                    delete windowAssignments[charId];
-                }
-            }
+    // 드롭다운 선택 변경 시 즉시 할당 반영.
+    // 한 캐릭터는 창 하나에만 — 다른 창에 이미 붙어 있던 같은 캐릭터는 떼어 낸다(방금 고른 창이 이긴다).
+    window.rotationWindowAssignChanged = function(sel) {
+        if (sel && sel.value) {
+            document.querySelectorAll('.window-assign-select').forEach(o => {
+                if (o !== sel && o.value === sel.value) o.value = '';
+            });
         }
-        renderWindows();
-        // 할당 상태에 따라 캐릭터 활성화/비활성화 동기화
-        syncCharacterEnabled();
-        addRotationLog(included ? '윈도우 포함됨' : '윈도우 제외됨');
+        applyAssignments();
     };
 
     // === 윈도우 감지 & 할당 ===
@@ -695,6 +684,7 @@
             }
 
             detectedWindows = data || [];
+            detectedOnce = true;
             screenshotCache = {};
             addRotationLog(`${detectedWindows.length}개의 게임 창 감지됨`);
 
@@ -729,20 +719,21 @@
                 addRotationLog(`창 이름 "${win.detectedName || '(못 읽음)'}" → ${win.matchedName} (${matchType}${win.confidence === 'remaining' ? '' : ' 일치'})`);
             }
         }
-
+        // 비어 있어도 보낸다 — 서버가 이전 배정을 지우고 이번 것으로 바꾼다(남은 옛 창 번호 방지)
+        sendAssignments(assignments);
         if (assignments.length > 0) {
-            sendAssignments(assignments);
             addRotationLog(`이름으로 ${assignments.length}개 캐릭터 자동 할당 완료`);
         }
 
-        // 매칭 실패한 캐릭터 안내
+        // 창을 못 찾은 캐릭터 안내 (켜져 있는 캐릭터만 — 꺼둔 건 원래 안 돌린다)
         const matchedCharIds = new Set(assignments.map(a => a.characterId));
-        const unmatchedChars = characters.filter(c => !matchedCharIds.has(c.id));
+        const unmatchedChars = characters.filter(c => c.enabled !== false && !matchedCharIds.has(c.id));
         if (unmatchedChars.length > 0) {
-            addRotationLog(`${unmatchedChars.length}개 캐릭터는 창을 못 찾음 — 게임 창이 켜져 있는지 확인하거나 수동 할당`);
+            addRotationLog(`${unmatchedChars.map(c => c.name).join(', ')}: 창을 못 찾음 — 게임 창이 켜져 있는지 확인하거나 수동 할당`);
         }
-
-        syncCharacterEnabled();
+        // 켜고 끄는 건 캐릭터 관리 체크박스만 따른다(배정 결과로 자동으로 켜고 끄지 않는다).
+        // 시작할 때 "켜져 있고 창이 배정된" 캐릭터만 돈다. 창 없음 표시를 갱신하려고 목록을 다시 그린다.
+        renderCharacters();
     }
 
     async function loadScreenshotsSequential(idx) {
@@ -777,44 +768,58 @@
             return;
         }
 
-        // 메인화면 창 목록과 같은 모양 — 이름을 글자로 읽었으면 굵은 글자로, 못 읽었으면 닉네임 이미지로.
-        // 현재 맵은 안 보여준다(시간이 되면 자동사냥이 알아서 사냥터로 가므로 지금 위치는 상관없다).
+        // 이 목록은 "어느 창이 왼쪽 캐릭터 목록의 누구인지" 맵핑만 보여준다.
+        // - 순서·번호는 캐릭터 관리 순서를 따른다(왼쪽 번호와 같다). 맵핑 안 된 창은 맨 뒤.
+        // - 켜고 끄는 건 캐릭터 관리 체크박스에서만 — 꺼진 캐릭터의 창은 흐리게 '꺼짐'.
+        // - 창 옆에 읽은 이름은 따로 안 쓴다(드롭다운이 곧 맵핑). 못 붙은 창은 드롭다운 빈 칸에
+        //   '미감지'(이름 못 읽음) / '캐릭터 없음'(등록 안 된 캐릭터) / '미할당'(직접 뗌).
         const MATCH_LABEL = { partial: '부분 일치', remaining: '소거법' };
-        windowList.innerHTML = detectedWindows.map((w, idx) => {
-            const isExcluded = excludedWindows.has(w.hwnd);
-            const charOptions = characters.map(c =>
-                `<option value="${c.id}" ${windowAssignments[c.id] == w.hwnd ? 'selected' : ''}>${escapeHtml(c.name)}</option>`
-            ).join('');
+        const charIdByHwnd = {};
+        for (const id in windowAssignments) charIdByHwnd[String(windowAssignments[id])] = id;
+        const charIndex = {};
+        characters.forEach((c, i) => { charIndex[c.id] = i; });
 
-            const name = w.detectedName || '';
-            let nameCell;
-            if (name && w.nameExact) {
-                nameCell = `<b class="window-char-name">${escapeHtml(name)}</b>`;
-            } else if (w.nickCrop) {
-                nameCell = `<img class="window-nick" src="${w.nickCrop}" alt="닉네임" style="height:26px;image-rendering:pixelated;background:#000;border:1px solid var(--border-color);border-radius:4px">`
-                    + (name ? ` <span class="ocr-badge partial" title="글자로 못 읽어 예전 OCR로 추정한 이름">${escapeHtml(name)}?</span>` : '');
-            } else {
-                nameCell = '<span style="font-size:0.75rem;color:var(--text-muted)">(이름 못 읽음)</span>';
-            }
-            const matchNote = w.matchedId && MATCH_LABEL[w.confidence]
+        const rows = detectedWindows.map((w, detIdx) => {
+            const cid = charIdByHwnd[String(w.hwnd)] || '';
+            const ci = cid && charIndex[cid] !== undefined ? charIndex[cid] : -1;
+            return { w, cid, ci, detIdx };
+        });
+        rows.sort((a, b) => {
+            if (a.ci < 0 && b.ci < 0) return a.detIdx - b.detIdx;
+            if (a.ci < 0) return 1;
+            if (b.ci < 0) return -1;
+            return a.ci - b.ci;
+        });
+
+        windowList.innerHTML = rows.map(({ w, cid, ci }) => {
+            const ch = ci >= 0 ? characters[ci] : null;
+            const off = ch && ch.enabled === false;
+            // 빈 칸 문구: 이름을 못 읽음 → '미감지' / 읽었는데 등록 안 된 캐릭터 → '캐릭터 없음'
+            // / 등록된 캐릭터인데 직접 뗐음 → '미할당'
+            const exactName = w.detectedName && w.nameExact ? w.detectedName : '';
+            const emptyLabel = !exactName ? '미감지'
+                : characters.some(c => c.name === exactName) ? '미할당' : '캐릭터 없음';
+            const charOptions = characters.map(c =>
+                `<option value="${c.id}" ${c.id === cid ? 'selected' : ''}>${escapeHtml(c.name)}</option>`
+            ).join('');
+            const matchNote = cid && MATCH_LABEL[w.confidence]
                 ? `<span class="ocr-badge ${w.confidence}" title="이름이 정확히 같지 않아 추정으로 배정됨 — 확인하세요">${MATCH_LABEL[w.confidence]}</span>`
+                : '';
+            const offNote = off
+                ? '<span style="font-size:0.72rem;color:var(--text-muted)" title="캐릭터 관리에서 꺼져 있어 이번 순환에서 빠집니다">꺼짐</span>'
                 : '';
 
             return `
-                <div class="window-item-card ${isExcluded ? 'excluded' : ''}" data-hwnd="${w.hwnd}">
+                <div class="window-item-card" data-hwnd="${w.hwnd}" style="${off ? 'opacity:0.55' : ''}">
                     <div class="window-item-header" style="display:flex;align-items:center;gap:0.5rem">
-                        <label class="window-toggle">
-                            <input type="checkbox" ${!isExcluded ? 'checked' : ''} onchange="rotationToggleWindow(${w.hwnd}, this.checked)">
-                        </label>
-                        <div class="window-order">${idx + 1}</div>
-                        <div class="window-info" style="flex:1;min-width:0;display:flex;align-items:center;gap:0.35rem;white-space:nowrap;overflow:hidden">
-                            ${nameCell}${matchNote}
-                        </div>
-                        <select class="window-assign-select" data-hwnd="${w.hwnd}" ${isExcluded ? 'disabled' : ''} onchange="rotationWindowAssignChanged()" style="max-width:8rem">
-                            <option value="">-- 미할당 --</option>
+                        <div class="window-order">${ci >= 0 ? ci + 1 : '–'}</div>
+                        <select class="window-assign-select" data-hwnd="${w.hwnd}" onchange="rotationWindowAssignChanged(this)" style="flex:1;min-width:0">
+                            <option value="">${emptyLabel}</option>
                             ${charOptions}
                         </select>
+                        ${matchNote}${offNote}
                     </div>
+                </div>
             `;
         }).join('');
 
@@ -829,29 +834,23 @@
         selects.forEach(select => {
             const charId = select.value;
             const hwnd = parseInt(select.dataset.hwnd);
-            // 제외된 창은 할당하지 않음
-            if (charId && hwnd && !excludedWindows.has(hwnd)) {
+            if (charId && hwnd) {
                 assignments.push({ characterId: charId, windowHwnd: hwnd });
                 windowAssignments[charId] = hwnd;
             }
         });
 
-        if (assignments.length === 0) {
-            addRotationLog('할당할 캐릭터를 선택해주세요.');
-            return;
-        }
-
+        // 비어 있어도 보낸다 — 서버가 이전 배정을 지우고 이번 것으로 바꾼다(남은 옛 창 번호 방지)
         sendAssignments(assignments);
-        // 할당 상태에 따라 캐릭터 활성화/비활성화 동기화
-        syncCharacterEnabled();
+        renderWindows(); // 캐릭터 관리 순서로 다시 정렬
+        renderCharacters();
     }
 
     function autoAssign() {
         const assignments = [];
         windowAssignments = {};
 
-        // 제외되지 않은 창만 사용
-        const availableWindows = detectedWindows.filter(w => !excludedWindows.has(w.hwnd));
+        const availableWindows = detectedWindows;
         const count = Math.min(characters.length, availableWindows.length);
 
         for (let i = 0; i < count; i++) {
@@ -864,8 +863,7 @@
 
         sendAssignments(assignments);
         renderWindows();
-        // 할당 상태에 따라 캐릭터 활성화/비활성화 동기화
-        syncCharacterEnabled();
+        renderCharacters();
     }
 
     function sendAssignments(assignments) {
@@ -883,33 +881,6 @@
                 addRotationLog(`할당 완료: ${names} (${assignments.length}개)`);
             }
         });
-    }
-
-    // 할당 상태에 따라 캐릭터 활성화/비활성화 자동 동기화
-    function syncCharacterEnabled() {
-        const assignedIds = new Set(Object.keys(windowAssignments));
-        const togglePromises = [];
-
-        for (const c of characters) {
-            const shouldBeEnabled = assignedIds.has(c.id);
-            const currentlyEnabled = c.enabled !== false;
-
-            if (shouldBeEnabled !== currentlyEnabled) {
-                togglePromises.push(
-                    fetch('/api/rotation/characters/toggle', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: c.id, enabled: shouldBeEnabled })
-                    })
-                );
-            }
-        }
-
-        if (togglePromises.length > 0) {
-            Promise.all(togglePromises).then(() => {
-                loadCharacters(); // 캐릭터 목록 새로고침 (체크박스 반영)
-            });
-        }
     }
 
     // === 좌표 설정 ===
