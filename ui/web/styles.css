@@ -2706,3 +2706,277 @@ input:checked + .slider:before {
     padding: 0.4rem;
     font-size: 0.8rem;
 }
+
+/* ==================== 시련 탭 ==================== */
+/* 상단 바 — 자동 사냥 상단 바 그대로. 아주 좁으면 버튼이 아랫줄(오른쪽)로 */
+.trial-topbar { flex-wrap: wrap; }
+.trial-topbar .rotation-topbar-left { flex: 1 1 10rem; }
+.trial-topbar .rotation-topbar-right { margin-left: auto; }
+.trial-topbar .rotation-action-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.trial-topbar .rotation-action-btn:disabled:hover {
+    background: var(--card-bg);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+    box-shadow: none;
+}
+/* 배지 — 대기·실행 중은 자동 사냥 배지 그대로, 완료·중지됨만 추가 */
+.rotation-badge.trial-badge-done {
+    background: var(--primary-glow);
+    color: var(--primary-light);
+    border-color: var(--primary-color);
+}
+.rotation-badge.trial-badge-stopped {
+    background: var(--danger-glow);
+    color: var(--danger-color);
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+/* 카드 머리 · 작은 버튼 · 설명 줄 */
+.trial-card-header {
+    margin-bottom: 0.4rem;
+    gap: 0.5rem;
+}
+.trial-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.trial-small-btn {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+.trial-desc,
+.trial-hint {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+.trial-desc { margin-bottom: 0.5rem; }
+.trial-hint { margin-top: 0.6rem; }
+.trial-muted {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+.trial-loading {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    padding: 0.2rem;
+}
+
+/* 시련 설정 — 던전·모드는 두 칸짜리 선택 버튼, 좁으면 아랫줄로 넘어간다 */
+.trial-config-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.6rem 1.2rem;
+}
+.trial-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+.trial-field-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+.trial-seg {
+    display: inline-flex;
+    gap: 0.2rem;
+    padding: 0.2rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--highlight);
+}
+.trial-seg-btn {
+    flex: 1 1 0;
+    padding: 0.25rem 0.85rem;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all var(--transition-speed);
+}
+.trial-seg-btn:hover {
+    color: var(--text-primary);
+    background: var(--card-bg-hover);
+}
+.trial-seg-btn.active {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: white;
+    box-shadow: 0 2px 8px var(--primary-glow);
+}
+.trial-runs {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.trial-runs input {
+    width: 4.5rem;
+    height: 2.15rem;
+    padding: 0.3rem 0.45rem;
+    font-size: 0.85rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.05);
+    color: inherit;
+}
+
+/* 창 선택 — [창 N · 캐릭터 · 위치+꼬리표] [역할 · 입력 방식]
+   카드가 좁으면 고르는 칸 묶음이 아랫줄 오른쪽으로 넘어간다 */
+.trial-window-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+.trial-win-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.6rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    transition: background-color var(--transition-speed), border-color var(--transition-speed);
+}
+.trial-win-row.on {
+    background: var(--highlight);
+    border-color: var(--border-color);
+}
+.trial-win-main {
+    flex: 1 1 15rem;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 2.6rem minmax(4rem, max-content) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.55rem;
+}
+.trial-win-idx {
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.trial-win-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.trial-win-name img {
+    display: block;
+    height: 26px;
+    max-width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    image-rendering: pixelated;
+    background: #000;
+}
+.trial-win-map {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+.trial-win-maptext {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.trial-tag {
+    flex-shrink: 0;
+    padding: 0 0.35rem;
+    border-radius: 3px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+.trial-tag-lobby { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; }
+.trial-tag-out { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); font-weight: 400; }
+.trial-win-ctrls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-left: auto;
+}
+.trial-win-ctrls select {
+    font-size: 0.78rem;
+    padding: 0.15rem 0.3rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.05));
+    color: inherit;
+}
+.trial-win-ctrls option {
+    background: var(--card-bg);
+    color: var(--text-primary);
+}
+.trial-win-row[data-role="solo"] .trial-role-select { color: var(--primary-light); }
+.trial-win-row[data-role="leader"] .trial-role-select { color: #93c5fd; }
+.trial-win-row[data-role="member"] .trial-role-select { color: #86efac; }
+
+/* 대야·칸첸 시련 카드 */
+.trial-coord-grid { margin-bottom: 0; }
+.trial-readonly {
+    display: inline-block;
+    padding: 0.3rem 0.6rem;
+    margin-bottom: 0.7rem;
+    border: 1px dashed var(--border-color);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.trial-role-chip {
+    flex-shrink: 0;
+    padding: 0 0.35rem;
+    font-size: 0.66rem;
+}
+.trial-role-solo   { background: var(--primary-glow); color: var(--primary-light); }
+.trial-role-leader { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
+.trial-role-member { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+.trial-skill-note { margin-bottom: 0; }
+
+/* 시련 로그 — 아래가 최신, 최대 200줄 */
+.trial-log {
+    height: 180px;
+    overflow-y: auto;
+    padding: 0.5rem;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+.trial-log-line {
+    padding: 0.1rem 0.3rem;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.trial-log-line:hover {
+    background-color: var(--highlight);
+    border-radius: 2px;
+}
+.trial-log-line.own { color: var(--primary-light); }
+.trial-log-line.err { color: var(--danger-color); }
+.trial-log-empty {
+    padding: 0.1rem 0.3rem;
+    color: var(--text-muted);
+    font-style: italic;
+}

@@ -458,57 +458,108 @@
                 </div>
             </section>
 
+            <!-- 시련 섹션 — 자동 사냥과 같은 상단 바 + 설정 · 창 선택 · 던전별 설정 · 로그 -->
             <section id="trial-section" class="content-section">
-                <h1>시련</h1>
+                <!-- 시련 상태 바 (자동 사냥 상단 바와 같은 틀) -->
+                <div class="rotation-topbar trial-topbar">
+                    <div class="rotation-topbar-left">
+                        <div class="rotation-badge" id="trial-badge">대기</div>
+                        <div class="rotation-current" id="trial-current">게임 창을 읽는 중…</div>
+                    </div>
+                    <div class="rotation-topbar-right">
+                        <button id="trial-start-btn" class="rotation-action-btn start" type="button">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            시작
+                        </button>
+                        <button id="trial-stop-btn" class="rotation-action-btn stop" type="button" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="16"></rect></svg>
+                            중지
+                        </button>
+                    </div>
+                </div>
 
-                <!-- 상단: 모드 + 설정 -->
-                <div class="card">
-                    <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-                        <div style="display:flex;gap:0.5rem;align-items:center">
-                            <label style="font-size:0.85rem;margin:0;white-space:nowrap">모드</label>
-                            <label style="display:flex;align-items:center;gap:0.3rem;cursor:pointer;font-size:0.85rem">
-                                <input type="radio" name="trial-mode" value="solo" checked> 솔로
-                            </label>
-                            <label style="display:flex;align-items:center;gap:0.3rem;cursor:pointer;font-size:0.85rem">
-                                <input type="radio" name="trial-mode" value="group"> 그룹
-                            </label>
+                <!-- 시련 설정 — 던전·횟수는 서버에 저장, 솔로/그룹은 이 PC 에 기억 -->
+                <div class="card" id="trial-config-card">
+                    <h2>시련 설정</h2>
+                    <div class="trial-config-row">
+                        <div class="trial-field">
+                            <span class="trial-field-label">던전</span>
+                            <div class="trial-seg" id="trial-dungeon-seg" role="group" aria-label="던전">
+                                <button type="button" class="trial-seg-btn active" data-value="daeya" aria-pressed="true">대야 시련</button>
+                                <button type="button" class="trial-seg-btn" data-value="kanchen" aria-pressed="false">칸첸 시련</button>
+                            </div>
                         </div>
-                        <div style="display:flex;gap:0.5rem;align-items:center">
-                            <label style="font-size:0.85rem;margin:0;white-space:nowrap">횟수</label>
-                            <input type="number" id="trial-max-runs" value="10" min="1" max="20" style="width:50px;padding:0.25rem;font-size:0.85rem">
+                        <div class="trial-field">
+                            <span class="trial-field-label">모드</span>
+                            <div class="trial-seg" id="trial-mode-seg" role="group" aria-label="모드">
+                                <button type="button" class="trial-seg-btn active" data-value="solo" aria-pressed="true">솔로</button>
+                                <button type="button" class="trial-seg-btn" data-value="group" aria-pressed="false">그룹</button>
+                            </div>
                         </div>
-                        <button id="trial-detect-btn" class="save-btn" style="padding:0.3rem 0.8rem;font-size:0.85rem">감지</button>
+                        <div class="trial-field">
+                            <label class="trial-field-label" for="trial-max-runs">횟수</label>
+                            <div class="trial-runs">
+                                <input type="number" id="trial-max-runs" value="10" min="1" max="99" step="1" inputmode="numeric">
+                                <span>회</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="trial-hint">캐릭터를 시련장에 세워 두고 시작하세요. 솔로는 창 1개, 그룹은 그룹장·그룹원 2개로 정한 횟수만큼 되풀이합니다.</p>
+                </div>
+
+                <!-- 창 선택 — 창마다 역할과 입력 방식, 캐릭터 이름으로 기억 -->
+                <div class="card" id="trial-windows-card">
+                    <div class="rotation-card-header trial-card-header">
+                        <h2>창 선택</h2>
+                        <button id="trial-detect-btn" class="detect-btn trial-small-btn" type="button">창 감지</button>
+                    </div>
+                    <p class="trial-desc">창을 띄우지 않고 읽습니다. 켤 때 한 번과 <b>창 감지</b>를 누를 때 갱신됩니다.</p>
+                    <div id="trial-window-list" class="trial-window-list">
+                        <div class="trial-loading">게임 창을 찾는 중…</div>
                     </div>
                 </div>
 
-                <!-- 바람창 목록 -->
-                <div class="card">
-                    <h2>바람창 목록</h2>
-                    <div id="trial-window-list" style="font-size:0.85rem">
-                        <span style="opacity:0.5">감지 버튼을 눌러 바람창을 찾아주세요</span>
+                <!-- 대야 시련 (던전이 대야일 때만) -->
+                <div class="card" id="trial-daeya-card">
+                    <h2 class="trial-card-title"><span class="mode-chip mode-chip-daeya">대야</span>대야 시련</h2>
+                    <div class="mode-section-title">서 있을 자리 <span class="mode-hint">걸어서 그 자리로 가서 지킵니다 (게임 좌표)</span></div>
+                    <div class="mode-grid trial-coord-grid">
+                        <div>
+                            <label for="trial-daeya-x">좌표 X</label>
+                            <input type="number" id="trial-daeya-x" value="29" min="0" max="999" inputmode="numeric">
+                        </div>
+                        <div>
+                            <label for="trial-daeya-y">좌표 Y</label>
+                            <input type="number" id="trial-daeya-y" value="32" min="0" max="999" inputmode="numeric">
+                        </div>
                     </div>
                 </div>
 
-                <!-- 역할 선택 (감지 후 표시) -->
-                <div class="card" id="trial-role-card" style="display:none">
-                    <h2>역할 선택</h2>
-                    <div id="trial-role-select"></div>
-                </div>
+                <!-- 칸첸 시련 (던전이 칸첸일 때만) — 스킬 키는 메인화면 칸첸 카드와 같은 틀 -->
+                <div class="card" id="trial-kanchen-card" style="display:none">
+                    <h2 class="trial-card-title"><span class="mode-chip mode-chip-kanchen">칸첸</span>칸첸 시련</h2>
+                    <div class="mode-section-title">중앙 자리 <span class="mode-hint">메인화면 칸첸 설정의 '사냥 자리'를 같이 씁니다 — 걸어서 이동, 아이템은 안 주움</span></div>
+                    <div class="trial-readonly" id="trial-kanchen-center">X 34 · Y 37</div>
 
-                <!-- 시작/중지 -->
-                <div class="card">
-                    <div style="display:flex;gap:0.5rem">
-                        <button id="trial-start-btn" class="save-btn" style="flex:1">시작</button>
-                        <button id="trial-stop-btn" class="cancel-btn" style="flex:1">중지</button>
+                    <div class="mode-section-title">스킬 키 <span class="mode-hint">시련 맵에서 누르는 키 (쉼표 구분) — 캐릭터마다 다르면 그 캐릭터 칸에</span></div>
+                    <div class="kanchen-skill-table">
+                        <div class="kanchen-skill-row">
+                            <span class="kanchen-skill-name base">기본</span>
+                            <input type="text" id="trial-skill-keys" placeholder="예: 1, 2, 8" value="">
+                            <span></span>
+                        </div>
+                        <div id="trial-skill-chars" class="kanchen-skill-table"></div>
                     </div>
-                    <div id="trial-status" style="margin-top:0.5rem;font-size:0.85rem;opacity:0.6">대기 중</div>
+                    <p class="kanchen-skill-note trial-skill-note">
+                        캐릭터 칸을 비워 두면 <b>기본</b> 키를 씁니다. 창 감지로 읽은 캐릭터가 위에 나오고, 이름으로 기억합니다.
+                    </p>
                 </div>
 
-                <!-- 로그 -->
-                <div class="card">
+                <!-- 시련 로그 — 서버 진행 로그 + 이 탭에서 한 일 -->
+                <div class="card" id="trial-log-card">
                     <h2>로그</h2>
-                    <div id="trial-log" style="font-size:0.8rem;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.3);border-radius:6px;padding:0.5rem;font-family:monospace">
-                        <div style="opacity:0.4">시련 로그가 여기에 표시됩니다</div>
+                    <div id="trial-log" class="trial-log">
+                        <div class="trial-log-empty">시련 로그가 여기에 표시됩니다</div>
                     </div>
                 </div>
             </section>
