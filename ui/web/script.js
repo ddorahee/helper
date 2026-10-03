@@ -139,6 +139,8 @@ function updateMultiCenterRow() {
             : '아이템 습득은 포그라운드 창 1개일 때만';
     }
     paint('kanchen-usage', 'item-pickup-card', counts.kanchen, pickup);
+    // 칸첸 스킬 키의 캐릭터 줄도 창 목록을 따라간다(새 캐릭터 · 칸첸으로 고른 창 표시)
+    if (window.refreshKanchenSkillRows) window.refreshKanchenSkillRows();
 }
 // 글자 학습 — 사전에 없는 글자를 화면에서 배운다.
 // 게임 폰트가 고정 비트맵이라, 한 번 배우면 그 글자는 이후 픽셀 단위로 정확히 읽힌다.
@@ -1357,6 +1359,7 @@ function startOperation(wasTimerPaused) {
             const inp = row?.querySelector('select.multi-input-select');
             return {
                 hwnd: cb.value,
+                nick: row?.dataset.nick || '', // 칸첸 캐릭터별 스킬 키를 고르는 데 쓴다
                 mode: (sel && sel.value) || 'daeya',
                 bg: (inp && inp.value === 'bg')
             };
@@ -1387,6 +1390,7 @@ function startOperation(wasTimerPaused) {
 
     body += `&multi_hwnds=${rows.map(r => r.hwnd).join(',')}`;
     body += `&multi_modes=${rows.map(r => r.mode).join(',')}`;
+    body += `&multi_nicks=${encodeURIComponent(rows.map(r => r.nick).join(','))}`;
     const minimize = document.getElementById('multi-entry-minimize');
     if (minimize && minimize.checked) body += `&multi_minimize=1`;
     // 창별 입력 방식 (fg=포그라운드, bg=백그라운드)
@@ -1518,6 +1522,84 @@ function setAutoStartupApi(enabled) {
     // 아이템 리스트 데이터
     let itemList = [];
 
+    // ===== 칸첸 스킬 키 — 기본 + 캐릭터별 =====
+    // 칸첸은 캐릭터마다 쓰는 스킬이 조금씩 달라서(사용자 2026-10-03) 창 감지로 읽은 캐릭터마다
+    // 키를 따로 둔다. 이름으로 저장하고, 비워 둔 캐릭터는 기본 키를 쓴다.
+    // 시작할 때 창의 캐릭터 이름을 같이 보내면 서버가 그 이름으로 키를 고른다.
+    const skillCharsEl = document.getElementById('kanchen-skill-chars');
+    let skillByChar = {}; // 캐릭터 이름 → 키 배열
+
+    function parseSkillKeys(text) {
+        return String(text || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+    }
+
+    function setCharSkills(name, text) {
+        const keys = parseSkillKeys(text);
+        if (keys.length) skillByChar[name] = keys;
+        else delete skillByChar[name];
+    }
+
+    function renderKanchenSkillRows() {
+        if (!skillCharsEl) return;
+        // 입력 중인 칸이 있으면 다시 그린 뒤에도 이어서 쓸 수 있게 기억해 둔다
+        const active = document.activeElement;
+        const focusName = active && active.classList && active.classList.contains('kanchen-skill-input')
+            ? active.closest('.kanchen-skill-row')?.dataset.name : null;
+
+        // 창 목록 순서대로(지금 감지된 캐릭터) + 저장돼 있지만 지금 창이 없는 캐릭터
+        const seen = new Set();
+        const rows = [];
+        document.querySelectorAll('#multi-entry-list label[data-nick]').forEach(lb => {
+            const name = lb.dataset.nick;
+            if (!name || seen.has(name)) return;
+            seen.add(name);
+            const cb = lb.querySelector('input[type="checkbox"]');
+            const mode = lb.querySelector('select.multi-mode-select');
+            rows.push({ name, kanchen: !!(cb && cb.checked && mode && mode.value === 'kanchen'), missing: false });
+        });
+        Object.keys(skillByChar).sort().forEach(name => {
+            if (!seen.has(name)) rows.push({ name, kanchen: false, missing: true });
+        });
+
+        if (rows.length === 0) {
+            skillCharsEl.innerHTML = '<div class="kanchen-skill-empty">창 감지로 읽은 캐릭터가 여기에 나옵니다.</div>';
+            return;
+        }
+        skillCharsEl.innerHTML = rows.map(r => {
+            const n = escapeHtmlMin(r.name);
+            const keys = escapeHtmlMin((skillByChar[r.name] || []).join(', '));
+            const chip = r.kanchen ? '<span class="mode-chip mode-chip-kanchen" title="칸첸으로 선택된 창">칸첸</span>' : '';
+            const missing = r.missing ? '<span class="kanchen-skill-missing">창 없음</span>' : '';
+            const del = r.missing ? '<button type="button" class="kanchen-skill-del" title="이 캐릭터의 키를 지웁니다">✕</button>' : '<span></span>';
+            return `<div class="kanchen-skill-row${r.missing ? ' missing' : ''}" data-name="${n}">
+                <span class="kanchen-skill-name" title="${n}"><span class="kanchen-skill-label">${n}</span>${chip}${missing}</span>
+                <input type="text" class="kanchen-skill-input" placeholder="기본 키 사용" value="${keys}">
+                ${del}
+            </div>`;
+        }).join('');
+
+        skillCharsEl.querySelectorAll('.kanchen-skill-row').forEach(row => {
+            const name = row.dataset.name;
+            const input = row.querySelector('.kanchen-skill-input');
+            input.addEventListener('input', () => setCharSkills(name, input.value));
+            input.addEventListener('change', () => {
+                setCharSkills(name, input.value);
+                if (pickupSaveBtn) pickupSaveBtn.click(); // 바꾸면 바로 저장
+            });
+            const delBtn = row.querySelector('.kanchen-skill-del');
+            if (delBtn) delBtn.addEventListener('click', () => {
+                delete skillByChar[name];
+                if (pickupSaveBtn) pickupSaveBtn.click();
+                renderKanchenSkillRows();
+            });
+            if (name === focusName) {
+                input.focus();
+                input.setSelectionRange(input.value.length, input.value.length);
+            }
+        });
+    }
+    window.refreshKanchenSkillRows = renderKanchenSkillRows;
+
     // 아이템 행 렌더링
     function renderItemList() {
         if (!pickupList) return;
@@ -1629,7 +1711,12 @@ function setAutoStartupApi(enabled) {
             if (pickupOriginY) pickupOriginY.value = data.originY || 37;
             if (pickupTargetMap) pickupTargetMap.value = data.targetMap || '';
             if (pickupWrongMap) pickupWrongMap.value = data.wrongMap || '';
-            if (pickupSkillKeys) pickupSkillKeys.value = (data.skillKeys && data.skillKeys.length > 0) ? data.skillKeys.join(',') : '';
+            if (pickupSkillKeys) pickupSkillKeys.value = (data.skillKeys && data.skillKeys.length > 0) ? data.skillKeys.join(', ') : '';
+            skillByChar = {};
+            Object.entries(data.skillKeysByChar || {}).forEach(([name, keys]) => {
+                if (name && Array.isArray(keys) && keys.length) skillByChar[name] = keys;
+            });
+            renderKanchenSkillRows();
         } catch(e) {}
     }
 
@@ -1654,6 +1741,8 @@ function setAutoStartupApi(enabled) {
     [pickupOriginX, pickupOriginY].forEach(el => {
         if (el && pickupSaveBtn) el.addEventListener('change', () => pickupSaveBtn.click());
     });
+    // 기본 스킬 키도 바꾸면 바로 저장 (캐릭터별 칸과 같게)
+    if (pickupSkillKeys && pickupSaveBtn) pickupSkillKeys.addEventListener('change', () => pickupSaveBtn.click());
 
     // 설정 저장
     if (pickupSaveBtn) {
@@ -1673,7 +1762,8 @@ function setAutoStartupApi(enabled) {
                 originY: pickupOriginY ? parseInt(pickupOriginY.value) || 0 : 0,
                 targetMap: pickupTargetMap ? pickupTargetMap.value.trim() : '',
                 wrongMap: pickupWrongMap ? pickupWrongMap.value.trim() : '',
-                skillKeys: pickupSkillKeys ? pickupSkillKeys.value.split(',').map(k => k.trim()).filter(k => k) : [],
+                skillKeys: pickupSkillKeys ? parseSkillKeys(pickupSkillKeys.value) : [],
+                skillKeysByChar: skillByChar,
             };
             try {
                 const res = await fetch('/api/item-pickup/config', {
@@ -1682,12 +1772,14 @@ function setAutoStartupApi(enabled) {
                     body: JSON.stringify(cfg)
                 });
                 if (res.ok) {
-                    addLogMessage('아이템 습득 설정이 저장되었습니다. (' + items.length + '개 아이템)');
+                    const nChar = Object.keys(skillByChar).length;
+                    addLogMessage(`칸첸 설정 저장됨 — 스킬: 기본 [${cfg.skillKeys.join(', ') || '없음'}]`
+                        + (nChar ? ` + 캐릭터별 ${nChar}명` : '') + ` / 아이템 ${items.length}개`);
                 } else {
-                    addLogMessage('아이템 습득 설정 저장 실패');
+                    addLogMessage('칸첸 설정 저장 실패');
                 }
             } catch(e) {
-                addLogMessage('아이템 습득 설정 저장 실패: ' + e.message);
+                addLogMessage('칸첸 설정 저장 실패: ' + e.message);
             }
         });
     }

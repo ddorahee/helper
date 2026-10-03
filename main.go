@@ -269,6 +269,7 @@ func main() {
 			TargetMap:    savedPickupCfg.TargetMap,
 			WrongMap:     savedPickupCfg.WrongMap,
 			SkillKeys:    savedPickupCfg.SkillKeys,
+			SkillKeysByChar: savedPickupCfg.SkillKeysByChar,
 		})
 		log.Printf("아이템 습득 설정 로드: %d개 아이템 (원점: %d,%d)", len(loadedItems), savedPickupCfg.OriginX, savedPickupCfg.OriginY)
 	}
@@ -507,6 +508,10 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		// multi_bgs: multi_hwnds와 1:1 대응하는 창별 입력 방식("bg"=백그라운드).
 		// 창을 앞으로 가져오지 않고 PostMessage/PrintWindow로 처리한다 (baram-yolo에서 이식).
 		bgStrs := strings.Split(r.FormValue("multi_bgs"), ",")
+		// multi_nicks: multi_hwnds와 1:1 대응하는 창의 캐릭터 이름(창 감지로 읽은 것, 못 읽었으면 빈 값).
+		// 칸첸 창은 이 이름으로 캐릭터별 스킬 키를 고른다.
+		nickStrs := strings.Split(r.FormValue("multi_nicks"), ",")
+		var multiNicks []string
 		for i, s := range strings.Split(r.FormValue("multi_hwnds"), ",") {
 			s = strings.TrimSpace(s)
 			if s == "" {
@@ -526,6 +531,11 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 					bg = strings.TrimSpace(bgStrs[i]) == "bg"
 				}
 				multiBGs = append(multiBGs, bg)
+				nick := ""
+				if i < len(nickStrs) {
+					nick = strings.TrimSpace(nickStrs[i])
+				}
+				multiNicks = append(multiNicks, nick)
 			}
 		}
 		multiMinimize := r.FormValue("multi_minimize") == "1"
@@ -602,12 +612,18 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			defaultMultiMode = "kanchen"
 		}
 		var multiEntries []automation.EntryWindow
+		pickupCfg := app.ItemScanner.GetConfig()
 		for i, h := range multiHwnds {
 			m := multiModes[i]
 			if m != "daeya" && m != "kanchen" {
 				m = defaultMultiMode
 			}
-			multiEntries = append(multiEntries, automation.EntryWindow{HWND: h, Mode: m, BG: multiBGs[i]})
+			e := automation.EntryWindow{HWND: h, Mode: m, BG: multiBGs[i]}
+			if m == "kanchen" {
+				// 칸첸은 캐릭터마다 쓰는 스킬이 달라서 창의 캐릭터 이름으로 키를 고른다(없으면 기본 키)
+				e.Skills = pickupCfg.SkillKeysFor(multiNicks[i])
+			}
+			multiEntries = append(multiEntries, e)
 		}
 
 		// 선택된 모드에 따라 자동화 시작
@@ -634,7 +650,12 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 							log.Printf("다중 입장 시작 실패: %v", err)
 						}
 					} else {
-						km.KanchenEnter() // 키 시퀀스 (아이템 스캐너는 아래에서 시작)
+						// 키 시퀀스 — 입장 키 뒤 스킬 자리에 이 캐릭터 키(없으면 기존대로 d).
+						// 아이템 스캐너는 아래에서 시작
+						if len(e.Skills) > 0 {
+							sendEvent(app, "logMessage", map[string]string{"message": "[칸첸] 스킬 " + strings.Join(e.Skills, ",")})
+						}
+						km.KanchenEnterWithSkills(e.Skills)
 					}
 				}
 				return
@@ -714,13 +735,15 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			(internalMode == ModeKanchenEnter && len(multiEntries) == 0)
 		if kanchenSingle {
 			scanHwnd := uint64(0)
+			var scanSkills []string
 			if len(multiEntries) == 1 {
-				scanHwnd = multiEntries[0].HWND // 선택한 창으로
+				scanHwnd = multiEntries[0].HWND     // 선택한 창으로
+				scanSkills = multiEntries[0].Skills // 그 캐릭터 스킬 키
 			} else if windows, err := app.WindowManager.FindGameWindows(); err == nil && len(windows) > 0 {
 				scanHwnd = windows[0].HWND
 			}
 			if scanHwnd != 0 {
-				app.ItemScanner.Start(scanHwnd)
+				app.ItemScanner.StartWithSkills(scanHwnd, scanSkills)
 			}
 		}
 
@@ -1311,8 +1334,10 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				http.Error(w, "잘못된 요청", http.StatusBadRequest)
 				return
 			}
-			log.Printf("[아이템습득] 설정 수신: enabled=%v, items=%d개, origin=(%d,%d)",
-				cfg.Enabled, len(cfg.Items), cfg.OriginX, cfg.OriginY)
+			cfg.SkillKeys = automation.NormalizeSkillKeys(cfg.SkillKeys)
+			cfg.SkillKeysByChar = automation.NormalizeSkillKeysByChar(cfg.SkillKeysByChar)
+			log.Printf("[아이템습득] 설정 수신: enabled=%v, items=%d개, origin=(%d,%d), 스킬=%v, 캐릭터별 스킬=%v",
+				cfg.Enabled, len(cfg.Items), cfg.OriginX, cfg.OriginY, cfg.SkillKeys, cfg.SkillKeysByChar)
 			app.ItemScanner.SetConfig(cfg)
 			// 설정을 CharacterStore에도 영속화
 			persistItems := make([]config.ItemPickupTargetItem, len(cfg.Items))
@@ -1330,6 +1355,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				TargetMap:    cfg.TargetMap,
 				WrongMap:     cfg.WrongMap,
 				SkillKeys:    cfg.SkillKeys,
+				SkillKeysByChar: cfg.SkillKeysByChar,
 			})
 			if err := app.CharacterStore.Save(); err != nil {
 				log.Printf("아이템 습득 설정 저장 실패: %v", err)

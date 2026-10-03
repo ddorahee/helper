@@ -120,6 +120,49 @@ type ItemScannerConfig struct {
 	TargetMap    string       `json:"targetMap"`    // 아이템 스캔할 맵 이름 (예: "칸첸중가설산")
 	WrongMap     string       `json:"wrongMap"`     // 자동이동 해야하는 맵 (예: "칸첸중가설산초입")
 	SkillKeys    []string     `json:"skillKeys"`    // 스킬 키 (예: ["1","2","8"]) — 스캔마다 자동 입력
+	// SkillKeysByChar 캐릭터별 스킬 키 (캐릭터 이름 → 키). 칸첸은 캐릭터마다 쓰는 스킬이 달라서
+	// 메인화면은 창의 캐릭터 이름으로 여기서 키를 고르고, 없으면 SkillKeys(기본)를 쓴다.
+	SkillKeysByChar map[string][]string `json:"skillKeysByChar,omitempty"`
+}
+
+// SkillKeysFor 칸첸에서 이 캐릭터가 누를 스킬 키 — 캐릭터별 키가 있으면 그것, 없으면 기본(SkillKeys).
+// 이름을 못 읽었으면("") 기본.
+func (c ItemScannerConfig) SkillKeysFor(name string) []string {
+	if name = strings.TrimSpace(name); name != "" {
+		if keys := c.SkillKeysByChar[name]; len(keys) > 0 {
+			return keys
+		}
+	}
+	return c.SkillKeys
+}
+
+// NormalizeSkillKeys 스킬 키 목록 정리 — 앞뒤 공백을 지우고 소문자로(대문자는 Shift 가 섞여
+// 눌릴 수 있다), 빈 값은 뺀다.
+func NormalizeSkillKeys(keys []string) []string {
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if k = strings.ToLower(strings.TrimSpace(k)); k != "" {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// NormalizeSkillKeysByChar 캐릭터별 스킬 키 정리 — 키를 비운 캐릭터는 빼서 기본 키를 쓰게 한다.
+func NormalizeSkillKeysByChar(m map[string][]string) map[string][]string {
+	out := map[string][]string{}
+	for name, keys := range m {
+		name = strings.TrimSpace(name)
+		keys = NormalizeSkillKeys(keys)
+		if name == "" || len(keys) == 0 {
+			continue
+		}
+		out[name] = keys
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // DefaultItemScannerConfig 기본 설정
@@ -161,6 +204,7 @@ type ItemScanner struct {
 	wrongMapRetries int            // 연속 wrongMap 감지 횟수 (무한루프 방지)
 	lastCtrlDTime   time.Time      // 마지막 Ctrl+D 사용 시각 (쿨타임 계산용)
 	ignoredItems    []ignoredItem  // 이동 실패한 아이템 목록 (타일 밖)
+	skillOverride   []string       // 이번 실행에서 누를 스킬 키(메인화면이 캐릭터별로 정해 줌). nil 이면 설정의 기본 키
 	mutex           sync.Mutex
 	logFunc         func(string) // 로그 콜백
 }
@@ -218,8 +262,14 @@ func (is *ItemScanner) IsRunning() bool {
 	return is.running
 }
 
-// Start 주기적 아이템 스캔 시작
+// Start 주기적 아이템 스캔 시작 — 스캔 전 스킬은 설정의 기본 키(SkillKeys).
 func (is *ItemScanner) Start(hwnd uint64) {
+	is.StartWithSkills(hwnd, nil)
+}
+
+// StartWithSkills Start 와 같되, 스캔 전에 누를 스킬 키를 이번 실행만 skills 로 쓴다
+// (메인화면 칸첸이 창의 캐릭터 이름으로 고른 키). 비어 있으면 설정의 기본 키.
+func (is *ItemScanner) StartWithSkills(hwnd uint64, skills []string) {
 	is.mutex.Lock()
 	itemNames := make([]string, len(is.config.Items))
 	for i, it := range is.config.Items {
@@ -242,6 +292,10 @@ func (is *ItemScanner) Start(hwnd uint64) {
 	is.stopChan = make(chan struct{})
 	is.mapConfirmed = false
 	is.ignoredItems = nil
+	is.skillOverride = nil
+	if len(skills) > 0 {
+		is.skillOverride = append([]string(nil), skills...)
+	}
 	is.mutex.Unlock()
 
 	interval := is.config.ScanInterval
@@ -249,7 +303,7 @@ func (is *ItemScanner) Start(hwnd uint64) {
 		interval = 1
 	}
 
-	is.log(fmt.Sprintf("아이템 스캔 시작 (아이템: %v, 주기: %d초, 원점: X=%d Y=%d)", itemNames, interval, is.config.OriginX, is.config.OriginY))
+	is.log(fmt.Sprintf("아이템 스캔 시작 (아이템: %v, 주기: %d초, 원점: X=%d Y=%d, 스킬: %v)", itemNames, interval, is.config.OriginX, is.config.OriginY, is.skillKeysNow()))
 
 	go func() {
 		// 첫 스캔 전 대기 — 맵 감지가 있으므로 최소 안정화 시간만
@@ -285,9 +339,9 @@ func (is *ItemScanner) Start(hwnd uint64) {
 				return
 			}
 
-			// 스킬 키 자동 입력 (스캔 전)
-			if len(is.config.SkillKeys) > 0 {
-				for _, key := range is.config.SkillKeys {
+			// 스킬 키 자동 입력 (스캔 전) — 캐릭터별로 정해진 키가 있으면 그것, 아니면 기본 키
+			if keys := is.skillKeysNow(); len(keys) > 0 {
+				for _, key := range keys {
 					if key != "" {
 						robotgo.KeyTap(key)
 						time.Sleep(150 * time.Millisecond)
@@ -299,6 +353,16 @@ func (is *ItemScanner) Start(hwnd uint64) {
 			time.Sleep(sleepDuration)
 		}
 	}()
+}
+
+// skillKeysNow 스캔 전에 누를 스킬 키 — 이번 실행에 캐릭터별 키가 정해졌으면 그것, 아니면 설정의 기본 키.
+func (is *ItemScanner) skillKeysNow() []string {
+	is.mutex.Lock()
+	defer is.mutex.Unlock()
+	if is.skillOverride != nil {
+		return is.skillOverride
+	}
+	return is.config.SkillKeys
 }
 
 // Stop 아이템 스캔 중지

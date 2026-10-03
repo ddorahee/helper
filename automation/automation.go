@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"strings"
 	"time"
 )
 
@@ -103,6 +104,48 @@ func (km *KeyboardManager) DaeyaParty() {
 // 칸첸 모드 (입장) 자동화 시퀀스를 실행합니다
 func (km *KeyboardManager) KanchenEnter() {
 	km.RunKeySequence(km.getSequence("kanchen-enter", DefaultKanchenEnterSequence))
+}
+
+// KanchenEnterWithSkills 칸첸(입장) 시퀀스를 돌리되 입장 키 뒤의 스킬 자리(기본 d)를 skills 로 바꾼다.
+// 메인화면은 창의 캐릭터 이름으로 고른 키를 넘긴다(칸첸은 캐릭터마다 쓰는 스킬이 다르다).
+// skills 가 비면 설정된 시퀀스 그대로.
+func (km *KeyboardManager) KanchenEnterWithSkills(skills []string) {
+	km.RunKeySequence(withSkillKeys(km.getSequence("kanchen-enter", DefaultKanchenEnterSequence), skills))
+}
+
+// kanchenSkillGap 시퀀스 안에서 스킬 키 사이 대기 (SendKeyPress 가 키마다 0.3초를 더 쉰다)
+const kanchenSkillGap = 200 * time.Millisecond
+
+// withSkillKeys 시퀀스의 마지막 esc 뒤(스킬 자리)를 skills 로 바꾼 사본을 돌려준다.
+// 입장 키(o→Enter→Enter→ESC)와 그 대기 시간은 그대로 두고, 스킬 사이엔 kanchenSkillGap 을 둔다.
+// esc 가 없으면(직접 바꾼 시퀀스) 원래 키 뒤에 붙인다. skills 가 비면 seq 그대로.
+func withSkillKeys(seq KeySequence, skills []string) KeySequence {
+	if len(skills) == 0 {
+		return seq
+	}
+	entryEnd := len(seq.KeyPresses) // 입장 키 개수
+	for i := len(seq.KeyPresses) - 1; i >= 0; i-- {
+		if k := strings.ToLower(seq.KeyPresses[i]); k == "esc" || k == "escape" {
+			entryEnd = i + 1
+			break
+		}
+	}
+	keys := append(append([]string(nil), seq.KeyPresses[:entryEnd]...), skills...)
+	delays := make([]time.Duration, 0, len(keys))
+	for i := 0; i < entryEnd; i++ {
+		d := time.Second // 대기 시간이 모자라게 저장돼 있으면 1초
+		if i < len(seq.Delays) {
+			d = seq.Delays[i]
+		}
+		delays = append(delays, d)
+	}
+	for i := 0; i < len(skills)-1; i++ {
+		delays = append(delays, kanchenSkillGap)
+	}
+	out := seq
+	out.KeyPresses = keys
+	out.Delays = delays
+	return out
 }
 
 // 칸첸 모드 (파티) 자동화 시퀀스를 실행합니다

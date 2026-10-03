@@ -84,6 +84,8 @@ type ItemPickupConfig struct {
 	TargetMap    string                 `json:"targetMap"`
 	WrongMap     string                 `json:"wrongMap"`
 	SkillKeys    []string               `json:"skillKeys"`
+	// SkillKeysByChar 칸첸 캐릭터별 스킬 키 (캐릭터 이름 → 키). 없는 캐릭터는 SkillKeys(기본)를 쓴다.
+	SkillKeysByChar map[string][]string `json:"skillKeysByChar,omitempty"`
 }
 
 // CharacterData JSON 저장 구조

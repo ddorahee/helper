@@ -51,6 +51,8 @@ type EntryWindow struct {
 	HWND uint64
 	Mode string
 	BG   bool // true=백그라운드(창 안 띄움), false=포그라운드(창을 앞으로)
+	// Skills 칸첸 사냥맵에서 누를 스킬 키 — 창의 캐릭터 이름으로 고른 키(없으면 기본 키). 비면 안 누른다.
+	Skills []string
 }
 
 // MultiEntry 다중 창 솔로 입장 유지 루프 (대야/칸첸 혼합 가능).
@@ -59,7 +61,8 @@ type EntryWindow struct {
 //     입구맵(대야산기슭/칸첸중가설산초입) → 입장(o→Enter→Enter→ESC) → 전투맵 확인 → 최소화
 //     전투맵(대야전투/칸첸중가설산)       → 그대로 최소화
 //   다음 창 → … 한 바퀴 후 대기, 약 30초 주기로 반복.
-// 스킬/아이템 로직은 안 함(사냥은 게임 내 자동사냥). 창 1개짜리 기존 로직과 별개.
+// 아이템 줍기는 안 한다(마우스라 포그라운드 독점). 칸첸 창은 사냥맵에 있는 동안 그 캐릭터의
+// 스킬 키를 감시 주기마다 누른다(최소화 모드 제외). 창 1개짜리 기존 로직과 별개.
 type MultiEntry struct {
 	wm *WindowManager
 	om *OCRManager
@@ -76,6 +79,8 @@ type MultiEntry struct {
 	// lastEntry 창별 마지막 입장 시도 시각 — 입구맵 감시가 로딩 중인 창에 키를 연타하지 않게.
 	// run 고루틴 하나에서만 읽고 쓴다.
 	lastEntry map[uint64]time.Time
+	// skillErrLogged 스킬 키 입력 실패를 창마다 한 번만 로그에 남긴다(2초마다 누르므로). run 고루틴 전용.
+	skillErrLogged map[uint64]bool
 
 	roundInterval time.Duration // 한 바퀴 주기 (기본 30초)
 	logFunc       func(string)
@@ -85,6 +90,7 @@ type MultiEntry struct {
 const (
 	meWatchInterval = 2 * time.Second
 	meEntryCooldown = 15 * time.Second
+	meSkillGap      = 300 * time.Millisecond // 스킬 키 사이 대기 (대야 백그라운드 스킬과 같은 간격)
 )
 
 // NewMultiEntry 생성
@@ -157,6 +163,7 @@ func (me *MultiEntry) StartEntries(entries []EntryWindow, minimize bool, centerX
 	me.centerX, me.centerY = centerX, centerY
 	me.centerSet = centerX > 0 || centerY > 0
 	me.lastEntry = map[uint64]time.Time{}
+	me.skillErrLogged = map[uint64]bool{}
 	me.running = true
 	me.stopChan = make(chan struct{})
 	stop := me.stopChan
@@ -195,6 +202,20 @@ func (me *MultiEntry) StartEntries(entries []EntryWindow, minimize bool, centerX
 			meWatchInterval.Seconds(), me.roundInterval.Seconds())
 	}
 	me.log("다중 입장 유지 시작 — %s, %s%s", summary, cycle, extra)
+	// 칸첸 창마다 누를 스킬 키 (캐릭터별)
+	for i, e := range entries {
+		if e.Mode != "kanchen" {
+			continue
+		}
+		switch {
+		case len(e.Skills) == 0:
+			me.log("창%d[칸첸] 스킬 키 없음 — 스킬은 안 누름", i+1)
+		case me.minimize:
+			me.log("창%d[칸첸] 스킬 %s — 최소화 중엔 못 누름", i+1, strings.Join(e.Skills, ","))
+		default:
+			me.log("창%d[칸첸] 스킬 %s — 사냥맵에 있는 동안 약 %.0f초마다", i+1, strings.Join(e.Skills, ","), meWatchInterval.Seconds())
+		}
+	}
 	return nil
 }
 
@@ -418,6 +439,10 @@ func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindo
 	if me.centerSet && entry.Mode == "kanchen" && state == "inside" {
 		me.moveToCenter(stop, idx, hwnd, bg, activate)
 	}
+	// 칸첸 사냥맵이면 그 캐릭터 스킬 (이후엔 감시 주기마다 watchEntrances 가 누른다)
+	if state == "inside" {
+		me.pressSkills(stop, idx, entry)
+	}
 
 	// 최소화는 옵션 (기본 꺼짐). 최소화를 켜면 위에서 모든 창을 포그라운드로
 	// 강제하므로 여기서 bg는 항상 false다.
@@ -505,11 +530,34 @@ func (me *MultiEntry) watchEntrances(stop chan struct{}, entries []EntryWindow, 
 				continue
 			}
 			name, ok := me.om.ReadMapGlyph(img, e.HWND)
-			if !ok || me.classify(name, cfg) != "entrance" {
+			if !ok {
 				continue
 			}
-			me.log("창%d[%s] 입구맵(%s) 감지 — 바로 입장", i+1, cfg.modeName, name)
-			me.handleWindow(stop, i+1, e)
+			switch me.classify(name, cfg) {
+			case "entrance":
+				me.log("창%d[%s] 입구맵(%s) 감지 — 바로 입장", i+1, cfg.modeName, name)
+				me.handleWindow(stop, i+1, e)
+			case "inside":
+				me.pressSkills(stop, i+1, e) // 칸첸 창만, 스킬 키가 있을 때만
+			}
+		}
+	}
+}
+
+// pressSkills 칸첸 사냥맵에 있는 창에 그 캐릭터의 스킬 키를 한 번씩 누른다.
+// 포그라운드로 고른 창도 창을 띄우지 않고(PostMessage) 보낸다 — 2초마다 누르는데 그때마다 창을
+// 앞으로 가져오면 다른 창·사용자 입력과 부딪힌다. 최소화 모드는 창이 내려가 있어 누르지 않는다.
+func (me *MultiEntry) pressSkills(stop chan struct{}, idx int, e EntryWindow) {
+	if e.Mode != "kanchen" || len(e.Skills) == 0 || me.minimize {
+		return
+	}
+	for i, key := range e.Skills {
+		if i > 0 && !me.sleepOrStop(stop, meSkillGap) {
+			return
+		}
+		if err := BgKeyTap(e.HWND, key); err != nil && !me.skillErrLogged[e.HWND] {
+			me.skillErrLogged[e.HWND] = true
+			me.log("창%d[칸첸] 스킬 키 '%s' 입력 실패: %v", idx, key, err)
 		}
 	}
 }
