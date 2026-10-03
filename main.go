@@ -3042,9 +3042,11 @@ func trialStartFromForm(app *Application, r *http.Request, group bool) (automati
 		s.MaxRuns = automation.NormalizeTrialMaxRuns(maxRuns)
 	}
 	window := func(hwndKey, bgKey, nickKey string) automation.TrialWindow {
-		bg := strings.TrimSpace(r.FormValue(bgKey))
+		// 시련은 전부 백그라운드(사용자 2026-10-03: 입장·걷기·스킬 모두 창을 앞으로 안 땡김 — 포그라운드
+		// 선택지 없앰). bgKey 는 예전 요청과의 호환용으로만 받고 값은 보지 않는다.
+		_ = bgKey
 		w := automation.TrialWindow{
-			BG:   bg == "1" || bg == "true" || bg == "bg",
+			BG:   true,
 			Nick: strings.TrimSpace(r.FormValue(nickKey)),
 		}
 		fmt.Sscanf(r.FormValue(hwndKey), "%d", &w.HWND)

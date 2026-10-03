@@ -748,17 +748,19 @@ func (t *Trial) walkAxis(w TrialWindow, role string, diff int, pos, neg string) 
 }
 
 // pressSkills 칸첸 던전에 있는 창에 그 캐릭터의 스킬 키를 한 번씩 누른다 (키 사이 300ms).
-// 2초마다 누르므로 키마다 로그는 남기지 않는다. 포그라운드는 창을 띄운 뒤 robotgo, 백그라운드는 PostMessage.
+// 포그라운드로 고른 창도 스킬은 창을 띄우지 않고(PostMessage) 보낸다 — 2초마다 누르는데 그때마다 창을
+// 앞으로 가져오면 다른 창·사용자 입력과 부딪힌다(메인화면 다중 입장과 같은 방식). 키마다 로그는 없다.
 func (t *Trial) pressSkills(w TrialWindow, role string) {
 	if len(w.Skills) == 0 {
 		return
 	}
-	t.activate(w)
+	bw := w
+	bw.BG = true // 스킬은 늘 백그라운드 입력
 	for i, k := range w.Skills {
 		if i > 0 && !t.sleep(trialSkillGap) {
 			return
 		}
-		t.key(w, k, role)
+		t.key(bw, k, role)
 	}
 }
 

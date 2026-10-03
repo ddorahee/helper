@@ -9,7 +9,6 @@
     const LOG_MAX = 200;
     const POLL_MS = 2000;
     const DETECT_LABEL = '창 감지';
-    const INPUT_TITLE = '포그라운드: 창을 앞으로 가져와 입력 / 백그라운드: 창을 띄우지 않고 입력·캡처';
 
     const ROLE_LABEL = { solo: '솔로', leader: '그룹장', member: '그룹원' };
     const BADGE = {
@@ -451,7 +450,6 @@
             const opts = roleOptions
                 .map(([value, label]) => `<option value="${value}"${value === role ? ' selected' : ''}>${label}</option>`)
                 .join('');
-            const bg = st.input === 'bg';
             return `<div class="trial-win-row${role ? ' on' : ''}" data-hwnd="${key}" data-role="${role}">
                 <div class="trial-win-main">
                     <span class="trial-win-idx" title="hwnd ${key}">창 ${i + 1}</span>
@@ -460,10 +458,6 @@
                 </div>
                 <div class="trial-win-ctrls">
                     <select class="trial-role-select" title="역할">${opts}</select>
-                    <select class="trial-input-select" title="${INPUT_TITLE}" style="visibility:${role ? 'visible' : 'hidden'}">
-                        <option value="fg"${bg ? '' : ' selected'}>포그라운드</option>
-                        <option value="bg"${bg ? ' selected' : ''}>백그라운드</option>
-                    </select>
                 </div>
             </div>`;
         }).join('');
@@ -492,8 +486,6 @@
         if (!st) return;
         if (sel.classList.contains('trial-role-select')) {
             setRole(key, sel.value);
-        } else if (sel.classList.contains('trial-input-select')) {
-            st.input = sel.value === 'bg' ? 'bg' : 'fg';
         } else {
             return;
         }
@@ -531,7 +523,7 @@
         });
     }
 
-    // 다시 그리지 않고 고른 값·입력 방식 칸·강조만 맞춘다(열려 있는 드롭다운이 닫히지 않게)
+    // 다시 그리지 않고 고른 값·강조만 맞춘다(열려 있는 드롭다운이 닫히지 않게)
     function syncRows() {
         if (!els.list) return;
         els.list.querySelectorAll('.trial-win-row').forEach(row => {
@@ -539,12 +531,7 @@
             if (!st) return;
             const role = trialMode === 'solo' ? st.solo : st.group;
             const roleSel = row.querySelector('.trial-role-select');
-            const inputSel = row.querySelector('.trial-input-select');
             if (roleSel && roleSel.value !== role) roleSel.value = role;
-            if (inputSel) {
-                if (inputSel.value !== st.input) inputSel.value = st.input;
-                inputSel.style.visibility = role ? 'visible' : 'hidden';
-            }
             row.classList.toggle('on', !!role);
             row.dataset.role = role;
         });
@@ -617,13 +604,14 @@
         return w.nick || `창 ${wins.indexOf(w) + 1}`;
     }
 
-    function isBg(w) {
-        const st = winState[String(w.hwnd)];
-        return !!(st && st.input === 'bg');
+    // 시련은 전부 백그라운드로 돈다 — 입장·걷기·스킬 모두 창을 앞으로 안 가져온다
+    // (사용자 2026-10-03: 포그라운드 선택지는 없앰)
+    function isBg() {
+        return true;
     }
 
     function winDesc(w) {
-        return `${winName(w)}(${isBg(w) ? '백그라운드' : '포그라운드'})`;
+        return winName(w);
     }
 
     // ===== 칸첸 시련 스킬 키 — 기본 + 캐릭터별 (메인화면 칸첸 카드와 같은 틀) =====
