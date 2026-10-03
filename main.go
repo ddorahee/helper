@@ -1282,14 +1282,13 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			}
 			result.DetectedName = names.Name
 			result.NameExact = names.NameExact
-			result.MapText = names.MapName
 			if !names.NameExact && names.NickImage != nil {
 				if b64 := encodePNGScaled(names.NickImage, 3); b64 != "" {
 					result.NickCrop = "data:image/png;base64," + b64
 				}
 			}
 			if !poll {
-				log.Printf("[창감지] hwnd=%d 이름='%s'(정확=%v) 맵='%s'", win.HWND, names.Name, names.NameExact, names.MapName)
+				log.Printf("[창감지] hwnd=%d 이름='%s'(정확=%v)", win.HWND, names.Name, names.NameExact)
 			}
 
 			results = append(results, result)

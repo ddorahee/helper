@@ -13,7 +13,6 @@ type rotationWindowResult struct {
 	PID          uint32 `json:"pid"`
 	DetectedName string `json:"detectedName"`
 	NameExact    bool   `json:"nameExact"` // 글리프로 읽은 정확한 이름 (false 면 OCR 추정이거나 못 읽음)
-	MapText      string `json:"mapText"`   // 지금 서 있는 맵 ("" = 못 읽음)
 	MatchedID    string `json:"matchedId,omitempty"`
 	MatchedName  string `json:"matchedName,omitempty"`
 	Confidence   string `json:"confidence"`         // "exact" | "partial"(OCR 유사도) | "remaining"(소거법) | "none"

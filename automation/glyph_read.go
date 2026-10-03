@@ -154,11 +154,11 @@ func (om *OCRManager) ReadNickname(hwnd uint64) (string, bool) {
 type WindowNames struct {
 	Name      string      // 캐릭터 이름 ("" = 못 읽음)
 	NameExact bool        // 글리프로 읽은 정확한 이름인지 (false 면 OCR 추정이거나 못 읽음)
-	MapName   string      // 지금 서 있는 맵 ("" = 못 읽음: 맵 전환 암전·팝업·최소화)
 	NickImage image.Image // 닉네임 영역 — 이름을 못 읽었을 때 눈으로 구분하는 용도
 }
 
-// ReadWindowNames 창을 캡처해 캐릭터 이름과 현재 맵을 읽는다.
+// ReadWindowNames 창을 캡처해 캐릭터 이름을 읽는다(자동사냥 창 감지용 — 현재 맵은 안 본다:
+// 시간이 되면 자동사냥이 알아서 사냥터로 가므로 지금 위치는 상관없다).
 // 기본은 PrintWindow(창을 앞으로 안 끌어옴)이고, 그게 실패한 창(최소화 등)만 allowActivate 일 때
 // 창을 띄워서 다시 찍는다. 이름을 글리프로 못 읽으면 예전 OCR(설정 영역)로 추정한다(NameExact=false).
 func (om *OCRManager) ReadWindowNames(hwnd uint64, allowActivate bool) (*WindowNames, error) {
@@ -174,9 +174,6 @@ func (om *OCRManager) ReadWindowNames(hwnd uint64, allowActivate bool) (*WindowN
 		out.Name, out.NameExact = n, true
 	} else {
 		out.Name = om.ocrNameRegion(img, hwnd)
-	}
-	if m, ok := om.ReadMapGlyph(img, hwnd); ok {
-		out.MapName = m
 	}
 	return out, nil
 }

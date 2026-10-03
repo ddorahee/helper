@@ -778,7 +778,7 @@
         }
 
         // 메인화면 창 목록과 같은 모양 — 이름을 글자로 읽었으면 굵은 글자로, 못 읽었으면 닉네임 이미지로.
-        // 지금 서 있는 맵도 같이 보여준다.
+        // 현재 맵은 안 보여준다(시간이 되면 자동사냥이 알아서 사냥터로 가므로 지금 위치는 상관없다).
         const MATCH_LABEL = { partial: '부분 일치', remaining: '소거법' };
         windowList.innerHTML = detectedWindows.map((w, idx) => {
             const isExcluded = excludedWindows.has(w.hwnd);
@@ -796,9 +796,6 @@
             } else {
                 nameCell = '<span style="font-size:0.75rem;color:var(--text-muted)">(이름 못 읽음)</span>';
             }
-            const mapCell = w.mapText
-                ? `<span class="window-map" style="font-size:0.75rem;color:var(--text-muted)">${escapeHtml(w.mapText)}</span>`
-                : '<span class="window-map" style="font-size:0.75rem;color:var(--text-muted)">(위치 못 읽음)</span>';
             const matchNote = w.matchedId && MATCH_LABEL[w.confidence]
                 ? `<span class="ocr-badge ${w.confidence}" title="이름이 정확히 같지 않아 추정으로 배정됨 — 확인하세요">${MATCH_LABEL[w.confidence]}</span>`
                 : '';
@@ -810,9 +807,8 @@
                             <input type="checkbox" ${!isExcluded ? 'checked' : ''} onchange="rotationToggleWindow(${w.hwnd}, this.checked)">
                         </label>
                         <div class="window-order">${idx + 1}</div>
-                        <div class="window-info" style="flex:1;min-width:0">
-                            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nameCell}</div>
-                            <div style="display:flex;align-items:center;gap:0.35rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${mapCell}${matchNote}</div>
+                        <div class="window-info" style="flex:1;min-width:0;display:flex;align-items:center;gap:0.35rem;white-space:nowrap;overflow:hidden">
+                            ${nameCell}${matchNote}
                         </div>
                         <select class="window-assign-select" data-hwnd="${w.hwnd}" ${isExcluded ? 'disabled' : ''} onchange="rotationWindowAssignChanged()" style="max-width:8rem">
                             <option value="">-- 미할당 --</option>
