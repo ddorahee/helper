@@ -549,7 +549,7 @@ function setupInputModeSelect() {
         if (desc) {
             desc.innerHTML = locked
                 ? '<b>포그라운드 고정</b>: "입장 후 창 최소화"가 켜져 있습니다. 최소화된 창은 백그라운드 캡처가 불가능하므로 백그라운드를 쓸 수 없습니다. 백그라운드로 돌리려면 최소화를 꺼주세요.'
-                : '입력 방식은 <b>창마다</b> 고릅니다. 백그라운드는 창을 앞으로 가져오지 않아 봇이 도는 동안 다른 작업을 할 수 있습니다(게임이 관리자 권한이면 도우미도 관리자로 실행). 창 목록은 창을 띄우지 않고 읽으며, 메인화면을 보고 있는 동안 2초마다 자동으로 갱신됩니다.';
+                : '입력 방식은 <b>창마다</b> 고릅니다. 백그라운드는 창을 앞으로 가져오지 않아 봇이 도는 동안 다른 작업을 할 수 있습니다(게임이 관리자 권한이면 도우미도 관리자로 실행). 창 목록은 창을 띄우지 않고 읽으며, 켤 때 한 번과 <b>창 감지</b>를 누를 때 갱신됩니다.';
         }
     }
 
@@ -606,14 +606,11 @@ function setupMultiEntry() {
     // ===== 창 목록 (baram-yolo 방식) =====
     // - 감지할 때 창을 앞으로 끌어오지 않는다 (서버가 PrintWindow 로 조용히 찍는다)
     // - 캐릭터 이름과 지금 서 있는 맵을 글자로 한 줄에 보여준다
-    // - 메인화면이 보이고 자동화가 멈춰 있는 동안 2초마다 알아서 다시 읽는다 — '창 감지'를 안 눌러도
-    //   새로 켠 창이 나타나고, 캐릭터가 움직이면 맵이 따라 바뀐다
-    // - 캐릭터가 대야/칸첸 맵으로 옮겨가면 그 창의 모드를 거기에 맞춘다. 손으로 바꾼 모드는
+    // - 켤 때 한 번 읽고, 그다음은 '창 감지'를 누를 때만 읽는다(자동 갱신은 안 한다)
+    // - 캐릭터가 대야/칸첸 맵에 서 있으면 그 창을 선택하고 모드를 거기에 맞춘다. 손으로 바꾼 건
     //   캐릭터가 다른 사냥터로 옮겨가기 전까지 그대로 둔다
     const AREA_LABEL = { daeya: '대야', kanchen: '칸첸' };
     let lastWins = [];     // 마지막으로 받은 창 목록
-    let winSig = '';       // 마지막으로 그린 목록 요약 — 바뀐 게 있을 때만 다시 그린다(클릭이 씹히지 않게)
-    const mapMiss = {};    // hwnd 별 맵 연속 못 읽음 횟수
     const areaSeen = {};   // hwnd 별 마지막으로 본 사냥터 — 바뀔 때만 모드를 맞춘다
     let loading = false;
 
@@ -735,41 +732,30 @@ function setupMultiEntry() {
         if (announce && restored > 0) addLogMessage(`다중 창 입장: 창 ${restored}개의 지난 설정을 복원했습니다.`);
     }
 
-    // loadWindows 창 목록 갱신 — 수동 '창 감지'(poll=false)와 자동 갱신(poll=true)이 공유한다.
-    async function loadWindows(poll) {
+    // loadWindows 창 목록 갱신 — 켤 때 한 번(quiet)과 '창 감지' 버튼(사용자 2026-10-03: 자동 갱신 대신
+    // 누를 때만)에서 부른다. quiet 이면 서버가 PrintWindow 만 쓴다(최소화된 창도 띄우지 않는다).
+    async function loadWindows(quiet) {
         if (loading) return false;
         loading = true;
         try {
-            const res = await fetch('/api/multi/detect' + (poll ? '?poll=1' : ''));
+            const res = await fetch('/api/multi/detect' + (quiet ? '?poll=1' : ''));
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const wins = await res.json();
             if (!Array.isArray(wins)) return false;
-            // 맵 전환 암전·팝업으로 잠깐 못 읽은 창은 직전 위치를 두 번까지 유지한다
-            // (자동 갱신 때마다 "위치 못 읽음"이 깜빡이지 않게). 그 이상 못 읽으면 그대로 보여준다.
+            // 이름은 한 번 읽혔던 창이면 잠깐 가려져 못 읽어도 유지한다(같은 창은 같은 캐릭터).
+            // 맵은 지금 읽은 그대로 보여준다 — 버튼을 누를 때만 읽으니 예전 위치를 남기면 오래된 값이 된다.
             const prevByHwnd = {};
             lastWins.forEach(w => { prevByHwnd[String(w.hwnd)] = w; });
             wins.forEach(w => {
-                const k = String(w.hwnd);
-                const p = prevByHwnd[k];
-                if (w.mapText) { mapMiss[k] = 0; return; }
-                if (p && p.mapText && (mapMiss[k] || 0) < 2) {
-                    w.mapText = p.mapText;
-                    w.area = p.area;
-                    mapMiss[k] = (mapMiss[k] || 0) + 1;
-                }
-                // 이름도 한 번 읽혔던 창이면 잠깐 가려져 못 읽어도 유지
+                const p = prevByHwnd[String(w.hwnd)];
                 if (!w.nick && p && p.nick) w.nick = p.nick;
             });
             lastWins = wins;
-            const sig = JSON.stringify(wins.map(w => [w.hwnd, w.nick, w.mapText, w.area, w.crop ? 1 : 0]));
-            if (!poll || sig !== winSig || list.querySelector('label[data-hwnd]') === null) {
-                render(wins, !poll);
-                winSig = sig;
-            }
-            if (!poll) addLogMessage(`다중 창 입장: 창 ${wins.length}개 감지됨`);
+            render(wins, true);
+            addLogMessage(`다중 창 입장: 창 ${wins.length}개 감지됨`);
             return true;
         } catch (e) {
-            if (!poll) addLogMessage('다중 창 입장: 창 감지 실패 - ' + e.message);
+            addLogMessage('다중 창 입장: 창 감지 실패 - ' + e.message);
             return false;
         } finally {
             loading = false;
@@ -785,21 +771,8 @@ function setupMultiEntry() {
         detectBtn.disabled = false;
     });
 
-    // 자동 갱신 — 메인화면이 보이고, 자동화가 멈춰 있고, 드롭다운을 여는 중이 아닐 때만.
-    // (자동화가 도는 중엔 봇이 직접 창을 본다 — 굳이 같이 찍지 않는다)
-    setInterval(() => {
-        if (loading || document.hidden || isRunning) return;
-        if (currentContentSection !== 'main') return;
-        const ae = document.activeElement;
-        if (ae && ae.tagName === 'SELECT' && list.contains(ae)) return;
-        loadWindows(true);
-    }, 2000);
-    // 게임 창에 가려졌다가 다시 보이면 기다리지 않고 바로 읽는다
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && !isRunning && currentContentSection === 'main') loadWindows(true);
-    });
-    // 켜자마자 한 번 읽는다 — 2초 기다리지 않게
-    if (currentContentSection === 'main') loadWindows(true);
+    // 켤 때 한 번 읽는다. 그다음은 '창 감지'를 누를 때만.
+    loadWindows(true);
 }
 
 function escapeHtmlMin(s) {
