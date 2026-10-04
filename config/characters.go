@@ -92,7 +92,8 @@ type ItemPickupConfig struct {
 // 칸첸 시련 목표 좌표는 따로 두지 않고 메인화면 칸첸 "사냥 자리"(ItemPickupConfig.OriginX/Y)를 쓴다.
 type TrialSettings struct {
 	Dungeon      string `json:"dungeon"`      // 시련 던전: "daeya" | "kanchen" (게임 NPC에서 바꾼 던전과 맞춘다)
-	MaxRuns      int    `json:"maxRuns"`      // 반복 횟수 (1~99)
+	MaxRuns      int    `json:"maxRuns"`      // 남은 반복 횟수 (1~99) — 판이 끝날 때마다 1씩 줄여 저장한다
+	FullRuns     int    `json:"fullRuns,omitempty"` // 사용자가 정한 원래 횟수 — 다 끝나면 MaxRuns 를 이 값으로 되돌린다
 	DaeyaTargetX int    `json:"daeyaTargetX"` // 대야 시련 목표 좌표
 	DaeyaTargetY int    `json:"daeyaTargetY"`
 	// SkillKeys 칸첸 시련 기본 스킬 키 — 메인화면 칸첸 표와 별개

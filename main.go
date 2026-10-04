@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"image"
 	"image/color"
 	"image/draw"
@@ -293,6 +294,37 @@ func main() {
 		go func() {
 			stopOperation(app)
 			sendEvent(app, "trialLog", map[string]string{"message": "정한 횟수를 다 채워 시련을 마쳤습니다"})
+		}()
+	})
+	// 한 판이 능력 선택까지 끝날 때마다 시련 탭 '횟수'(남은 횟수)를 1 줄여 저장한다 — 멈췄다 다시 켜도
+	// 남은 횟수부터 이어진다. 다 끝나면 처음 정한 횟수로 되돌린다(사용자 2026-10-04).
+	trial.SetOnRunDone(func(done, total int) {
+		s := app.CharacterStore.GetTrialSettings()
+		left := automation.TrialRunsLeft(done, total, s.FullRuns)
+		s.MaxRuns = left
+		app.CharacterStore.SetTrialSettings(s)
+		if err := app.CharacterStore.Save(); err != nil {
+			log.Printf("시련 횟수 저장 실패: %v", err)
+		}
+		sendEvent(app, "trialRuns", map[string]int{"maxRuns": left, "done": done, "total": total})
+	})
+	// 텔레그램: 정한 횟수 완료 · 중지/오류로 멈춤 · 경험치 꺼짐(입장 대기)
+	trial.SetNotify(func(kind, msg string) {
+		if app.TelegramBot == nil {
+			return
+		}
+		title := "⏹ <b>시련 멈춤</b>"
+		switch kind {
+		case "complete":
+			title = "✅ <b>시련 완료</b>"
+		case "exp":
+			title = "⚠️ <b>경험치 확인 필요</b>"
+		}
+		text := title + "\n" + html.EscapeString(msg)
+		go func() {
+			if err := app.TelegramBot.SendMessage(text); err != nil {
+				log.Printf("텔레그램 시련 알림 실패: %v", err)
+			}
 		}()
 	})
 	app.Trial = trial
@@ -704,6 +736,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				}
 				if solo.HWND == 0 {
 					sendEvent(app, "trialLog", map[string]string{"message": "게임 창을 찾지 못해 시련을 시작하지 못했습니다"})
+					app.Trial.Notify("stopped", "시련을 시작하지 못함 — 게임 창을 찾지 못했습니다")
 					return
 				}
 				app.Trial.Stop() // 자동 종료 직후 재시작 등으로 남아 있던 루프가 있으면 정리
@@ -2364,8 +2397,10 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			if req.Dungeon != nil {
 				s.Dungeon = *req.Dungeon
 			}
+			// 횟수 = 남은 횟수. 시련이 도는 동안엔 엔진이 판마다 줄여 저장하므로 화면이 보낸 값(옛 값일 수 있음)은
+			// 무시한다. 숫자가 실제로 바뀌면 사용자가 새로 정한 것 — '원래 횟수'(다 끝나면 되돌릴 값)로도 기억한다.
 			if req.MaxRuns != nil {
-				s.MaxRuns = *req.MaxRuns
+				s = trialApplyMaxRuns(s, *req.MaxRuns, app.Trial.IsRunning())
 			}
 			if req.DaeyaTargetX != nil {
 				s.DaeyaTargetX = *req.DaeyaTargetX
@@ -2987,6 +3022,20 @@ func normalizeTrialSettings(s config.TrialSettings) config.TrialSettings {
 	s.DaeyaTargetX, s.DaeyaTargetY = automation.TrialDaeyaTarget(s.DaeyaTargetX, s.DaeyaTargetY)
 	s.SkillKeys = automation.NormalizeSkillKeys(s.SkillKeys)
 	s.SkillKeysByChar = automation.NormalizeSkillKeysByChar(s.SkillKeysByChar)
+	return s
+}
+
+// trialApplyMaxRuns 화면이 보낸 횟수(= 남은 횟수) 반영. 시련이 도는 동안엔 엔진이 판마다 줄여 저장하므로
+// 화면 값(옛 값일 수 있음)은 무시한다. 숫자가 실제로 바뀌면 사용자가 새로 정한 것 — '원래 횟수'
+// (다 끝나면 되돌릴 값)로도 기억한다. 다른 설정을 저장하며 같은 횟수가 같이 오는 건 원래 횟수를 안 바꾼다.
+func trialApplyMaxRuns(s config.TrialSettings, v int, running bool) config.TrialSettings {
+	if running {
+		return s
+	}
+	if n := automation.NormalizeTrialMaxRuns(v); n != automation.NormalizeTrialMaxRuns(s.MaxRuns) {
+		s.FullRuns = n
+	}
+	s.MaxRuns = v
 	return s
 }
 

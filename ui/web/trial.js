@@ -990,7 +990,14 @@
         } finally {
             if (event && event.type === 'trialLog') {
                 const msg = event.payload && event.payload.message;
-                if (msg) appendLog(String(msg), /실패|오류|에러/.test(String(msg)) ? 'err' : '');
+                if (msg) appendLog(String(msg), /실패|오류|에러|⚠/.test(String(msg)) ? 'err' : '');
+            } else if (event && event.type === 'trialRuns') {
+                // 한 판 끝날 때마다 서버가 줄여 저장한 남은 횟수 — 횟수 칸에 바로 보여 준다(입력 중이면 안 건드림)
+                const left = Number(event.payload && event.payload.maxRuns);
+                if (left > 0) {
+                    config.maxRuns = clampInt(left, 1, 99, config.maxRuns);
+                    setInputValue(els.maxRuns, config.maxRuns);
+                }
             }
         }
     };

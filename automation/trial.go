@@ -29,8 +29,12 @@ const (
 	TrialPhaseMapWait = "맵 이동 대기"
 	TrialPhaseBattle  = "전투"
 	TrialPhaseAbility = "능력 선택"
+	TrialPhaseExpWait = "경험치 대기"
 	TrialPhaseDone    = "완료"
 )
+
+// expCheckInterval 경험치 칸 확인 주기 — 꺼져서 입장을 기다리는 동안과 진행 중 둘 다 1분마다
+const expCheckInterval = time.Minute
 
 // trialSkillGap 칸첸 던전 스킬 키 사이 대기 (다중 입장 스킬과 같은 간격)
 const trialSkillGap = 300 * time.Millisecond
@@ -94,10 +98,17 @@ type Trial struct {
 	logFunc  func(string)
 	// onComplete 정한 횟수를 다 채워 끝났을 때 부른다(중지·오류로 끝난 건 아님) — 앱이 전체 실행을 정리한다
 	onComplete func()
+	// onRunDone 한 판이 능력 선택까지 끝날 때마다 (끝낸 판 수, 이번 실행의 총 판 수) — 앱이 시련 탭 '횟수'를 줄여 저장한다
+	onRunDone func(done, total int)
+	// notify 바깥(텔레그램)에 알릴 일 — kind: "complete"(정한 횟수 완료) | "stopped"(중지·오류로 멈춤) | "exp"(경험치 꺼짐·확인 불가)
+	notify func(kind, msg string)
 
 	// 루프 고루틴 전용 (Start 에서 초기화)
-	dungeonSeen map[uint64]bool // 이번 회차에 "던전 확인" 로그를 남긴 창
-	wrongWarned map[uint64]bool // 이번 회차에 "다른 던전" 경고를 남긴 창
+	dungeonSeen  map[uint64]bool // 이번 회차에 "던전 확인" 로그를 남긴 창
+	wrongWarned  map[uint64]bool // 이번 회차에 "다른 던전" 경고를 남긴 창
+	expAlerted   bool            // 경험치 꺼짐 알림을 이미 보냄 — 3칸 다 켜진 걸 볼 때까지 다시 안 보낸다
+	lastExpCheck time.Time       // 진행 중 경험치 칸을 마지막으로 본 시각
+	endReason    string          // 중지·오류로 끝날 때 알림에 쓸 사유 (비면 상황으로 정한다)
 	logged      map[string]bool // 실행마다 한 번만 남길 로그 (입력·캡처 실패 등)
 }
 
@@ -137,6 +148,27 @@ func (t *Trial) SetLogFunc(f func(string)) {
 // SetOnComplete 정한 횟수를 다 채웠을 때 부를 콜백 (루프 고루틴이 정리를 마친 뒤 부른다)
 func (t *Trial) SetOnComplete(f func()) {
 	t.onComplete = f
+}
+
+// SetOnRunDone 한 판이 능력 선택까지 끝날 때마다 부를 콜백 (끝낸 판 수, 이번 실행의 총 판 수)
+func (t *Trial) SetOnRunDone(f func(done, total int)) {
+	t.onRunDone = f
+}
+
+// SetNotify 바깥(텔레그램)으로 알릴 일이 생기면 부를 콜백 — kind: complete | stopped | exp
+func (t *Trial) SetNotify(f func(kind, msg string)) {
+	t.notify = f
+}
+
+func (t *Trial) notifyOut(kind, msg string) {
+	if t.notify != nil {
+		t.notify(kind, msg)
+	}
+}
+
+// Notify 시련 밖(시작 요청 처리 등)에서 같은 알림을 보낼 때 — 예: 창을 못 찾아 시작조차 못 함
+func (t *Trial) Notify(kind, msg string) {
+	t.notifyOut(kind, msg)
 }
 
 func (t *Trial) log(msg string) {
@@ -255,6 +287,9 @@ func (t *Trial) begin(group bool, solo, leader, member TrialWindow) bool {
 	t.dungeonSeen = map[uint64]bool{}
 	t.wrongWarned = map[uint64]bool{}
 	t.logged = map[string]bool{}
+	t.expAlerted = false
+	t.lastExpCheck = time.Time{}
+	t.endReason = ""
 	return true
 }
 
@@ -263,6 +298,7 @@ func (t *Trial) begin(group bool, solo, leader, member TrialWindow) bool {
 func (t *Trial) finish(msg string) {
 	if r := recover(); r != nil {
 		t.log(fmt.Sprintf("패닉 복구: %v", r))
+		t.endReason = fmt.Sprintf("오류: %v", r)
 	}
 	t.mutex.Lock()
 	t.running = false
@@ -271,13 +307,46 @@ func (t *Trial) finish(msg string) {
 		t.phase = TrialPhaseIdle
 	}
 	done := t.done
+	runCount := t.runCount
 	t.mutex.Unlock()
 	t.log(msg)
 	close(done)
-	// 정한 횟수를 다 채웠으면 앱 전체 실행도 끝낸다 — 예전엔 시련만 멈추고 타이머는 '실행 중'으로
-	// 남아 중지를 직접 눌러야 다른 기능을 시작할 수 있었다
-	if completed && t.onComplete != nil {
-		t.onComplete()
+	dungeon := trialDungeonName(t.cfg.Dungeon)
+	if completed {
+		t.notifyOut("complete", fmt.Sprintf("%s %d회 완료 — %s", dungeon, runCount, t.whoText()))
+		// 정한 횟수를 다 채웠으면 앱 전체 실행도 끝낸다 — 예전엔 시련만 멈추고 타이머는 '실행 중'으로
+		// 남아 중지를 직접 눌러야 다른 기능을 시작할 수 있었다
+		if t.onComplete != nil {
+			t.onComplete()
+		}
+		return
+	}
+	reason := t.endReason
+	if reason == "" {
+		reason = "중지됨"
+	}
+	t.notifyOut("stopped", fmt.Sprintf("%s %d/%d회에서 멈춤 — %s (%s)", dungeon, runCount, t.cfg.MaxRuns, reason, t.whoText()))
+}
+
+// whoText 알림용 창 이름 ("솔로 데브섹옵스" / "그룹장 령결사 + 그룹원 데브섹옵스")
+func (t *Trial) whoText() string {
+	if t.isGroup {
+		return "그룹장 " + trialWinName(t.leader) + " + 그룹원 " + trialWinName(t.member)
+	}
+	return "솔로 " + trialWinName(t.solo)
+}
+
+func trialWinName(w TrialWindow) string {
+	if w.Nick != "" {
+		return w.Nick
+	}
+	return fmt.Sprintf("창(0x%X)", w.HWND)
+}
+
+// runDone 한 판(능력 선택까지) 끝 — 앱이 시련 탭 '횟수'를 줄여 저장하게 알린다
+func (t *Trial) runDone() {
+	if t.onRunDone != nil {
+		t.onRunDone(t.runCount, t.cfg.MaxRuns)
 	}
 }
 
@@ -451,6 +520,10 @@ func (t *Trial) runLoopSolo() {
 		if !t.waitForTrialLobby(w) {
 			return
 		}
+		// 경험치 3칸이 다 켜져 있어야 입장한다 — 꺼졌거나 못 읽으면 알림 후 1분마다 다시 보며 기다린다
+		if !t.waitExpBeforeEntry() {
+			return
+		}
 
 		// 2. 입장: o → enter → enter (+ 첫 사이클만 enter 한 번 더)
 		t.setPhase(TrialPhaseEnter)
@@ -496,8 +569,22 @@ func (t *Trial) runLoopSolo() {
 			return // 중지로 빠져나온 회차는 완료로 세지 않는다
 		}
 
+		// 5. 능력 선택 — 시련장으로 돌아오면 능력 고르는 창이 뜬다(그룹장과 같은 o → enter).
+		// 예전엔 솔로만 이걸 안 누르고 다음 입장 키에 맡겼다(사용자 2026-10-04: 그룹처럼 고른 뒤 횟수를 줄일 것)
+		t.setPhase(TrialPhaseAbility)
+		t.log("[5] 능력 선택: o → enter")
+		if !t.sleep(2 * time.Second) {
+			return
+		}
+		t.tap(w, "o", "솔로-능력")
+		if !t.sleep(t.randomDelay()) {
+			return
+		}
+		t.tap(w, "enter", "솔로-능력")
+
 		t.incRun()
 		t.log(fmt.Sprintf("===== 솔로 시련 %d회 완료 =====", t.runCount))
+		t.runDone()
 
 		if !t.sleep(3 * time.Second) {
 			return
@@ -533,6 +620,10 @@ func (t *Trial) runLoopGroup() {
 		t.setPhase(TrialPhaseLobby)
 		t.log("[1] 환상의시련장 대기 중...")
 		if !t.waitForTrialLobby(leader) {
+			return
+		}
+		// 경험치 3칸이 그룹장·그룹원 둘 다 켜져 있어야 입장한다 — 아니면 알림 후 1분마다 다시 보며 기다린다
+		if !t.waitExpBeforeEntry() {
 			return
 		}
 
@@ -623,6 +714,7 @@ func (t *Trial) runLoopGroup() {
 
 		t.incRun()
 		t.log(fmt.Sprintf("===== 그룹 시련 %d회 완료 =====", t.runCount))
+		t.runDone()
 
 		if !t.sleep(3 * time.Second) {
 			return
@@ -800,6 +892,7 @@ func (t *Trial) battleLoopSolo() {
 			return
 		}
 
+		t.periodicExpCheck()
 		if place, _ := t.battleTick(t.solo, "솔로"); place == TrialPlaceLobby {
 			t.log("[전투] 환상의시련장 복귀 감지!")
 			return
@@ -819,6 +912,8 @@ func (t *Trial) battleLoopGroup() {
 			return
 		}
 
+		t.periodicExpCheck()
+
 		// === 그룹장 ===
 		if place, _ := t.battleTick(t.leader, "그룹장"); place == TrialPlaceLobby {
 			t.log("[전투] 그룹장 환상의시련장 복귀 감지!")
@@ -833,6 +928,107 @@ func (t *Trial) battleLoopGroup() {
 		if !t.sleep(2 * time.Second) {
 			return
 		}
+	}
+}
+
+// ========== 경험치 칸 확인 ==========
+// 왼쪽 위 버프 창 "경험치 [나나노][요강][물약]" 3칸이 다 켜져 있어야 입장한다(사용자 2026-10-04).
+// 솔로는 그 창, 그룹은 그룹장·그룹원 둘 다 본다. 창을 띄우지 않는 조용한 캡처로 읽는다.
+
+type trialExpWin struct {
+	w    TrialWindow
+	role string
+}
+
+// expWindows 경험치를 확인할 창들
+func (t *Trial) expWindows() []trialExpWin {
+	if t.isGroup {
+		return []trialExpWin{{t.leader, "그룹장"}, {t.member, "그룹원"}}
+	}
+	return []trialExpWin{{t.solo, "솔로"}}
+}
+
+// readExp 창 하나의 경험치 칸
+func (t *Trial) readExp(w TrialWindow) (ExpBoost, error) {
+	img, err := t.wm.CaptureWindowQuiet(w.HWND)
+	if err != nil {
+		return ExpBoost{}, err
+	}
+	return t.om.ReadExpBoost(img, w.HWND), nil
+}
+
+// waitExpBeforeEntry 입장 전에 경험치 3칸을 본다. 꺼졌거나 못 읽으면(창고·상점 창이 덮음 등) 입장하지 않고
+// 알림(꺼진 동안 한 번)을 보낸 뒤 1분마다 다시 보며 기다린다. 다 켜지면 true(바로 입장), 중지되면 false.
+func (t *Trial) waitExpBeforeEntry() bool {
+	waited := false
+	for {
+		var probs []string
+		for _, ew := range t.expWindows() {
+			e, err := t.readExp(ew.w)
+			who := ew.role + " " + trialWinName(ew.w)
+			switch {
+			case err != nil:
+				probs = append(probs, who+" 화면을 못 읽음")
+			case !e.Found:
+				probs = append(probs, who+" 경험치 칸을 못 찾음")
+			case !e.AllActive():
+				probs = append(probs, who+" "+e.String())
+			}
+		}
+		t.lastExpCheck = time.Now()
+		if len(probs) == 0 {
+			t.expAlerted = false
+			if waited {
+				t.log("[경험치] 3칸 다 켜짐 — 입장합니다")
+			}
+			return true
+		}
+		summary := strings.Join(probs, ", ")
+		t.log("⚠ [경험치] " + summary + " — 입장하지 않고 1분 뒤 다시 확인")
+		if !t.expAlerted {
+			t.expAlerted = true
+			t.notifyOut("exp", fmt.Sprintf("%s 입장 대기 — %s (켜지면 자동으로 다시 들어감)", trialDungeonName(t.cfg.Dungeon), summary))
+		}
+		waited = true
+		t.setPhase(TrialPhaseExpWait)
+		if !t.sleep(expCheckInterval) || t.isStopped() || !t.km.IsRunning() {
+			return false
+		}
+	}
+}
+
+// periodicExpCheck 진행 중 1분마다 경험치 칸 확인 — 확실히 꺼진 게 보이면 알림(꺼진 동안 한 번).
+// 이번 판은 그대로 하고, 다음 입장은 waitExpBeforeEntry 가 막는다. 못 읽은 건(맵 이동 암전 등) 여기선 알리지 않는다.
+func (t *Trial) periodicExpCheck() {
+	if time.Since(t.lastExpCheck) < expCheckInterval {
+		return
+	}
+	t.lastExpCheck = time.Now()
+	var off []string
+	allOK := true
+	for _, ew := range t.expWindows() {
+		e, err := t.readExp(ew.w)
+		if err != nil || !e.Found {
+			allOK = false
+			continue
+		}
+		if !e.AllActive() {
+			allOK = false
+			off = append(off, ew.role+" "+trialWinName(ew.w)+" "+e.String())
+		}
+	}
+	if allOK {
+		t.expAlerted = false
+		return
+	}
+	if len(off) == 0 {
+		return
+	}
+	summary := strings.Join(off, ", ")
+	t.log("⚠ [경험치] " + summary + " — 이번 판은 계속하고, 다음 입장은 켜질 때까지 기다립니다")
+	if !t.expAlerted {
+		t.expAlerted = true
+		t.notifyOut("exp", fmt.Sprintf("%s 진행 중 경험치 꺼짐 — %s (다음 입장은 켜질 때까지 대기)", trialDungeonName(t.cfg.Dungeon), summary))
 	}
 }
 
@@ -1013,6 +1209,18 @@ func trialCoordOr(v, def int) int {
 		return def
 	}
 	return v
+}
+
+// TrialRunsLeft 한 판 끝난 뒤 시련 탭 '횟수'(남은 횟수)에 저장할 값 — 이번 실행 total 판 중 done 판을 끝냈다.
+// 다 끝나면(0) 사용자가 처음 정한 횟수 full 로 되돌린다(full 을 모르면 이번 실행 횟수).
+func TrialRunsLeft(done, total, full int) int {
+	if left := total - done; left > 0 {
+		return left
+	}
+	if full > 0 {
+		return full
+	}
+	return total
 }
 
 // TrialSkillKeysFor 칸첸 시련에서 이 캐릭터가 누를 스킬 키 — 시련 전용 표에서 캐릭터별 키가 있으면 그것,

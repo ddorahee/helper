@@ -115,3 +115,19 @@ func TestTrialStatusIdle(t *testing.T) {
 		t.Errorf("SetConfig 뒤 Status() = %+v, want %+v", got, want)
 	}
 }
+
+// 한 판 끝날 때마다 시련 탭 '횟수'(남은 횟수)를 1 줄이고, 다 끝나면 처음 정한 횟수로 되돌린다.
+func TestTrialRunsLeft(t *testing.T) {
+	cases := []struct{ done, total, full, want int }{
+		{1, 10, 10, 9},
+		{9, 10, 10, 1},
+		{10, 10, 10, 10}, // 다 끝남 → 처음 값
+		{7, 7, 10, 10},   // 남은 7회로 이어서 시작해 다 끝냄 → 처음 정한 10
+		{3, 3, 0, 3},     // 처음 값을 모름(옛 설정) → 이번 실행 횟수
+	}
+	for _, c := range cases {
+		if got := TrialRunsLeft(c.done, c.total, c.full); got != c.want {
+			t.Errorf("TrialRunsLeft(%d,%d,%d) = %d, want %d", c.done, c.total, c.full, got, c.want)
+		}
+	}
+}
