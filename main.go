@@ -2838,7 +2838,7 @@ type rotationCompanion struct {
 	app *Application
 }
 
-func (rc *rotationCompanion) StartCompanion(mode string, hwnd uint64) {
+func (rc *rotationCompanion) StartCompanion(mode string, hwnd uint64, name string) {
 	app := rc.app
 	if hwnd == 0 {
 		return
@@ -2851,10 +2851,19 @@ func (rc *rotationCompanion) StartCompanion(mode string, hwnd uint64) {
 
 	switch mode {
 	case "kanchen":
+		// 스킬 키는 메인화면 칸첸 설정을 그대로 쓴다 — 이 캐릭터 키가 있으면 그것, 없으면 기본 키
+		// (사용자 2026-10-06). 반복 키의 d 자리에 넣고, 아이템 습득을 켜면 스캔 전에도 누른다.
+		skills := app.ItemScanner.GetConfig().SkillKeysFor(name)
+		if len(skills) > 0 {
+			sendEvent(app, "rotationLog", map[string]string{
+				"message": fmt.Sprintf("[동시실행] %s 칸첸 스킬 %s", name, strings.Join(skills, ",")),
+			})
+		}
 		app.KeyboardManager.SetRunning(true)
-		go app.KeyboardManager.KanchenEnter()
-		app.ItemScanner.Start(hwnd)
+		go app.KeyboardManager.KanchenEnterWithSkills(skills)
+		app.ItemScanner.StartWithSkills(hwnd, skills)
 	case "daeya":
+		// 대야는 원래부터 메인화면 대야 설정(스킬 키·목표 좌표)을 그대로 쓴다
 		go app.DaeyaBattle.Start(hwnd, false)
 	}
 }

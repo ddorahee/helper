@@ -60,7 +60,8 @@ type EventCallback func(eventType string, payload interface{})
 // Start는 지정 창에서 메인화면 로직을 시작하고, Stop은 완전히 멈출 때까지
 // (잔여 키 입력 소진 포함) 블로킹해야 한다 — 이후 로테이션이 창을 전환하므로.
 type CompanionController interface {
-	StartCompanion(mode string, hwnd uint64)
+	// name 동시실행 캐릭터 이름 — 메인화면 칸첸 설정의 캐릭터별 스킬 키를 고르는 데 쓴다
+	StartCompanion(mode string, hwnd uint64, name string)
 	StopCompanion()
 }
 
@@ -196,7 +197,7 @@ func (rm *RotationManager) companionResumeLocked() {
 	rm.compRunning = true
 	rm.compSegStart = time.Now()
 	rm.compTimer = time.AfterFunc(rm.compRemaining, rm.companionTimeUp)
-	rm.companionCtl.StartCompanion(c.CompanionMode, c.WindowHWND)
+	rm.companionCtl.StartCompanion(c.CompanionMode, c.WindowHWND, c.Name)
 }
 
 // companionSuspend 세그먼트 일시정지 + 경과 시간 차감 (로테이션이 포그라운드 쓰기 직전 호출).
