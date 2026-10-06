@@ -530,25 +530,9 @@ func (me *MultiEntry) moveToCenter(stop chan struct{}, idx int, hwnd uint64, bg 
 // spiritToCenter 영술사 창: 빙의 중엔 걷지 못하므로 좌표창 이동 대신 커서를 사냥 자리까지 옮기고 Q,
 // 그 뒤 커서를 캐릭터 칸으로 되돌린다(스킬이 커서 자리에 나감). 창을 띄우지 않고 PostMessage 로 누른다.
 func (me *MultiEntry) spiritToCenter(stop chan struct{}, idx int, e EntryWindow) {
-	io := SpiritIO{
-		Capture: func() (*image.RGBA, error) { return me.wm.CaptureWindowQuiet(e.HWND) },
-		Region: func(img *image.RGBA) image.Rectangle {
-			x, y, w, h := me.om.clientBox(img, e.HWND)
-			return image.Rect(x, y, x+w, y+h)
-		},
-		Coords: func(img *image.RGBA) (GameCoords, error) {
-			c, _, err := me.om.ReadCoordinatesFromImage(img)
-			return c, err
-		},
-		Tap: func(k string) {
-			if err := BgKeyTap(e.HWND, k); err != nil && !me.skillErrLogged[e.HWND] {
-				me.skillErrLogged[e.HWND] = true
-				me.log("창%d[칸첸] 영술사 키 '%s' 입력 실패: %v", idx, k, err)
-			}
-		},
-		Sleep: func(d time.Duration) bool { return me.sleepOrStop(stop, d) },
-		Log:   func(m string) { me.log("%s", m) },
-	}
+	io := NewSpiritIO(me.wm, me.om, e.HWND,
+		func(d time.Duration) bool { return me.sleepOrStop(stop, d) },
+		func(m string) { me.log("%s", m) })
 	SpiritMoveTo(io, me.centerX, me.centerY, e.SpiritKey, fmt.Sprintf("창%d[칸첸]", idx))
 }
 
@@ -594,6 +578,10 @@ func (me *MultiEntry) watchEntrances(stop chan struct{}, entries []EntryWindow, 
 				me.log("창%d[%s] 입구맵(%s) 감지 — 바로 입장", i+1, cfg.modeName, name)
 				me.handleWindow(stop, i+1, e)
 			case "inside":
+				// 영술사는 2초마다 사냥 자리 확인(벗어났으면 커서+Q) — 다른 창은 30초 점검 때만 옮긴다
+				if e.Spirit && me.centerSet {
+					me.spiritToCenter(stop, i+1, e)
+				}
 				me.pressSkills(stop, i+1, e) // 칸첸 창만, 스킬 키가 있을 때만
 			}
 		}

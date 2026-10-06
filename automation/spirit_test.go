@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"strings"
 	"testing"
 	"time"
 )
@@ -71,12 +72,36 @@ func TestDetectSpiritView(t *testing.T) {
 
 // spiritSim 영술사 빙의 이동을 흉내 내는 가짜 게임 — 방향키는 커서, Q는 커서 칸으로 이동.
 type spiritSim struct {
-	possessed      bool
-	x, y           int // 캐릭터 맵 좌표
-	cdx, cdy       int // 커서 - 캐릭터 (칸)
-	followCursor   bool // Q 뒤에도 커서가 캐릭터 기준 같은 자리에 남는 게임이라면 true
-	blocked        bool // Q 를 눌러도 못 감(벽)
-	keys           []string
+	possessed    bool
+	x, y         int  // 캐릭터 맵 좌표
+	cdx, cdy     int  // 커서 - 캐릭터 (칸)
+	followCursor bool // Q 뒤에도 커서가 캐릭터 기준 같은 자리에 남는 게임이라면 true
+	blocked      bool // Q 를 눌러도 못 감(벽)
+	bgIgnored    bool // 백그라운드(PostMessage) 키를 게임이 무시함 — 포그라운드로만 먹음
+	fgUsed       bool
+	keys         []string
+}
+
+func (s *spiritSim) apply(k string) {
+	switch k {
+	case "5":
+		s.possessed = true
+	case "left":
+		s.cdx = spiritClamp(s.cdx-1, spiritHalfW)
+	case "right":
+		s.cdx = spiritClamp(s.cdx+1, spiritHalfW)
+	case "up":
+		s.cdy = spiritClamp(s.cdy-1, spiritHalfH)
+	case "down":
+		s.cdy = spiritClamp(s.cdy+1, spiritHalfH)
+	case "q":
+		if s.possessed && !s.blocked {
+			s.x, s.y = s.x+s.cdx, s.y+s.cdy
+			if !s.followCursor {
+				s.cdx, s.cdy = 0, 0
+			}
+		}
+	}
 }
 
 func (s *spiritSim) io() SpiritIO {
@@ -86,25 +111,14 @@ func (s *spiritSim) io() SpiritIO {
 		Coords:  func(img *image.RGBA) (GameCoords, error) { return GameCoords{X: s.x, Y: s.y}, nil },
 		Tap: func(k string) {
 			s.keys = append(s.keys, k)
-			switch k {
-			case "5":
-				s.possessed = true
-			case "left":
-				s.cdx = spiritClamp(s.cdx-1, spiritHalfW)
-			case "right":
-				s.cdx = spiritClamp(s.cdx+1, spiritHalfW)
-			case "up":
-				s.cdy = spiritClamp(s.cdy-1, spiritHalfH)
-			case "down":
-				s.cdy = spiritClamp(s.cdy+1, spiritHalfH)
-			case "q":
-				if s.possessed && !s.blocked {
-					s.x, s.y = s.x+s.cdx, s.y+s.cdy
-					if !s.followCursor {
-						s.cdx, s.cdy = 0, 0
-					}
-				}
+			if !s.bgIgnored {
+				s.apply(k)
 			}
+		},
+		TapFG: func(k string) {
+			s.keys = append(s.keys, "fg:"+k)
+			s.fgUsed = true
+			s.apply(k)
 		},
 		Sleep: func(time.Duration) bool { return true },
 		Log:   func(string) {},
@@ -113,15 +127,18 @@ func (s *spiritSim) io() SpiritIO {
 
 func TestSpiritMoveTo(t *testing.T) {
 	cases := []struct {
-		name               string
-		sim                spiritSim
-		wantX, wantY       int
+		name         string
+		sim          spiritSim
+		wantX, wantY int
+		wantFG       bool
 	}{
-		{"빙의 중, 커서가 따라옴", spiritSim{possessed: true, x: 30, y: 40}, 34, 37},
-		{"Q 뒤 커서가 떨어진 자리에 남음 → 되돌림", spiritSim{possessed: true, x: 30, y: 40, followCursor: true}, 34, 37},
-		{"빙의 안 됨 → 5번 누르고 이동", spiritSim{x: 38, y: 37}, 34, 37},
-		{"멀면 네모 안까지만(좌우 8칸)", spiritSim{possessed: true, x: 20, y: 37}, 28, 37},
-		{"벽이라 못 감 → 커서만 되돌림", spiritSim{possessed: true, x: 30, y: 37, blocked: true}, 30, 37},
+		{"빙의 중, 커서가 따라옴", spiritSim{possessed: true, x: 30, y: 40}, 34, 37, false},
+		{"Q 뒤 커서가 떨어진 자리에 남음 → 되돌림", spiritSim{possessed: true, x: 30, y: 40, followCursor: true}, 34, 37, false},
+		{"빙의 안 됨 → 5번 누르고 이동", spiritSim{x: 38, y: 37}, 34, 37, false},
+		{"멀면 네모 안까지만(좌우 8칸)", spiritSim{possessed: true, x: 20, y: 37}, 28, 37, false},
+		{"벽이라 못 감 → 커서만 되돌림", spiritSim{possessed: true, x: 30, y: 37, blocked: true}, 30, 37, false},
+		{"백그라운드 키가 안 먹음 → 포그라운드로 다시", spiritSim{possessed: true, x: 30, y: 40, bgIgnored: true}, 34, 37, true},
+		{"빙의 안 됨 + 백그라운드 안 먹음 → 포그라운드로 5번부터", spiritSim{x: 38, y: 37, bgIgnored: true}, 34, 37, true},
 	}
 	for _, c := range cases {
 		s := c.sim
@@ -132,10 +149,42 @@ func TestSpiritMoveTo(t *testing.T) {
 		if s.cdx != 0 || s.cdy != 0 {
 			t.Errorf("%s: 커서가 캐릭터 칸에 없음 (%+d,%+d) keys=%v", c.name, s.cdx, s.cdy, s.keys)
 		}
+		if s.fgUsed != c.wantFG {
+			t.Errorf("%s: 포그라운드 사용=%v, want %v keys=%v", c.name, s.fgUsed, c.wantFG, s.keys)
+		}
 	}
 	// 이미 중앙(±1)이면 키를 안 누른다
 	s := spiritSim{possessed: true, x: 35, y: 36}
 	if SpiritMoveTo(s.io(), 34, 37, "5", "테스트") || len(s.keys) != 0 {
 		t.Errorf("중앙인데 키를 누름: %v", s.keys)
+	}
+}
+
+// '영술사 테스트' 진단 — 어느 단계가 막혔는지 줄로 알려 준다
+func TestSpiritDiagnose(t *testing.T) {
+	has := func(lines []string, sub string) bool {
+		for _, l := range lines {
+			if strings.Contains(l, sub) {
+				return true
+			}
+		}
+		return false
+	}
+	s := spiritSim{possessed: true, x: 30, y: 37}
+	lines := SpiritDiagnose(s.io())
+	if !has(lines, "백그라운드 방향키(→)") || !has(lines, "— 움직임") || !has(lines, "백그라운드 Q → 좌표 (31,37) — 이동함") {
+		t.Errorf("백그라운드 정상: %v", lines)
+	}
+	if s.cdx != 0 || s.cdy != 0 {
+		t.Errorf("진단 뒤 커서가 캐릭터 칸에 없음: %+d,%+d", s.cdx, s.cdy)
+	}
+	s = spiritSim{possessed: true, x: 30, y: 37, bgIgnored: true}
+	lines = SpiritDiagnose(s.io())
+	if !has(lines, "백그라운드 방향키(→) → 커서 캐릭터 칸(가려짐) — 안 움직임") || !has(lines, "포그라운드 Q → 좌표 (31,37) — 이동함") {
+		t.Errorf("백그라운드 안 먹음: %v", lines)
+	}
+	s = spiritSim{x: 30, y: 37}
+	if lines = SpiritDiagnose(s.io()); !has(lines, "파란 네모가 안 보임") {
+		t.Errorf("빙의 안 됨: %v", lines)
 	}
 }

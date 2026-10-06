@@ -351,6 +351,10 @@ func main() {
 	app.MultiEntry = automation.NewMultiEntry(windowManager, ocrManager)
 	app.MultiEntry.SetLogFunc(func(msg string) {
 		sendEvent(app, "logMessage", map[string]string{"message": "[다중입장] " + msg})
+		// 자동사냥 동시실행(영술사 칸첸)도 이 루프로 도는데 사용자는 자동사냥 탭 로그를 본다 — 거기에도 남긴다
+		if app.RotationManager != nil && app.RotationManager.IsRunning() {
+			sendEvent(app, "rotationLog", map[string]string{"message": "[동시실행] " + msg})
+		}
 	})
 
 	// F12 빠른 연타(2회) → 자동사냥 + 메인화면 자동화 전체 비상 중지
@@ -2438,6 +2442,55 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		json.NewEncoder(w).Encode(app.Trial.Status())
 	})
 
+	// 영술사 테스트 — 영술사로 지정된 캐릭터 창을 찾아 이동이 되는지 단계별로 본다: 빙의 칸이 보이는지 →
+	// 방향키(백그라운드, 안 되면 포그라운드)로 커서가 움직이는지 → 되면 커서 오른쪽 1칸 + Q 로 1칸 움직이는지.
+	// 자동화가 도는 중엔 키가 섞이므로 하지 않는다.
+	http.HandleFunc("/api/spirit/test", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		reply := func(lines ...string) {
+			for _, l := range lines {
+				sendEvent(app, "logMessage", map[string]string{"message": "[영술사 테스트] " + l})
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"lines": lines})
+		}
+		if (app.TimerManager != nil && app.TimerManager.IsRunning()) || (app.RotationManager != nil && app.RotationManager.IsRunning()) {
+			reply("자동화가 돌고 있어 시험하지 않았습니다 — 멈춘 뒤 눌러 주세요")
+			return
+		}
+		windows, err := app.WindowManager.FindGameWindows()
+		if err != nil || len(windows) == 0 {
+			reply("게임 창을 못 찾음")
+			return
+		}
+		var target uint64
+		var nick string
+		var seen []string
+		for _, win := range windows {
+			n, ok := app.OCRManager.ReadNickname(win.HWND)
+			if !ok {
+				continue
+			}
+			seen = append(seen, n)
+			if sp, _ := spiritFor(app, n); sp {
+				target, nick = win.HWND, n
+				break
+			}
+		}
+		if target == 0 {
+			reply(fmt.Sprintf("영술사로 지정된 캐릭터 창을 못 찾음 (읽은 창: %s)", strings.Join(seen, ", ")))
+			return
+		}
+		io := automation.NewSpiritIO(app.WindowManager, app.OCRManager, target,
+			func(d time.Duration) bool { time.Sleep(d); return true },
+			func(m string) { sendEvent(app, "logMessage", map[string]string{"message": "[영술사 테스트] " + m}) })
+		lines := append([]string{fmt.Sprintf("창: %s (hwnd=%d)", nick, target)}, automation.SpiritDiagnose(io)...)
+		reply(lines...)
+	})
+
 	// 영술사 — 캐릭터 이름 목록 + 빙의 키. 메인화면 칸첸 표·시련 표 어디서 바꿔도 같은 값(사용자 2026-10-06)
 	http.HandleFunc("/api/spirit", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -2880,13 +2933,19 @@ func (rc *rotationCompanion) StartCompanion(mode string, hwnd uint64, name strin
 	case "kanchen":
 		// 스킬 키는 메인화면 칸첸 설정을 그대로 쓴다 — 이 캐릭터 키가 있으면 그것, 없으면 기본 키
 		// (사용자 2026-10-06). 반복 키의 d 자리에 넣고, 아이템 습득을 켜면 스캔 전에도 누른다.
-		skills := app.ItemScanner.GetConfig().SkillKeysFor(name)
+		// 메인화면 칸첸 표·영술사 표시는 창에서 읽은 게임 닉으로 저장된다 — 자동사냥 캐릭터 이름이 닉과
+		// 다를 수 있어, 창에서 닉을 읽을 수 있으면 그 이름으로 찾는다
+		who := name
+		if nick, ok := app.OCRManager.ReadNickname(hwnd); ok && nick != "" {
+			who = nick
+		}
+		skills := app.ItemScanner.GetConfig().SkillKeysFor(who)
 		if len(skills) > 0 {
 			sendEvent(app, "rotationLog", map[string]string{
-				"message": fmt.Sprintf("[동시실행] %s 칸첸 스킬 %s", name, strings.Join(skills, ",")),
+				"message": fmt.Sprintf("[동시실행] %s 칸첸 스킬 %s", who, strings.Join(skills, ",")),
 			})
 		}
-		if spirit, key := spiritFor(app, name); spirit {
+		if spirit, key := spiritFor(app, who); spirit {
 			// 영술사는 빙의 중엔 걷지 못해 반복 키·아이템 줍기 대신 입장 유지 루프로 돌린다 — 사냥 자리에서
 			// 벗어나면 커서+Q 로 돌아오고 스킬(창을 띄우지 않는 백그라운드 입력, 사용자 2026-10-06)
 			ox, oy := trialKanchenTarget(app)

@@ -1809,6 +1809,33 @@ function setAutoStartupApi(enabled) {
     });
     window.spiritStore.load();
 
+    // 영술사 테스트 — 영술사 창에서 빙의 칸·방향키(백그라운드/포그라운드)·Q 가 되는지 단계별로 본다.
+    // 결과는 버튼 아래 칸과 로그에 남는다(Q 가 되면 캐릭터가 오른쪽으로 1칸 움직임).
+    const spiritTestBtn = document.getElementById('kanchen-spirit-test');
+    if (spiritTestBtn) spiritTestBtn.addEventListener('click', async () => {
+        if (!confirm('영술사 창에서 커서를 옮겨 보고, 되면 Q로 오른쪽 1칸 이동까지 해 봅니다.\n영술사를 빙의 상태로 두고 진행할까요?')) return;
+        let out = document.getElementById('kanchen-spirit-test-result');
+        if (!out) {
+            out = document.createElement('div');
+            out.id = 'kanchen-spirit-test-result';
+            out.className = 'ocr-test-result';
+            out.style.cssText = 'white-space:pre-wrap;margin:-0.4rem 0 0.8rem;font-size:0.78rem';
+            spiritTestBtn.closest('.kanchen-spirit-key').after(out);
+        }
+        out.style.display = 'block';
+        out.textContent = '시험 중…';
+        spiritTestBtn.disabled = true;
+        try {
+            const res = await fetch('/api/spirit/test', { method: 'POST' });
+            const d = await res.json();
+            out.textContent = (d && Array.isArray(d.lines) && d.lines.length) ? d.lines.join('\n') : '응답이 없습니다';
+        } catch (e) {
+            out.textContent = '테스트 실패: ' + e.message;
+        } finally {
+            spiritTestBtn.disabled = false;
+        }
+    });
+
     // 설정 저장
     if (pickupSaveBtn) {
         pickupSaveBtn.addEventListener('click', async () => {

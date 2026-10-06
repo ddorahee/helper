@@ -829,20 +829,7 @@ func (t *Trial) walkTo(w TrialWindow, role string) {
 // spiritWalkTo 영술사: 빙의 중엔 걷지 못하므로 커서를 목표 칸까지 옮기고 Q, 그 뒤 커서를 캐릭터 칸으로
 // 되돌린다(스킬이 커서 자리에 나감). 빙의가 안 돼 있으면 빙의 키부터 누른다. 시련 창은 늘 백그라운드.
 func (t *Trial) spiritWalkTo(w TrialWindow, role string, tx, ty int) {
-	io := SpiritIO{
-		Capture: func() (*image.RGBA, error) { return t.wm.CaptureWindowQuiet(w.HWND) },
-		Region: func(img *image.RGBA) image.Rectangle {
-			x, y, cw, ch := t.om.clientBox(img, w.HWND)
-			return image.Rect(x, y, x+cw, y+ch)
-		},
-		Coords: func(img *image.RGBA) (GameCoords, error) {
-			c, _, err := t.om.ReadCoordinatesFromImage(img)
-			return c, err
-		},
-		Tap:   func(k string) { t.key(w, k, role) },
-		Sleep: t.sleep,
-		Log:   t.log,
-	}
+	io := NewSpiritIO(t.wm, t.om, w.HWND, t.sleep, t.log)
 	SpiritMoveTo(io, tx, ty, w.SpiritKey, role+" "+trialWinName(w))
 }
 

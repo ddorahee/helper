@@ -6,6 +6,8 @@ import (
 	"image/color"
 	"strings"
 	"time"
+
+	"github.com/go-vgo/robotgo"
 )
 
 // 영술사 빙의 이동 (사용자 2026-10-06).
@@ -21,7 +23,7 @@ const (
 	// 테두리 바깥선에서 가운데 칸 중심까지 (8.5칸, 7.5칸)
 	spiritCenterOffX = spiritHalfW*spiritCell + spiritCell/2
 	spiritCenterOffY = spiritHalfH*spiritCell + spiritCell/2
-	spiritKeyGap     = 60 * time.Millisecond // 커서 방향키 사이 (화면 커서라 빨라도 됨)
+	spiritKeyGap     = 120 * time.Millisecond // 커서 방향키 사이 (빠르면 일부 키를 놓칠 수 있어 넉넉히)
 )
 
 // SpiritView 빙의 화면 읽기 결과
@@ -131,18 +133,52 @@ func minInt(a, b int) int {
 	return b
 }
 
-// SpiritIO 영술사 이동에 쓰는 창 입출력 — 창마다 백그라운드/포그라운드가 달라 부르는 쪽이 채운다.
+// SpiritIO 영술사 이동에 쓰는 창 입출력 (실제 창은 NewSpiritIO — 테스트는 가짜로 채운다)
 type SpiritIO struct {
-	Capture func() (*image.RGBA, error)                // 창을 띄우지 않는 캡처
-	Region  func(img *image.RGBA) image.Rectangle      // 클라이언트(게임 화면) 영역
-	Coords  func(img *image.RGBA) (GameCoords, error)  // 우하단 HUD 좌표
-	Tap     func(key string)                           // 키 1회
-	Sleep   func(d time.Duration) bool                 // 중지되면 false
-	Log     func(msg string)
+	Capture func() (*image.RGBA, error)               // 창을 띄우지 않는 캡처
+	Region  func(img *image.RGBA) image.Rectangle     // 클라이언트(게임 화면) 영역
+	Coords  func(img *image.RGBA) (GameCoords, error) // 우하단 HUD 좌표
+	Tap     func(key string)                          // 키 1회 — 백그라운드(PostMessage, 창을 안 띄움)
+	// TapFG 포그라운드로 누르기(창을 앞으로 가져와 robotgo) — 백그라운드 키로 커서·Q가 안 먹을 때만 쓴다. nil 이면 안 씀.
+	TapFG func(key string)
+	Sleep func(d time.Duration) bool // 중지되면 false
+	Log   func(msg string)
+}
+
+// NewSpiritIO 실제 창용 입출력 — 키는 먼저 백그라운드로 누르고, 커서·Q가 안 먹을 때만 창을 앞으로 가져와 누른다.
+func NewSpiritIO(wm *WindowManager, om *OCRManager, hwnd uint64, sleep func(time.Duration) bool, logf func(string)) SpiritIO {
+	bgErrLogged := false
+	return SpiritIO{
+		Capture: func() (*image.RGBA, error) { return wm.CaptureWindowQuiet(hwnd) },
+		Region: func(img *image.RGBA) image.Rectangle {
+			x, y, w, h := om.clientBox(img, hwnd)
+			return image.Rect(x, y, x+w, y+h)
+		},
+		Coords: func(img *image.RGBA) (GameCoords, error) {
+			c, _, err := om.ReadCoordinatesFromImage(img)
+			return c, err
+		},
+		Tap: func(k string) {
+			if err := BgKeyTap(hwnd, k); err != nil && !bgErrLogged {
+				bgErrLogged = true
+				logf(fmt.Sprintf("[영술사] 백그라운드 키 '%s' 입력 실패: %v", k, err))
+			}
+		},
+		TapFG: func(k string) {
+			if wm.GetForegroundWindow() != hwnd {
+				wm.ActivateWindow(hwnd)
+				time.Sleep(300 * time.Millisecond)
+			}
+			robotgo.KeyTap(k)
+		},
+		Sleep: sleep,
+		Log:   logf,
+	}
 }
 
 // SpiritMoveTo 영술사를 (tx,ty) 로 옮긴다(±1 이면 그대로). 빙의 중이 아니면 possessKey(빙의:도깨비불)부터 누른다.
-// 커서를 목표 칸까지 옮기고 Q → 커서가 캐릭터 칸으로 돌아왔는지 보고 아니면 되돌린다. 키를 눌렀으면 true.
+// 방향키로 커서를 목표 칸까지 옮겨 화면으로 확인 → Q → 좌표가 바뀌었는지 확인 → 커서를 캐릭터 칸으로 되돌린다.
+// 백그라운드 방향키로 커서가 안 움직이면 그때만 창을 앞으로 가져와 방향키·Q 를 누른다. 키를 눌렀으면 true.
 func SpiritMoveTo(io SpiritIO, tx, ty int, possessKey, who string) bool {
 	img, err := io.Capture()
 	if err != nil {
@@ -160,45 +196,215 @@ func SpiritMoveTo(io SpiritIO, tx, ty int, possessKey, who string) bool {
 	v := DetectSpiritView(img, io.Region(img))
 	if !v.Grid {
 		key := SpiritKeyOr(possessKey)
-		io.Log(fmt.Sprintf("[영술사] %s 빙의 안 됨 — %s(빙의:도깨비불) 누르고 이동", who, key))
+		io.Log(fmt.Sprintf("[영술사] %s 빙의 칸(파란 네모)이 안 보임 — %s(빙의:도깨비불) 누르고 이동", who, key))
 		io.Tap(key)
 		if !io.Sleep(1500 * time.Millisecond) {
 			return true
 		}
-		if img, err = io.Capture(); err != nil {
-			return true
+		var ok bool
+		if v, ok = spiritLook(io); (!ok || !v.Grid) && io.TapFG != nil {
+			io.Log(fmt.Sprintf("[영술사] %s 그래도 안 보여 창을 앞으로 가져와 %s 다시", who, key))
+			io.TapFG(key)
+			if !io.Sleep(1500 * time.Millisecond) {
+				return true
+			}
+			v, ok = spiritLook(io)
 		}
-		if v = DetectSpiritView(img, io.Region(img)); !v.Grid {
-			io.Log(fmt.Sprintf("[영술사] %s 빙의 칸(파란 네모)이 안 보여 이동 생략", who))
+		if !ok || !v.Grid {
+			io.Log(fmt.Sprintf("[영술사] %s 빙의 칸이 안 보여 이동 생략", who))
 			return true
 		}
 	}
 	// 한 번에 갈 수 있는 건 네모 안(좌우 8칸, 위아래 7칸) — 더 멀면 다음 점검 때 이어서 간다
 	mx, my := spiritClamp(dx, spiritHalfW), spiritClamp(dy, spiritHalfH)
 	io.Log(fmt.Sprintf("[영술사] %s (%d,%d) → (%d,%d): 커서 %+d,%+d 칸 → Q", who, c.X, c.Y, tx, ty, mx, my))
-	if !spiritArrows(io, mx-v.DX, my-v.DY) {
+	tap, fg := io.Tap, false
+	ok, live := spiritCursorTo(io, tap, v, mx, my)
+	if !live {
 		return true
 	}
-	io.Tap("q")
-	if !io.Sleep(800 * time.Millisecond) {
-		return true
-	}
-	// 옮긴 뒤 커서를 캐릭터 칸으로 — 스킬이 커서 자리에 나가므로 (두 번까지 확인)
-	for try := 0; try < 2; try++ {
-		img, err := io.Capture()
-		if err != nil {
-			break
+	if !ok && io.TapFG != nil {
+		io.Log(fmt.Sprintf("[영술사] %s 백그라운드 방향키로 커서가 안 움직임 — 창을 앞으로 가져와 다시", who))
+		tap, fg = io.TapFG, true
+		if cur, okLook := spiritLook(io); okLook && cur.Grid {
+			if ok, live = spiritCursorTo(io, tap, cur, mx, my); !live {
+				return true
+			}
 		}
-		v := DetectSpiritView(img, io.Region(img))
-		if !v.Grid || !v.Cursor || (v.DX == 0 && v.DY == 0) {
-			break
+	}
+	if !ok {
+		io.Log(fmt.Sprintf("[영술사] %s 방향키로 커서가 안 움직여 이동 생략", who))
+		spiritCursorHome(io, tap, who)
+		return true
+	}
+	tap("q")
+	if !io.Sleep(900 * time.Millisecond) {
+		return true
+	}
+	// 방향키가 먹은 입력 방식이면 Q 도 먹는다 — 그대로면 벽이므로 창을 앞으로 가져와 다시 누르지 않는다
+	c2, moved := spiritMovedFrom(io, c)
+	switch {
+	case moved && fg:
+		io.Log(fmt.Sprintf("[영술사] %s 이동 완료 → (%d,%d) (포그라운드 입력)", who, c2.X, c2.Y))
+	case moved:
+		io.Log(fmt.Sprintf("[영술사] %s 이동 완료 → (%d,%d)", who, c2.X, c2.Y))
+	default:
+		io.Log(fmt.Sprintf("[영술사] %s Q를 눌렀는데 그대로 (%d,%d) — 커서 칸이 벽이거나 Q가 안 먹음", who, c.X, c.Y))
+	}
+	spiritCursorHome(io, tap, who)
+	return true
+}
+
+// spiritLook 지금 화면의 빙의 상태
+func spiritLook(io SpiritIO) (SpiritView, bool) {
+	img, err := io.Capture()
+	if err != nil {
+		return SpiritView{}, false
+	}
+	return DetectSpiritView(img, io.Region(img)), true
+}
+
+// spiritCursorAt 커서가 캐릭터 기준 (x,y) 칸에 있는지 — (0,0)은 캐릭터 칸이라 커서가 가려져 안 보여도 맞다
+func spiritCursorAt(v SpiritView, x, y int) bool {
+	if !v.Grid {
+		return false
+	}
+	if x == 0 && y == 0 {
+		return !v.Cursor || (v.DX == 0 && v.DY == 0)
+	}
+	return v.Cursor && v.DX == x && v.DY == y
+}
+
+// spiritCursorTo 커서를 (mx,my) 칸까지 옮기고 화면으로 확인한다(덜 갔으면 한 번 더).
+// ok = 도착, live = 중지되지 않음. 하나도 안 움직였으면 이 입력 방식이 안 먹는 것 — 바로 false.
+func spiritCursorTo(io SpiritIO, tap func(string), v SpiritView, mx, my int) (ok, live bool) {
+	cur := v
+	if !cur.Cursor {
+		cur.DX, cur.DY = 0, 0
+	}
+	for try := 0; try < 2; try++ {
+		if !spiritArrows(io, tap, mx-cur.DX, my-cur.DY) || !io.Sleep(250*time.Millisecond) {
+			return false, false
+		}
+		next, okLook := spiritLook(io)
+		if !okLook || !next.Grid {
+			return false, true
+		}
+		if spiritCursorAt(next, mx, my) {
+			return true, true
+		}
+		if !next.Cursor {
+			next.DX, next.DY = 0, 0
+		}
+		if next.DX == cur.DX && next.DY == cur.DY {
+			return false, true
+		}
+		cur = next
+	}
+	return false, true
+}
+
+// spiritCursorHome 커서를 캐릭터 칸으로 되돌린다(스킬이 커서 자리에 나가므로) — 두 번까지 확인
+func spiritCursorHome(io SpiritIO, tap func(string), who string) {
+	for try := 0; try < 2; try++ {
+		v, ok := spiritLook(io)
+		if !ok || !v.Grid || !v.Cursor || (v.DX == 0 && v.DY == 0) {
+			return
 		}
 		io.Log(fmt.Sprintf("[영술사] %s 커서가 캐릭터에서 %+d,%+d 칸 — 되돌림", who, v.DX, v.DY))
-		if !spiritArrows(io, -v.DX, -v.DY) || !io.Sleep(300*time.Millisecond) {
-			break
+		if !spiritArrows(io, tap, -v.DX, -v.DY) || !io.Sleep(300*time.Millisecond) {
+			return
 		}
 	}
-	return true
+}
+
+// spiritMovedFrom 좌표가 c0 에서 바뀌었는지 (지금 좌표도 돌려준다)
+func spiritMovedFrom(io SpiritIO, c0 GameCoords) (GameCoords, bool) {
+	img, err := io.Capture()
+	if err != nil {
+		return c0, false
+	}
+	c, err := io.Coords(img)
+	if err != nil || (c.X == 0 && c.Y == 0) {
+		return c0, false
+	}
+	return c, c.X != c0.X || c.Y != c0.Y
+}
+
+// SpiritDiagnose '영술사 테스트' — 이동이 왜 안 되는지 단계별로 본다: 빙의 칸이 보이는지 → 방향키(백그라운드,
+// 안 되면 포그라운드)로 커서가 움직이는지 → 되면 커서 오른쪽 1칸 + Q 로 실제 1칸 가는지. 결과 줄을 돌려준다.
+func SpiritDiagnose(io SpiritIO) []string {
+	var out []string
+	add := func(format string, a ...interface{}) { out = append(out, fmt.Sprintf(format, a...)) }
+	img, err := io.Capture()
+	if err != nil {
+		add("화면을 못 읽음: %v (창이 최소화돼 있으면 안 됩니다)", err)
+		return out
+	}
+	c, cerr := io.Coords(img)
+	if cerr != nil || (c.X == 0 && c.Y == 0) {
+		add("좌표를 못 읽음 (오른쪽 아래 X·Y 표시)")
+	} else {
+		add("좌표 (%d,%d)", c.X, c.Y)
+	}
+	v := DetectSpiritView(img, io.Region(img))
+	if !v.Grid {
+		add("파란 네모가 안 보임 — 빙의 상태가 아니거나 화면에서 못 찾음. 빙의:도깨비불을 쓴 뒤 다시 눌러 주세요")
+		return out
+	}
+	add("파란 네모 찾음 — 커서 %s", spiritCursorText(v))
+	try := func(name string, tap func(string)) bool {
+		start, _ := spiritLook(io)
+		if !start.Cursor {
+			start.DX, start.DY = 0, 0
+		}
+		tap("right")
+		io.Sleep(400 * time.Millisecond)
+		after, ok := spiritLook(io)
+		if !ok {
+			add("%s 방향키: 화면을 못 읽음", name)
+			return false
+		}
+		moved := spiritCursorAt(after, start.DX+1, start.DY)
+		state := "안 움직임"
+		if moved {
+			state = "움직임"
+		}
+		add("%s 방향키(→) → 커서 %s — %s", name, spiritCursorText(after), state)
+		tap("left")
+		io.Sleep(400 * time.Millisecond)
+		return moved
+	}
+	tap, name := io.Tap, "백그라운드"
+	if !try(name, tap) {
+		if io.TapFG == nil {
+			return out
+		}
+		tap, name = io.TapFG, "포그라운드"
+		if !try(name, tap) {
+			add("방향키로 커서가 안 움직임 — 빙의 상태에서 방향키가 커서를 움직이는지 직접 확인해 주세요")
+			return out
+		}
+	}
+	// Q: 커서 오른쪽 1칸 → Q → 좌표가 바뀌는지 (캐릭터가 1칸 움직임)
+	tap("right")
+	io.Sleep(300 * time.Millisecond)
+	tap("q")
+	io.Sleep(1000 * time.Millisecond)
+	if c2, moved := spiritMovedFrom(io, c); moved {
+		add("%s Q → 좌표 (%d,%d) — 이동함", name, c2.X, c2.Y)
+	} else {
+		add("%s Q → 좌표 그대로 — Q가 안 먹거나 오른쪽 칸이 벽", name)
+	}
+	spiritCursorHome(io, tap, "테스트")
+	return out
+}
+
+func spiritCursorText(v SpiritView) string {
+	if !v.Cursor {
+		return "캐릭터 칸(가려짐)"
+	}
+	return fmt.Sprintf("캐릭터에서 %+d,%+d 칸", v.DX, v.DY)
 }
 
 func spiritClamp(v, max int) int {
@@ -212,14 +418,14 @@ func spiritClamp(v, max int) int {
 }
 
 // spiritArrows 커서를 (ax, ay) 칸 움직인다 (오른쪽·아래가 +). 중지되면 false.
-func spiritArrows(io SpiritIO, ax, ay int) bool {
+func spiritArrows(io SpiritIO, tap func(string), ax, ay int) bool {
 	press := func(n int, pos, neg string) bool {
 		key := pos
 		if n < 0 {
 			key, n = neg, -n
 		}
 		for i := 0; i < n; i++ {
-			io.Tap(key)
+			tap(key)
 			if !io.Sleep(spiritKeyGap) {
 				return false
 			}
