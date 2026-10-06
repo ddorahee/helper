@@ -102,6 +102,13 @@ type TrialSettings struct {
 	SkillKeysByChar map[string][]string `json:"skillKeysByChar,omitempty"`
 }
 
+// SpiritSettings 영술사 캐릭터 — 빙의:도깨비불을 쓰면 걷지 못해 커서를 옮기고 Q로 이동한다.
+// 캐릭터 이름 기준 한 곳에 두고 칸첸(메인화면·자동사냥 동시실행·칸첸 시련)에 다 적용한다(사용자 2026-10-06).
+type SpiritSettings struct {
+	Chars []string `json:"chars"` // 영술사 캐릭터 이름
+	Key   string   `json:"key"`   // 빙의:도깨비불 키 (비면 5)
+}
+
 // CharacterData JSON 저장 구조
 type CharacterData struct {
 	Characters       []CharacterProfile            `json:"characters"`
@@ -109,6 +116,7 @@ type CharacterData struct {
 	OCRConfig        OCRRegionConfig               `json:"ocrConfig"`
 	ItemPickupConfig ItemPickupConfig              `json:"itemPickupConfig,omitempty"`
 	TrialSettings    TrialSettings                 `json:"trialSettings,omitempty"`
+	Spirit           SpiritSettings                `json:"spirit,omitempty"`
 	Presets          map[string][]CharacterProfile `json:"presets,omitempty"` // 캐릭터 구성 프리셋 (이름 → 캐릭터 목록 스냅샷)
 }
 
@@ -435,4 +443,18 @@ func (cs *CharacterStore) SetTrialSettings(s TrialSettings) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	cs.data.TrialSettings = s
+}
+
+// GetSpiritSettings 영술사 설정 반환
+func (cs *CharacterStore) GetSpiritSettings() SpiritSettings {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	return cs.data.Spirit
+}
+
+// SetSpiritSettings 영술사 설정 업데이트
+func (cs *CharacterStore) SetSpiritSettings(s SpiritSettings) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.data.Spirit = s
 }

@@ -52,6 +52,8 @@
 
     function init() {
         if (!document.getElementById('trial-section')) return;
+        // 영술사 표시(메인화면 칸첸 표와 공통)가 바뀌면 스킬 표를 다시 그린다
+        window.addEventListener('spirit-changed', () => renderSkillRows());
         const byId = id => document.getElementById(id);
         els = {
             badge: byId('trial-badge'),
@@ -649,7 +651,9 @@
             seen.add(w.nick);
             rows.push({ name: w.nick, role: roleOf(w), missing: false });
         });
-        Object.keys(config.skillKeysByChar).sort((a, b) => a.localeCompare(b, 'ko')).forEach(name => {
+        // 창은 없지만 키나 영술사 표시가 저장된 캐릭터 (✕로 지울 수 있게)
+        const savedNames = Object.keys(config.skillKeysByChar).concat(window.spiritStore ? window.spiritStore.list() : []);
+        Array.from(new Set(savedNames)).sort((a, b) => a.localeCompare(b, 'ko')).forEach(name => {
             if (!seen.has(name)) rows.push({ name, role: '', missing: true });
         });
 
@@ -669,6 +673,7 @@
                 : '<span></span>';
             return `<div class="kanchen-skill-row${r.missing ? ' missing' : ''}" data-name="${n}">
                 <span class="kanchen-skill-name" title="${n}"><span class="kanchen-skill-label">${n}</span>${chip}${missing}</span>
+                ${window.spiritToggleHtml ? window.spiritToggleHtml(r.name) : '<span></span>'}
                 <input type="text" class="trial-skill-input" placeholder="기본 키 사용" value="${keys}">
                 ${del}
             </div>`;
@@ -683,11 +688,17 @@
                 setCharSkills(name, input.value);
                 saveConfig();  // 바꾸면 바로 저장
             });
+            // 영술사 표시는 메인화면 칸첸 표와 같은 값(spiritStore) — 바꾸면 양쪽 다 다시 그려진다
+            const spiritCb = row.querySelector('.spirit-cb');
+            if (spiritCb && window.spiritStore) {
+                spiritCb.addEventListener('change', () => window.spiritStore.set(name, spiritCb.checked));
+            }
             const delBtn = row.querySelector('.kanchen-skill-del');
             if (delBtn) {
                 delBtn.addEventListener('click', () => {
                     delete config.skillKeysByChar[name];
                     saveConfig();
+                    if (window.spiritStore && window.spiritStore.has(name)) window.spiritStore.set(name, false);
                     renderSkillRows();
                 });
             }

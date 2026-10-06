@@ -290,6 +290,7 @@
                         <div class="kanchen-skill-table">
                             <div class="kanchen-skill-row">
                                 <span class="kanchen-skill-name base">기본</span>
+                                <span></span>
                                 <input type="text" id="item-pickup-skill-keys" placeholder="예: 1, 2, 8" value="">
                                 <span></span>
                             </div>
@@ -299,6 +300,11 @@
                             캐릭터 칸을 비워 두면 <b>기본</b> 키를 씁니다. 창 감지로 읽은 캐릭터가 위에 나오고, 이름으로 기억합니다.
                             백그라운드·여러 창은 사냥맵에 있는 동안 2초마다 누르고, 포그라운드 창 1개는 기존 반복 키의 <b>d</b> 자리에 넣습니다(키를 안 정하면 그대로 d).
                         </p>
+                        <div class="kanchen-spirit-key">
+                            <label for="kanchen-spirit-key">영술사 빙의 키</label>
+                            <input type="text" id="kanchen-spirit-key" maxlength="10" placeholder="5">
+                            <span class="mode-hint">캐릭터 줄의 <b>영술사</b>를 체크하면 칸첸(메인화면·자동사냥 동시실행·칸첸 시련)에서 걷지 않고 커서를 옮긴 뒤 <b>Q</b>로 이동하고, 커서를 캐릭터 칸으로 되돌린 다음 스킬을 씁니다. 빙의가 안 돼 있으면 이 키부터 누릅니다. 영술사는 아이템을 줍지 않습니다.</span>
+                        </div>
 
                         <div class="mode-section-title mode-section-row">
                             <div>아이템 자동 습득 <span class="mode-hint">포그라운드로 창 1개만 돌릴 때만 동작 (마우스로 줍는 기능)</span></div>
@@ -547,6 +553,7 @@
                     <div class="kanchen-skill-table">
                         <div class="kanchen-skill-row">
                             <span class="kanchen-skill-name base">기본</span>
+                            <span></span>
                             <input type="text" id="trial-skill-keys" placeholder="예: 1, 2, 8" value="">
                             <span></span>
                         </div>
@@ -554,6 +561,7 @@
                     </div>
                     <p class="kanchen-skill-note trial-skill-note">
                         캐릭터 칸을 비워 두면 <b>기본</b> 키를 씁니다. 창 감지로 읽은 캐릭터가 위에 나오고, 이름으로 기억합니다.
+                        <b>영술사</b>를 체크한 캐릭터는 걷지 않고 커서를 옮긴 뒤 <b>Q</b>로 중앙에 갑니다(메인화면 칸첸 설정의 영술사와 같은 표시·같은 빙의 키).
                     </p>
                 </div>
 

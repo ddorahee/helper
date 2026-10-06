@@ -53,6 +53,9 @@ type EntryWindow struct {
 	BG   bool // true=백그라운드(창 안 띄움), false=포그라운드(창을 앞으로)
 	// Skills 칸첸 사냥맵에서 누를 스킬 키 — 창의 캐릭터 이름으로 고른 키(없으면 기본 키). 비면 안 누른다.
 	Skills []string
+	// Spirit 영술사 — 빙의 중엔 걷지 못해 사냥 자리로 갈 때 좌표창 대신 커서를 옮기고 Q
+	Spirit    bool
+	SpiritKey string // 빙의:도깨비불 키 (빙의가 안 돼 있으면 먼저 누름, 비면 5)
 }
 
 // MultiEntry 다중 창 솔로 입장 유지 루프 (대야/칸첸 혼합 가능).
@@ -81,6 +84,8 @@ type MultiEntry struct {
 	lastEntry map[uint64]time.Time
 	// skillErrLogged 스킬 키 입력 실패를 창마다 한 번만 로그에 남긴다(2초마다 누르므로). run 고루틴 전용.
 	skillErrLogged map[uint64]bool
+	// done run 고루틴이 끝나면 닫힌다 — 자동사냥 동시실행이 창을 넘기기 전에 키가 남지 않게 기다리는 데 쓴다
+	done chan struct{}
 
 	roundInterval time.Duration // 한 바퀴 주기 (기본 30초)
 	logFunc       func(string)
@@ -167,9 +172,11 @@ func (me *MultiEntry) StartEntries(entries []EntryWindow, minimize bool, centerX
 	me.running = true
 	me.stopChan = make(chan struct{})
 	stop := me.stopChan
+	me.done = make(chan struct{})
+	done := me.done
 	me.mu.Unlock()
 
-	go me.run(stop)
+	go me.run(stop, done)
 	summary := ""
 	for name, n := range counts {
 		if summary != "" {
@@ -215,6 +222,9 @@ func (me *MultiEntry) StartEntries(entries []EntryWindow, minimize bool, centerX
 		default:
 			me.log("창%d[칸첸] 스킬 %s — 사냥맵에 있는 동안 약 %.0f초마다", i+1, strings.Join(e.Skills, ","), meWatchInterval.Seconds())
 		}
+		if e.Spirit {
+			me.log("창%d[칸첸] 영술사 — 사냥 자리로 갈 땐 커서를 옮기고 Q (빙의 키 %s)", i+1, SpiritKeyOr(e.SpiritKey))
+		}
 	}
 	return nil
 }
@@ -235,6 +245,22 @@ func (me *MultiEntry) Stop() {
 	me.log("다중 입장 유지 중지")
 }
 
+// StopAndWait 중지하고 루프가 정말 끝날 때까지 기다린다(최대 timeout) — 자동사냥 동시실행이
+// 다음 캐릭터로 창을 넘기기 전에 이 창으로 가던 키가 남지 않게.
+func (me *MultiEntry) StopAndWait(timeout time.Duration) {
+	me.mu.Lock()
+	done := me.done
+	me.mu.Unlock()
+	me.Stop()
+	if done == nil {
+		return
+	}
+	select {
+	case <-done:
+	case <-time.After(timeout):
+	}
+}
+
 func (me *MultiEntry) stopped(stop chan struct{}) bool {
 	select {
 	case <-stop:
@@ -253,7 +279,7 @@ func (me *MultiEntry) sleepOrStop(stop chan struct{}, d time.Duration) bool {
 	}
 }
 
-func (me *MultiEntry) run(stop chan struct{}) {
+func (me *MultiEntry) run(stop, done chan struct{}) {
 	defer func() {
 		if r := recover(); r != nil {
 			me.log("패닉 복구: %v", r)
@@ -261,6 +287,7 @@ func (me *MultiEntry) run(stop chan struct{}) {
 		me.mu.Lock()
 		me.running = false
 		me.mu.Unlock()
+		close(done)
 	}()
 
 	for !me.stopped(stop) {
@@ -437,7 +464,11 @@ func (me *MultiEntry) handleWindow(stop chan struct{}, idx int, entry EntryWindo
 
 	// 칸첸 창: 사냥맵이면 중앙 좌표로 이동 (아이템은 안 먹고 자리만). 대야 창은 이동 안 함.
 	if me.centerSet && entry.Mode == "kanchen" && state == "inside" {
-		me.moveToCenter(stop, idx, hwnd, bg, activate)
+		if entry.Spirit {
+			me.spiritToCenter(stop, idx, entry) // 영술사: 커서를 옮기고 Q
+		} else {
+			me.moveToCenter(stop, idx, hwnd, bg, activate)
+		}
 	}
 	// 칸첸 사냥맵이면 그 캐릭터 스킬 (이후엔 감시 주기마다 watchEntrances 가 누른다)
 	if state == "inside" {
@@ -494,6 +525,31 @@ func (me *MultiEntry) moveToCenter(stop chan struct{}, idx int, hwnd uint64, bg 
 	me.arrows(hwnd, bg, dx, dy)
 	me.sleepOrStop(stop, 400*time.Millisecond)
 	me.tap(hwnd, bg, "escape") // 좌표창 닫기
+}
+
+// spiritToCenter 영술사 창: 빙의 중엔 걷지 못하므로 좌표창 이동 대신 커서를 사냥 자리까지 옮기고 Q,
+// 그 뒤 커서를 캐릭터 칸으로 되돌린다(스킬이 커서 자리에 나감). 창을 띄우지 않고 PostMessage 로 누른다.
+func (me *MultiEntry) spiritToCenter(stop chan struct{}, idx int, e EntryWindow) {
+	io := SpiritIO{
+		Capture: func() (*image.RGBA, error) { return me.wm.CaptureWindowQuiet(e.HWND) },
+		Region: func(img *image.RGBA) image.Rectangle {
+			x, y, w, h := me.om.clientBox(img, e.HWND)
+			return image.Rect(x, y, x+w, y+h)
+		},
+		Coords: func(img *image.RGBA) (GameCoords, error) {
+			c, _, err := me.om.ReadCoordinatesFromImage(img)
+			return c, err
+		},
+		Tap: func(k string) {
+			if err := BgKeyTap(e.HWND, k); err != nil && !me.skillErrLogged[e.HWND] {
+				me.skillErrLogged[e.HWND] = true
+				me.log("창%d[칸첸] 영술사 키 '%s' 입력 실패: %v", idx, k, err)
+			}
+		},
+		Sleep: func(d time.Duration) bool { return me.sleepOrStop(stop, d) },
+		Log:   func(m string) { me.log("%s", m) },
+	}
+	SpiritMoveTo(io, me.centerX, me.centerY, e.SpiritKey, fmt.Sprintf("창%d[칸첸]", idx))
 }
 
 // watchEntrances 최소화가 아닐 때, 다음 바퀴까지 남은 시간 동안 2초마다 창들의 맵을 조용히

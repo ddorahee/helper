@@ -664,6 +664,8 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			if m == "kanchen" {
 				// 칸첸은 캐릭터마다 쓰는 스킬이 달라서 창의 캐릭터 이름으로 키를 고른다(없으면 기본 키)
 				e.Skills = pickupCfg.SkillKeysFor(multiNicks[i])
+				// 영술사면 사냥 자리로 갈 때 커서+Q (빙의 중엔 걷지 못함)
+				e.Spirit, e.SpiritKey = spiritFor(app, multiNicks[i])
 			}
 			multiEntries = append(multiEntries, e)
 		}
@@ -694,7 +696,8 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				} else {
 					// 칸첸 단일창: 키 시퀀스는 포그라운드 전용(robotgo)이라
 					// 백그라운드를 고르면 창별 입장 유지 루프(MultiEntry)로 처리한다.
-					if e.BG {
+					// 영술사도 같은 루프로 — 빙의 중엔 걷지 못해 반복 키·아이템 줍기 대신 커서+Q 로 자리를 지킨다.
+					if e.BG || e.Spirit {
 						if err := app.MultiEntry.StartEntries(multiEntries, multiMinimize, multiCenterX, multiCenterY); err != nil {
 							log.Printf("다중 입장 시작 실패: %v", err)
 						}
@@ -763,7 +766,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		// 백그라운드 단일 칸첸은 다중 창과 똑같이 입장 유지 + 중앙 이동만 한다.
 		kanchenSingle := internalMode == ModeKanchenParty ||
 			((internalMode == ModeKanchenEnter || internalMode == ModeDaeyaEnter) &&
-				len(multiEntries) == 1 && multiEntries[0].Mode == "kanchen" && !multiEntries[0].BG) ||
+				len(multiEntries) == 1 && multiEntries[0].Mode == "kanchen" && !multiEntries[0].BG && !multiEntries[0].Spirit) ||
 			(internalMode == ModeKanchenEnter && len(multiEntries) == 0)
 		if kanchenSingle {
 			scanHwnd := uint64(0)
@@ -2435,6 +2438,30 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		json.NewEncoder(w).Encode(app.Trial.Status())
 	})
 
+	// 영술사 — 캐릭터 이름 목록 + 빙의 키. 메인화면 칸첸 표·시련 표 어디서 바꿔도 같은 값(사용자 2026-10-06)
+	http.HandleFunc("/api/spirit", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			json.NewEncoder(w).Encode(normalizeSpiritSettings(app.CharacterStore.GetSpiritSettings()))
+		case http.MethodPost:
+			var s config.SpiritSettings
+			if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+				http.Error(w, "잘못된 요청", http.StatusBadRequest)
+				return
+			}
+			s = normalizeSpiritSettings(s)
+			app.CharacterStore.SetSpiritSettings(s)
+			if err := app.CharacterStore.Save(); err != nil {
+				log.Printf("영술사 설정 저장 실패: %v", err)
+			}
+			log.Printf("[영술사] 설정 저장: 캐릭터=%v 빙의 키=%s", s.Chars, s.Key)
+			json.NewEncoder(w).Encode(s)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	// === 키 매핑 시스템 API ===
 
 	// 매핑 CRUD
@@ -2859,6 +2886,19 @@ func (rc *rotationCompanion) StartCompanion(mode string, hwnd uint64, name strin
 				"message": fmt.Sprintf("[동시실행] %s 칸첸 스킬 %s", name, strings.Join(skills, ",")),
 			})
 		}
+		if spirit, key := spiritFor(app, name); spirit {
+			// 영술사는 빙의 중엔 걷지 못해 반복 키·아이템 줍기 대신 입장 유지 루프로 돌린다 — 사냥 자리에서
+			// 벗어나면 커서+Q 로 돌아오고 스킬(창을 띄우지 않는 백그라운드 입력, 사용자 2026-10-06)
+			ox, oy := trialKanchenTarget(app)
+			win := automation.EntryWindow{HWND: hwnd, Mode: "kanchen", BG: true, Skills: skills, Spirit: true, SpiritKey: key}
+			sendEvent(app, "rotationLog", map[string]string{
+				"message": fmt.Sprintf("[동시실행] %s 영술사 — 사냥 자리(%d,%d)로 커서+Q 이동, 빙의 키 %s", name, ox, oy, key),
+			})
+			if err := app.MultiEntry.StartEntries([]automation.EntryWindow{win}, false, ox, oy); err != nil {
+				log.Printf("[동시실행] 영술사 입장 유지 시작 실패: %v", err)
+			}
+			return
+		}
 		app.KeyboardManager.SetRunning(true)
 		go app.KeyboardManager.KanchenEnterWithSkills(skills)
 		app.ItemScanner.StartWithSkills(hwnd, skills)
@@ -2873,6 +2913,8 @@ func (rc *rotationCompanion) StopCompanion() {
 	app.KeyboardManager.SetRunning(false)
 	app.ItemScanner.Stop()
 	app.DaeyaBattle.Stop()
+	// 영술사 동시실행은 입장 유지 루프로 돈다 — 루프가 끝날 때까지 기다린다(커서+Q 키가 다음 창으로 새지 않게)
+	app.MultiEntry.StopAndWait(5 * time.Second)
 	// RunKeySequence 루프가 키 입력(300ms 지연) 중일 수 있으므로 잔여 입력 소진 대기
 	time.Sleep(1500 * time.Millisecond)
 }
@@ -3034,6 +3076,36 @@ func normalizeTrialSettings(s config.TrialSettings) config.TrialSettings {
 	return s
 }
 
+// spiritFor 이 캐릭터가 영술사인지 + 빙의 키 (사용자가 캐릭터 이름으로 지정, 비면 5)
+func spiritFor(app *Application, name string) (bool, string) {
+	s := app.CharacterStore.GetSpiritSettings()
+	key := automation.SpiritKeyOr(s.Key)
+	if name = strings.TrimSpace(name); name == "" {
+		return false, key
+	}
+	for _, c := range s.Chars {
+		if strings.TrimSpace(c) == name {
+			return true, key
+		}
+	}
+	return false, key
+}
+
+// normalizeSpiritSettings 영술사 설정 정리 — 이름 공백·중복 제거, 키는 공백 제거·소문자(비면 5)
+func normalizeSpiritSettings(s config.SpiritSettings) config.SpiritSettings {
+	seen := map[string]bool{}
+	chars := []string{}
+	for _, c := range s.Chars {
+		if c = strings.TrimSpace(c); c != "" && !seen[c] {
+			seen[c] = true
+			chars = append(chars, c)
+		}
+	}
+	s.Chars = chars
+	s.Key = strings.ToLower(automation.SpiritKeyOr(s.Key))
+	return s
+}
+
 // trialApplyMaxRuns 화면이 보낸 횟수(= 남은 횟수) 반영. 시련이 도는 동안엔 엔진이 판마다 줄여 저장하므로
 // 화면 값(옛 값일 수 있음)은 무시한다. 숫자가 실제로 바뀌면 사용자가 새로 정한 것 — '원래 횟수'
 // (다 끝나면 되돌릴 값)로도 기억한다. 다른 설정을 저장하며 같은 횟수가 같이 오는 건 원래 횟수를 안 바꾼다.
@@ -3110,6 +3182,7 @@ func trialStartFromForm(app *Application, r *http.Request, group bool) (automati
 		fmt.Sscanf(r.FormValue(hwndKey), "%d", &w.HWND)
 		if s.Dungeon == automation.TrialDungeonKanchen {
 			w.Skills = automation.TrialSkillKeysFor(s.SkillKeys, s.SkillKeysByChar, w.Nick)
+			w.Spirit, w.SpiritKey = spiritFor(app, w.Nick) // 영술사면 목표 칸으로 갈 때 커서+Q
 		}
 		return w
 	}

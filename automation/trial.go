@@ -64,6 +64,9 @@ type TrialWindow struct {
 	Nick string // 창 감지로 읽은 캐릭터 이름 (못 읽었으면 "") — 로그·스킬 키 선택용
 	// Skills 칸첸 던전에 있는 동안 2초마다 누를 스킬 키 (시련 전용 표에서 고른 것). 비면 안 누른다.
 	Skills []string
+	// Spirit 영술사(칸첸 던전만) — 빙의 중엔 걷지 못해 목표 칸으로 갈 때 커서를 옮기고 Q
+	Spirit    bool
+	SpiritKey string // 빙의:도깨비불 키 (비면 5)
 }
 
 // TrialStatus 시련 진행 상태 (UI 상단 표시용)
@@ -784,6 +787,10 @@ func (t *Trial) walkTo(w TrialWindow, role string) {
 		t.log("[걷기] 목표 좌표 미설정 — 스킵")
 		return
 	}
+	if w.Spirit {
+		t.spiritWalkTo(w, role, targetX, targetY)
+		return
+	}
 
 	// 좌표 읽기 (최대 3회 시도)
 	var coords GameCoords
@@ -817,6 +824,26 @@ func (t *Trial) walkTo(w TrialWindow, role string) {
 		return
 	}
 	t.log("[걷기] 이동 완료")
+}
+
+// spiritWalkTo 영술사: 빙의 중엔 걷지 못하므로 커서를 목표 칸까지 옮기고 Q, 그 뒤 커서를 캐릭터 칸으로
+// 되돌린다(스킬이 커서 자리에 나감). 빙의가 안 돼 있으면 빙의 키부터 누른다. 시련 창은 늘 백그라운드.
+func (t *Trial) spiritWalkTo(w TrialWindow, role string, tx, ty int) {
+	io := SpiritIO{
+		Capture: func() (*image.RGBA, error) { return t.wm.CaptureWindowQuiet(w.HWND) },
+		Region: func(img *image.RGBA) image.Rectangle {
+			x, y, cw, ch := t.om.clientBox(img, w.HWND)
+			return image.Rect(x, y, x+cw, y+ch)
+		},
+		Coords: func(img *image.RGBA) (GameCoords, error) {
+			c, _, err := t.om.ReadCoordinatesFromImage(img)
+			return c, err
+		},
+		Tap:   func(k string) { t.key(w, k, role) },
+		Sleep: t.sleep,
+		Log:   t.log,
+	}
+	SpiritMoveTo(io, tx, ty, w.SpiritKey, role+" "+trialWinName(w))
 }
 
 // walkAxis 한 축으로 |diff| 칸 걷기 (diff>0 → pos 방향, diff<0 → neg 방향). 중지되면 false.
@@ -1119,6 +1146,9 @@ func trialWindowSummary(role string, w TrialWindow, dungeon string) string {
 		skills = "스킬 키 없음 — 스킬은 안 누름"
 	default:
 		skills = fmt.Sprintf("스킬 %s — 칸첸 던전에 있는 동안 약 2초마다", strings.Join(w.Skills, ","))
+	}
+	if w.Spirit {
+		skills += fmt.Sprintf(", 영술사(목표 칸으로 갈 땐 커서+Q, 빙의 키 %s)", SpiritKeyOr(w.SpiritKey))
 	}
 	return fmt.Sprintf("%s(hwnd=0x%X): %s, %s, %s", role, w.HWND, input, nick, skills)
 }

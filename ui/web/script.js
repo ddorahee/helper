@@ -1522,6 +1522,58 @@ function setAutoStartupApi(enabled) {
     // 아이템 리스트 데이터
     let itemList = [];
 
+    // ===== 영술사 — 캐릭터 이름 기준 한 곳에 저장(메인화면 칸첸·자동사냥 동시실행·칸첸 시련 공통) =====
+    // 영술사는 빙의 중엔 걷지 못해 커서를 옮기고 Q로 이동한다(사용자 2026-10-06). 시련 탭(trial.js)도 이걸 쓴다.
+    window.spiritStore = (function() {
+        let chars = new Set();
+        let key = '5';
+        const changed = () => window.dispatchEvent(new Event('spirit-changed'));
+        async function save() {
+            try {
+                await fetch('/api/spirit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chars: Array.from(chars), key: key }),
+                });
+            } catch (e) {
+                addLogMessage('영술사 설정 저장 실패: ' + e.message);
+            }
+        }
+        return {
+            has: name => chars.has(name),
+            list: () => Array.from(chars),
+            key: () => key,
+            async load() {
+                try {
+                    const res = await fetch('/api/spirit');
+                    if (!res.ok) return;
+                    const d = await res.json();
+                    chars = new Set(Array.isArray(d && d.chars) ? d.chars : []);
+                    key = (d && d.key) || '5';
+                    changed();
+                } catch (e) { /* 서버 준비 전이면 다음에 */ }
+            },
+            set(name, on) {
+                if (!name) return;
+                if (on) chars.add(name);
+                else chars.delete(name);
+                save();
+                changed();
+                addLogMessage(`영술사 ${on ? '지정' : '해제'}: ${name}`);
+            },
+            setKey(k) {
+                key = String(k || '').trim().toLowerCase() || '5';
+                save();
+                changed();
+            },
+        };
+    })();
+    // 캐릭터 줄의 영술사 체크 칸 (시련 표도 같이 씀)
+    window.spiritToggleHtml = function(name) {
+        const on = window.spiritStore.has(name);
+        return `<label class="spirit-toggle${on ? ' on' : ''}" title="영술사: 빙의 중엔 걷지 못해 칸첸에서 커서를 옮기고 Q로 이동 (메인화면·자동사냥 동시실행·칸첸 시련 공통)"><input type="checkbox" class="spirit-cb"${on ? ' checked' : ''}>영술사</label>`;
+    };
+
     // ===== 칸첸 스킬 키 — 기본 + 캐릭터별 =====
     // 칸첸은 캐릭터마다 쓰는 스킬이 조금씩 달라서(사용자 2026-10-03) 창 감지로 읽은 캐릭터마다
     // 키를 따로 둔다. 이름으로 저장하고, 비워 둔 캐릭터는 기본 키를 쓴다.
@@ -1557,7 +1609,8 @@ function setAutoStartupApi(enabled) {
             const mode = lb.querySelector('select.multi-mode-select');
             rows.push({ name, kanchen: !!(cb && cb.checked && mode && mode.value === 'kanchen'), missing: false });
         });
-        Object.keys(skillByChar).sort().forEach(name => {
+        // 창은 없지만 키나 영술사 표시가 저장된 캐릭터 (✕로 지울 수 있게)
+        Array.from(new Set([...Object.keys(skillByChar), ...window.spiritStore.list()])).sort().forEach(name => {
             if (!seen.has(name)) rows.push({ name, kanchen: false, missing: true });
         });
 
@@ -1573,6 +1626,7 @@ function setAutoStartupApi(enabled) {
             const del = r.missing ? '<button type="button" class="kanchen-skill-del" title="이 캐릭터의 키를 지웁니다">✕</button>' : '<span></span>';
             return `<div class="kanchen-skill-row${r.missing ? ' missing' : ''}" data-name="${n}">
                 <span class="kanchen-skill-name" title="${n}"><span class="kanchen-skill-label">${n}</span>${chip}${missing}</span>
+                ${window.spiritToggleHtml(r.name)}
                 <input type="text" class="kanchen-skill-input" placeholder="기본 키 사용" value="${keys}">
                 ${del}
             </div>`;
@@ -1586,10 +1640,13 @@ function setAutoStartupApi(enabled) {
                 setCharSkills(name, input.value);
                 if (pickupSaveBtn) pickupSaveBtn.click(); // 바꾸면 바로 저장
             });
+            const spiritCb = row.querySelector('.spirit-cb');
+            if (spiritCb) spiritCb.addEventListener('change', () => window.spiritStore.set(name, spiritCb.checked));
             const delBtn = row.querySelector('.kanchen-skill-del');
             if (delBtn) delBtn.addEventListener('click', () => {
                 delete skillByChar[name];
                 if (pickupSaveBtn) pickupSaveBtn.click();
+                if (window.spiritStore.has(name)) window.spiritStore.set(name, false); // 다시 그림은 spirit-changed 가
                 renderKanchenSkillRows();
             });
             if (name === focusName) {
@@ -1743,6 +1800,14 @@ function setAutoStartupApi(enabled) {
     });
     // 기본 스킬 키도 바꾸면 바로 저장 (캐릭터별 칸과 같게)
     if (pickupSkillKeys && pickupSaveBtn) pickupSkillKeys.addEventListener('change', () => pickupSaveBtn.click());
+    // 영술사 빙의 키 + 영술사 표시가 바뀌면(시련 탭에서 바꿔도) 표를 다시 그린다
+    const spiritKeyEl = document.getElementById('kanchen-spirit-key');
+    if (spiritKeyEl) spiritKeyEl.addEventListener('change', () => window.spiritStore.setKey(spiritKeyEl.value));
+    window.addEventListener('spirit-changed', () => {
+        if (spiritKeyEl && spiritKeyEl !== document.activeElement) spiritKeyEl.value = window.spiritStore.key();
+        renderKanchenSkillRows();
+    });
+    window.spiritStore.load();
 
     // 설정 저장
     if (pickupSaveBtn) {
