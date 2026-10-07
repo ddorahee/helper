@@ -105,7 +105,7 @@ func DetectSpiritView(img image.Image, r image.Rectangle) SpiritView {
 			best, bestN = cell, n
 		}
 	}
-	if bestN >= 250 {
+	if bestN >= 100 { // 캐릭터·빙의 오라에 일부 가려져도 찾게 넉넉히(커서 칸이 다 보이면 1400개쯤)
 		v.Cursor, v.DX, v.DY = true, best[0], best[1]
 	}
 	return v
@@ -177,8 +177,9 @@ func NewSpiritIO(wm *WindowManager, om *OCRManager, hwnd uint64, sleep func(time
 }
 
 // SpiritMoveTo 영술사를 (tx,ty) 로 옮긴다(±1 이면 그대로). 빙의 중이 아니면 possessKey(빙의:도깨비불)부터 누른다.
-// 방향키로 커서를 목표 칸까지 옮겨 화면으로 확인 → Q → 좌표가 바뀌었는지 확인 → 커서를 캐릭터 칸으로 되돌린다.
-// 백그라운드 방향키로 커서가 안 움직이면 그때만 창을 앞으로 가져와 방향키·Q 를 누른다. 키를 눌렀으면 true.
+// 방향키로 커서를 목표 칸까지 옮기고 Q → 좌표가 바뀌었으면 성공. 커서는 캐릭터 가까이(빙의 오라 — 좌우 약 2칸,
+// 위로 약 4칸)에선 가려져 안 보이므로 성공 여부는 좌표로 본다(사용자 2026-10-07: 커서는 움직이는데 테스트가
+// 못 봄). 백그라운드로 안 되면 그때만 창을 앞으로 가져와 다시 한다. 키를 눌렀으면 true.
 func SpiritMoveTo(io SpiritIO, tx, ty int, possessKey, who string) bool {
 	img, err := io.Capture()
 	if err != nil {
@@ -218,40 +219,64 @@ func SpiritMoveTo(io SpiritIO, tx, ty int, possessKey, who string) bool {
 	// 한 번에 갈 수 있는 건 네모 안(좌우 8칸, 위아래 7칸) — 더 멀면 다음 점검 때 이어서 간다
 	mx, my := spiritClamp(dx, spiritHalfW), spiritClamp(dy, spiritHalfH)
 	io.Log(fmt.Sprintf("[영술사] %s (%d,%d) → (%d,%d): 커서 %+d,%+d 칸 → Q", who, c.X, c.Y, tx, ty, mx, my))
-	tap, fg := io.Tap, false
-	ok, live := spiritCursorTo(io, tap, v, mx, my)
-	if !live {
+	// 지금 커서 자리 (안 보이면 캐릭터 칸에 있는 것)
+	cx, cy := 0, 0
+	if v.Cursor {
+		cx, cy = v.DX, v.DY
+	}
+
+	// 1) 백그라운드: 방향키 → Q → 좌표 확인
+	if !spiritArrows(io, io.Tap, mx-cx, my-cy) {
 		return true
 	}
-	if !ok && io.TapFG != nil {
-		io.Log(fmt.Sprintf("[영술사] %s 백그라운드 방향키로 커서가 안 움직임 — 창을 앞으로 가져와 다시", who))
-		tap, fg = io.TapFG, true
-		if cur, okLook := spiritLook(io); okLook && cur.Grid {
-			if ok, live = spiritCursorTo(io, tap, cur, mx, my); !live {
-				return true
-			}
-		}
-	}
-	if !ok {
-		io.Log(fmt.Sprintf("[영술사] %s 방향키로 커서가 안 움직여 이동 생략", who))
-		spiritCursorHome(io, tap, who)
-		return true
-	}
-	tap("q")
+	io.Tap("q")
 	if !io.Sleep(900 * time.Millisecond) {
 		return true
 	}
-	// 방향키가 먹은 입력 방식이면 Q 도 먹는다 — 그대로면 벽이므로 창을 앞으로 가져와 다시 누르지 않는다
-	c2, moved := spiritMovedFrom(io, c)
-	switch {
-	case moved && fg:
-		io.Log(fmt.Sprintf("[영술사] %s 이동 완료 → (%d,%d) (포그라운드 입력)", who, c2.X, c2.Y))
-	case moved:
+	if c2, moved := spiritMovedFrom(io, c); moved {
 		io.Log(fmt.Sprintf("[영술사] %s 이동 완료 → (%d,%d)", who, c2.X, c2.Y))
-	default:
-		io.Log(fmt.Sprintf("[영술사] %s Q를 눌렀는데 그대로 (%d,%d) — 커서 칸이 벽이거나 Q가 안 먹음", who, c.X, c.Y))
+		spiritCursorHome(io, io.Tap, who)
+		return true
 	}
-	spiritCursorHome(io, tap, who)
+	if io.TapFG == nil {
+		io.Log(fmt.Sprintf("[영술사] %s Q를 눌렀는데 그대로 (%d,%d) — 커서 칸이 벽이거나 키가 안 먹음", who, c.X, c.Y))
+		spiritCursorHome(io, io.Tap, who)
+		return true
+	}
+	// 2) 그대로인데 커서가 목표 칸에 보인다 — 방향키는 먹었다. Q 만 포그라운드로 한 번 더(그래도 그대로면 벽)
+	if now, ok := spiritLook(io); ok && now.Cursor && now.DX == mx && now.DY == my {
+		io.Log(fmt.Sprintf("[영술사] %s 커서는 목표 칸인데 그대로 — 창을 앞으로 가져와 Q 다시", who))
+		io.TapFG("q")
+		if !io.Sleep(900 * time.Millisecond) {
+			return true
+		}
+		if c2, moved := spiritMovedFrom(io, c); moved {
+			io.Log(fmt.Sprintf("[영술사] %s 이동 완료 → (%d,%d) (포그라운드 Q)", who, c2.X, c2.Y))
+		} else {
+			io.Log(fmt.Sprintf("[영술사] %s 그래도 그대로 — 커서 칸이 벽(빨간 칸)인 것 같음", who))
+		}
+		spiritCursorHome(io, io.Tap, who)
+		return true
+	}
+	// 3) 커서가 목표 칸에 안 보인다 — 백그라운드 방향키가 안 먹었거나, 캐릭터 가까이라 가려진 것.
+	//    백그라운드로 거꾸로 눌러(먹었다면 원위치, 안 먹었다면 그대로) 커서를 처음 자리에 두고 포그라운드로 다시.
+	io.Log(fmt.Sprintf("[영술사] %s 백그라운드로는 안 움직임 — 창을 앞으로 가져와 다시", who))
+	if !spiritArrows(io, io.Tap, cx-mx, cy-my) || !io.Sleep(200*time.Millisecond) {
+		return true
+	}
+	if !spiritArrows(io, io.TapFG, mx-cx, my-cy) {
+		return true
+	}
+	io.TapFG("q")
+	if !io.Sleep(900 * time.Millisecond) {
+		return true
+	}
+	if c2, moved := spiritMovedFrom(io, c); moved {
+		io.Log(fmt.Sprintf("[영술사] %s 이동 완료 → (%d,%d) (포그라운드 입력)", who, c2.X, c2.Y))
+	} else {
+		io.Log(fmt.Sprintf("[영술사] %s 포그라운드로도 그대로 (%d,%d) — 커서 칸이 벽이거나 커서가 키를 안 받음", who, c.X, c.Y))
+	}
+	spiritCursorHome(io, io.TapFG, who)
 	return true
 }
 
@@ -264,47 +289,8 @@ func spiritLook(io SpiritIO) (SpiritView, bool) {
 	return DetectSpiritView(img, io.Region(img)), true
 }
 
-// spiritCursorAt 커서가 캐릭터 기준 (x,y) 칸에 있는지 — (0,0)은 캐릭터 칸이라 커서가 가려져 안 보여도 맞다
-func spiritCursorAt(v SpiritView, x, y int) bool {
-	if !v.Grid {
-		return false
-	}
-	if x == 0 && y == 0 {
-		return !v.Cursor || (v.DX == 0 && v.DY == 0)
-	}
-	return v.Cursor && v.DX == x && v.DY == y
-}
-
-// spiritCursorTo 커서를 (mx,my) 칸까지 옮기고 화면으로 확인한다(덜 갔으면 한 번 더).
-// ok = 도착, live = 중지되지 않음. 하나도 안 움직였으면 이 입력 방식이 안 먹는 것 — 바로 false.
-func spiritCursorTo(io SpiritIO, tap func(string), v SpiritView, mx, my int) (ok, live bool) {
-	cur := v
-	if !cur.Cursor {
-		cur.DX, cur.DY = 0, 0
-	}
-	for try := 0; try < 2; try++ {
-		if !spiritArrows(io, tap, mx-cur.DX, my-cur.DY) || !io.Sleep(250*time.Millisecond) {
-			return false, false
-		}
-		next, okLook := spiritLook(io)
-		if !okLook || !next.Grid {
-			return false, true
-		}
-		if spiritCursorAt(next, mx, my) {
-			return true, true
-		}
-		if !next.Cursor {
-			next.DX, next.DY = 0, 0
-		}
-		if next.DX == cur.DX && next.DY == cur.DY {
-			return false, true
-		}
-		cur = next
-	}
-	return false, true
-}
-
-// spiritCursorHome 커서를 캐릭터 칸으로 되돌린다(스킬이 커서 자리에 나가므로) — 두 번까지 확인
+// spiritCursorHome 커서를 캐릭터 칸으로 되돌린다(스킬이 커서 자리에 나가므로) — 보이는 동안 두 번까지.
+// 안 보이면 캐릭터 칸(또는 가까이에 가려짐)으로 보고 그대로 둔다.
 func spiritCursorHome(io SpiritIO, tap func(string), who string) {
 	for try := 0; try < 2; try++ {
 		v, ok := spiritLook(io)
@@ -331,9 +317,11 @@ func spiritMovedFrom(io SpiritIO, c0 GameCoords) (GameCoords, bool) {
 	return c, c.X != c0.X || c.Y != c0.Y
 }
 
-// SpiritDiagnose '영술사 테스트' — 이동이 왜 안 되는지 단계별로 본다: 빙의 칸이 보이는지 → 방향키(백그라운드,
-// 안 되면 포그라운드)로 커서가 움직이는지 → 되면 커서 오른쪽 1칸 + Q 로 실제 1칸 가는지. 결과 줄을 돌려준다.
+// SpiritDiagnose '영술사 테스트' — 이동이 왜 안 되는지 단계별로 본다: 빙의 칸이 보이는지 → 커서를 오른쪽 4칸
+// (빙의 오라 밖이라 보이는 자리)으로 옮겨 보이는지(백그라운드, 안 되면 포그라운드) → 되면 Q 로 4칸 갔다가
+// 커서를 왼쪽 4칸 + Q 로 제자리. 결과 줄을 돌려준다.
 func SpiritDiagnose(io SpiritIO) []string {
+	const probe = 4
 	var out []string
 	add := func(format string, a ...interface{}) { out = append(out, fmt.Sprintf(format, a...)) }
 	img, err := io.Capture()
@@ -354,25 +342,23 @@ func SpiritDiagnose(io SpiritIO) []string {
 	}
 	add("파란 네모 찾음 — 커서 %s", spiritCursorText(v))
 	try := func(name string, tap func(string)) bool {
-		start, _ := spiritLook(io)
-		if !start.Cursor {
-			start.DX, start.DY = 0, 0
-		}
-		tap("right")
+		spiritArrows(io, tap, probe, 0)
 		io.Sleep(400 * time.Millisecond)
 		after, ok := spiritLook(io)
 		if !ok {
 			add("%s 방향키: 화면을 못 읽음", name)
 			return false
 		}
-		moved := spiritCursorAt(after, start.DX+1, start.DY)
-		state := "안 움직임"
+		moved := after.Cursor && after.DX == probe && after.DY == 0
+		state := "안 보임"
 		if moved {
 			state = "움직임"
 		}
-		add("%s 방향키(→) → 커서 %s — %s", name, spiritCursorText(after), state)
-		tap("left")
-		io.Sleep(400 * time.Millisecond)
+		add("%s 방향키(→ %d칸) → 커서 %s — %s", name, probe, spiritCursorText(after), state)
+		if !moved {
+			spiritArrows(io, tap, -probe, 0) // 움직였는데 못 본 것일 수 있어 되돌려 둔다
+			io.Sleep(300 * time.Millisecond)
+		}
 		return moved
 	}
 	tap, name := io.Tap, "백그라운드"
@@ -382,19 +368,24 @@ func SpiritDiagnose(io SpiritIO) []string {
 		}
 		tap, name = io.TapFG, "포그라운드"
 		if !try(name, tap) {
-			add("방향키로 커서가 안 움직임 — 빙의 상태에서 방향키가 커서를 움직이는지 직접 확인해 주세요")
+			add("커서를 오른쪽 4칸에서 못 찾음 — 화면 캡처에 커서가 안 찍히거나 방향키가 커서를 안 움직임. 이 결과와 빙의 상태 스샷을 보내 주세요")
 			return out
 		}
 	}
-	// Q: 커서 오른쪽 1칸 → Q → 좌표가 바뀌는지 (캐릭터가 1칸 움직임)
-	tap("right")
-	io.Sleep(300 * time.Millisecond)
+	// 커서가 오른쪽 4칸 → Q → 좌표가 바뀌는지, 그다음 왼쪽 4칸 + Q 로 제자리
 	tap("q")
 	io.Sleep(1000 * time.Millisecond)
 	if c2, moved := spiritMovedFrom(io, c); moved {
 		add("%s Q → 좌표 (%d,%d) — 이동함", name, c2.X, c2.Y)
+		spiritArrows(io, tap, -probe, 0)
+		io.Sleep(300 * time.Millisecond)
+		tap("q")
+		io.Sleep(1000 * time.Millisecond)
+		if c3, back := spiritMovedFrom(io, c2); back {
+			add("%s 제자리로 Q → 좌표 (%d,%d)", name, c3.X, c3.Y)
+		}
 	} else {
-		add("%s Q → 좌표 그대로 — Q가 안 먹거나 오른쪽 칸이 벽", name)
+		add("%s Q → 좌표 그대로 — Q가 안 먹거나 오른쪽 4칸이 벽(빨간 칸)", name)
 	}
 	spiritCursorHome(io, tap, "테스트")
 	return out
