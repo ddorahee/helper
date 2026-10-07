@@ -2442,8 +2442,8 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		json.NewEncoder(w).Encode(app.Trial.Status())
 	})
 
-	// 영술사 테스트 — 영술사로 지정된 캐릭터 창을 찾아 이동이 되는지 단계별로 본다: 빙의 칸이 보이는지 →
-	// 방향키(백그라운드, 안 되면 포그라운드)로 커서가 움직이는지 → 되면 커서 오른쪽 1칸 + Q 로 1칸 움직이는지.
+	// 영술사 테스트 — 영술사로 지정된 캐릭터 창을 찾아 이동이 되는지 단계별로 본다: 빙의 칸·커서가 보이는지 →
+	// 백그라운드 방향키가 커서를 한 칸씩 움직이는지 → 사냥 때와 같은 이동으로 오른쪽 3칸 갔다가 제자리.
 	// 자동화가 도는 중엔 키가 섞이므로 하지 않는다.
 	http.HandleFunc("/api/spirit/test", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -2453,6 +2453,9 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		}
 		reply := func(lines ...string) {
 			for _, l := range lines {
+				if strings.HasPrefix(l, "  · ") {
+					continue // 이동 과정 줄은 진행 중에 이미 로그로 나감
+				}
 				sendEvent(app, "logMessage", map[string]string{"message": "[영술사 테스트] " + l})
 			}
 			json.NewEncoder(w).Encode(map[string]interface{}{"lines": lines})
@@ -2486,12 +2489,19 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		}
 		io := automation.NewSpiritIO(app.WindowManager, app.OCRManager, target,
 			func(d time.Duration) bool { time.Sleep(d); return true },
-			func(m string) { sendEvent(app, "logMessage", map[string]string{"message": "[영술사 테스트] " + m}) })
-		// 봇이 실제로 본 화면을 단계마다 남긴다 — 커서가 캡처에 어떻게 찍히는지 확인용
+			func(m string) {
+				if !strings.HasPrefix(m, "[영술사]") {
+					m = "[영술사 테스트] " + m
+				}
+				sendEvent(app, "logMessage", map[string]string{"message": m})
+			})
+		// 봇이 실제로 본 화면을 전부 남긴다(순서 번호_단계 이름) — 커서가 캡처에 어떻게 찍히는지 확인용
 		dir := filepath.Join("logs", "spirit_test", time.Now().Format("20060102-150405"))
 		if err := os.MkdirAll(dir, 0755); err == nil {
+			seq := 0
 			io.Save = func(name string, img *image.RGBA) {
-				f, err := os.Create(filepath.Join(dir, name+".png"))
+				seq++
+				f, err := os.Create(filepath.Join(dir, fmt.Sprintf("%02d_%s.png", seq, name)))
 				if err != nil {
 					return
 				}

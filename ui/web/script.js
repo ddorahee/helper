@@ -1809,11 +1809,11 @@ function setAutoStartupApi(enabled) {
     });
     window.spiritStore.load();
 
-    // 영술사 테스트 — 영술사 창에서 빙의 칸·방향키(백그라운드/포그라운드)·Q 가 되는지 단계별로 본다.
-    // 결과는 버튼 아래 칸과 로그에 남는다(Q 가 되면 캐릭터가 오른쪽으로 1칸 움직임).
+    // 영술사 테스트 — 영술사 창에서 빙의 칸·커서가 보이는지, 백그라운드 방향키가 먹는지 보고 사냥 때와 같은 이동으로
+    // 오른쪽 3칸 갔다가 제자리. 결과는 버튼 아래 칸과 로그에, 찍은 화면은 logs/spirit_test 에 남는다.
     const spiritTestBtn = document.getElementById('kanchen-spirit-test');
     if (spiritTestBtn) spiritTestBtn.addEventListener('click', async () => {
-        if (!confirm('영술사 창에서 커서를 옮겨 보고, 되면 Q로 오른쪽 1칸 이동까지 해 봅니다.\n영술사를 빙의 상태로 두고 진행할까요?')) return;
+        if (!confirm('영술사 창에서 방향키로 커서가 움직이는지 보고, Q로 오른쪽 3칸 갔다가 제자리로 돌아옵니다.\n오른쪽 3칸이 비어 있는 곳에서 영술사를 빙의 상태로 두고 진행할까요?')) return;
         let out = document.getElementById('kanchen-spirit-test-result');
         if (!out) {
             out = document.createElement('div');
