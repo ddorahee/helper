@@ -2487,7 +2487,22 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		io := automation.NewSpiritIO(app.WindowManager, app.OCRManager, target,
 			func(d time.Duration) bool { time.Sleep(d); return true },
 			func(m string) { sendEvent(app, "logMessage", map[string]string{"message": "[영술사 테스트] " + m}) })
+		// 봇이 실제로 본 화면을 단계마다 남긴다 — 커서가 캡처에 어떻게 찍히는지 확인용
+		dir := filepath.Join("logs", "spirit_test", time.Now().Format("20060102-150405"))
+		if err := os.MkdirAll(dir, 0755); err == nil {
+			io.Save = func(name string, img *image.RGBA) {
+				f, err := os.Create(filepath.Join(dir, name+".png"))
+				if err != nil {
+					return
+				}
+				defer f.Close()
+				png.Encode(f, img)
+			}
+		}
 		lines := append([]string{fmt.Sprintf("창: %s (hwnd=%d)", nick, target)}, automation.SpiritDiagnose(io)...)
+		if abs, err := filepath.Abs(dir); err == nil {
+			lines = append(lines, "찍은 화면 폴더: "+abs)
+		}
 		reply(lines...)
 	})
 

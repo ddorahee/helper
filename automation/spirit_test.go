@@ -166,8 +166,7 @@ func TestSpiritMoveTo(t *testing.T) {
 	}
 }
 
-// '영술사 테스트' 진단 — 어느 단계가 막혔는지 줄로 알려 준다. 커서는 오라 밖(오른쪽 4칸)에서 확인하고,
-// Q 로 4칸 갔다가 제자리로 돌아온다.
+// '영술사 테스트' 진단 — 오른쪽 4칸 → 커서가 보이든 말든 Q → 좌표로 이동 여부. 이동하면 제자리로 돌아온다.
 func TestSpiritDiagnose(t *testing.T) {
 	has := func(lines []string, sub string) bool {
 		for _, l := range lines {
@@ -178,18 +177,27 @@ func TestSpiritDiagnose(t *testing.T) {
 		return false
 	}
 	s := spiritSim{possessed: true, x: 30, y: 37, hideNear: 2}
-	lines := SpiritDiagnose(s.io())
-	if !has(lines, "백그라운드 방향키(→ 4칸) → 커서 캐릭터에서 +4,+0 칸 — 움직임") ||
-		!has(lines, "백그라운드 Q → 좌표 (34,37) — 이동함") || !has(lines, "제자리로 Q → 좌표 (30,37)") {
+	io := s.io()
+	saved := 0
+	io.Save = func(string, *image.RGBA) { saved++ }
+	lines := SpiritDiagnose(io)
+	if !has(lines, "백그라운드 방향키(→ 4칸) → 커서 캐릭터에서 +4,+0 칸") ||
+		!has(lines, "백그라운드 Q → 좌표 (34,37) — 이동함") || !has(lines, "백그라운드 제자리로 Q → 좌표 (30,37)") {
 		t.Errorf("백그라운드 정상: %v", lines)
 	}
-	if s.x != 30 || s.cdx != 0 || s.cdy != 0 {
-		t.Errorf("진단 뒤 제자리·커서 캐릭터 칸이어야 함: x=%d 커서 %+d,%+d", s.x, s.cdx, s.cdy)
+	if s.x != 30 || s.cdx != 0 || s.cdy != 0 || saved < 3 {
+		t.Errorf("진단 뒤 제자리·커서 캐릭터 칸·화면 저장: x=%d 커서 %+d,%+d 저장 %d장", s.x, s.cdx, s.cdy, saved)
 	}
 	s = spiritSim{possessed: true, x: 30, y: 37, hideNear: 2, bgIgnored: true}
 	lines = SpiritDiagnose(s.io())
-	if !has(lines, "백그라운드 방향키(→ 4칸) → 커서 캐릭터 칸(가려짐) — 안 보임") || !has(lines, "포그라운드 Q → 좌표 (34,37) — 이동함") {
+	if !has(lines, "백그라운드 Q → 좌표 그대로") || !has(lines, "포그라운드 Q → 좌표 (34,37) — 이동함") {
 		t.Errorf("백그라운드 안 먹음: %v", lines)
+	}
+	// 커서가 캡처에 전혀 안 찍혀도 Q 는 누르고 좌표로 판단한다
+	s = spiritSim{possessed: true, x: 30, y: 37, hideNear: 99}
+	lines = SpiritDiagnose(s.io())
+	if !has(lines, "커서 캐릭터 칸(가려짐)") || !has(lines, "백그라운드 Q → 좌표 (34,37) — 이동함") {
+		t.Errorf("커서가 안 찍힘: %v", lines)
 	}
 	s = spiritSim{x: 30, y: 37}
 	if lines = SpiritDiagnose(s.io()); !has(lines, "파란 네모가 안 보임") {
