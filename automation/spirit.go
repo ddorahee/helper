@@ -17,10 +17,11 @@ import (
 // 파란 테두리와 커서 칸이 뜨고, 방향키는 커서를 움직이며 Q를 누르면 커서 칸으로 간다(빨간 칸 = 벽).
 // 스킬은 커서 기준이라 옮긴 뒤엔 커서를 꼭 캐릭터 칸으로 되돌린다.
 //
-// 커서(앱 캡처 실측 2026-10-07): 검·흰·검 2px 테두리 네모. 속은 바닥 무늬를 물들인 색이라 칸마다 다르다
-// (갈 수 있는 칸은 초록, 캐릭터 칸·못 가는 칸은 빨강, 흰 바닥에선 분홍) → 테두리로 찾는다. 커서는 캐릭터 위에도
-// 그려지지만 안 그려질 때가 있다(창이 비활성일 때 등). 또 커서는 전에 옮긴 자리에 남아 있을 수 있어(테스트에서
-// 캐릭터 기준 -2,-7 칸) 자리를 짐작하지 않고 누를 때마다 화면으로 확인한다.
+// 커서(앱 캡처 실측 2026-10-07): 검·흰·검 2px 테두리 네모. 속은 바닥 무늬를 초록·빨강으로 물들인 색(흰 바닥에선
+// 분홍)이라 칸마다 다르고, 갈 수 있는 칸인지와도 맞지 않는다(빨강인 +3칸으로 Q 이동됨) → 테두리로 찾는다.
+// 커서는 캐릭터 위에도 그려지지만 안 그려질 때가 있다(창이 비활성일 때 등). 또 커서는 전에 옮긴 자리에 남아 있어
+// (테스트에서 캐릭터 기준 -6,-7·-7,-1 칸) 자리를 짐작하지 않고 누를 때마다 화면으로 확인한다. 백그라운드 키로
+// 커서·Q 모두 된다(2차 테스트 2026-10-07 — 1차 때 안 된 건 남아 있던 커서를 벽 칸으로 옮겨 Q 를 눌렀기 때문).
 
 const (
 	spiritCell  = 48
@@ -41,7 +42,7 @@ type SpiritView struct {
 	Cursor bool   // 커서 테두리를 찾음 — 안 그려져 있으면 false
 	DX, DY int    // 커서 - 캐릭터 (칸)
 	CX, CY int    // 캐릭터 칸 중심 (화면 픽셀)
-	Tint   string // 커서 칸 속 색: "초록"(갈 수 있는 칸) / "빨강"(캐릭터 칸·못 가는 칸) / "" — 기록용
+	Tint   string // 커서 칸 속 색: "초록" / "빨강" / "" — 기록용 (갈 수 있는 칸인지와는 맞지 않음)
 }
 
 func isSpiritBlue(c color.RGBA) bool {
@@ -176,7 +177,7 @@ func spiritFindCursor(at func(x, y int) color.RGBA, r image.Rectangle, cx, cy in
 	return true, dx, dy, spiritTint(at, r, bx, by)
 }
 
-// spiritTint 커서 칸 속 색 (테두리 안쪽 평균) — 갈 수 있는 칸은 초록, 캐릭터 칸·벽은 빨강(실측)
+// spiritTint 커서 칸 속 색 (테두리 안쪽 평균) — 기록용
 func spiritTint(at func(x, y int) color.RGBA, r image.Rectangle, x0, y0 int) string {
 	var sr, sg, sb, n int
 	for y := y0 + 8; y <= y0+39; y += 3 {
@@ -369,7 +370,7 @@ func SpiritMoveTo(io SpiritIO, tx, ty int, possessKey, who string) bool {
 			if !fg {
 				bgReached = true
 			}
-			io.Log(fmt.Sprintf("[영술사] %s 커서는 %+d,%+d 칸(%s)인데 Q 뒤 그대로 — 못 가는 칸 같음", who, t[0], t[1], spiritTintText(h.view.Tint)))
+			io.Log(fmt.Sprintf("[영술사] %s 커서는 %+d,%+d 칸인데 Q 뒤 그대로 — 못 가는 칸 같음", who, t[0], t[1]))
 		}
 		if i+1 < len(targets) {
 			n := targets[i+1]
@@ -730,13 +731,6 @@ func spiritTintSuffix(t string) string {
 		return ""
 	}
 	return " (" + t + ")"
-}
-
-func spiritTintText(t string) string {
-	if t == "" {
-		return "색 모름"
-	}
-	return t
 }
 
 func spiritHowText(fg bool) string {

@@ -138,7 +138,7 @@ type spiritSim struct {
 	possessed bool
 	x, y      int // 캐릭터 맵 좌표
 	cdx, cdy  int // 커서 - 캐릭터 (칸)
-	// 실측(2026-10-07)에서 의심되는 게임 동작들
+	// 게임이 이럴 수도 있는 동작들 — 대비용 (2차 테스트 2026-10-07: 실제 게임은 백그라운드 키도 됨)
 	bgIgnored       bool            // 백그라운드(PostMessage) 방향키·Q 를 무시 — 포그라운드로만 먹음
 	hideInactive    bool            // 비활성 창은 커서를 안 그림 (활성 위장을 받으면 그림)
 	resetOnActivate bool            // 창을 앞으로 가져오면 커서가 캐릭터 칸으로
@@ -234,8 +234,8 @@ func TestSpiritMoveTo(t *testing.T) {
 		{"커서가 전에 옮긴 자리에 남아 있음 → 화면 보고 고쳐 감", spiritSim{possessed: true, x: 30, y: 40, cdx: -2, cdy: -7, hideInactive: true}, 34, 37, false},
 		{"백그라운드 방향키를 가끔 놓침 → 다시 눌러 맞춤", spiritSim{possessed: true, x: 30, y: 40, dropEvery: 3}, 34, 37, false},
 		{"목표 칸이 벽 → 한 칸 당겨서", spiritSim{possessed: true, x: 30, y: 37, walls: map[[2]int]bool{{34, 37}: true}}, 33, 37, false},
-		// 2026-10-07 테스트 화면: 백그라운드 키에 커서가 그대로(-2,-7), 창을 앞으로 가져오면 캐릭터 칸에서 시작
-		{"백그라운드 안 먹음(실측) → 포그라운드", spiritSim{possessed: true, x: 30, y: 40, cdx: -2, cdy: -7, bgIgnored: true, hideInactive: true, resetOnActivate: true}, 34, 37, true},
+		// 대비: 게임이 백그라운드 키를 안 받는다면(창을 앞으로 가져오면 커서가 캐릭터 칸에서 시작) 포그라운드로
+		{"백그라운드 안 먹음 → 포그라운드", spiritSim{possessed: true, x: 30, y: 40, cdx: -2, cdy: -7, bgIgnored: true, hideInactive: true, resetOnActivate: true}, 34, 37, true},
 		{"백그라운드 안 먹음 + 커서가 남은 자리 그대로", spiritSim{possessed: true, x: 30, y: 40, cdx: -2, cdy: -7, bgIgnored: true}, 34, 37, true},
 		{"빙의 안 됨 + 백그라운드 안 먹음", spiritSim{x: 38, y: 37, bgIgnored: true, hideInactive: true}, 34, 37, true},
 		{"백그라운드 안 먹고 포그라운드도 없음 → 그대로", spiritSim{possessed: true, x: 30, y: 37, bgIgnored: true, noFG: true}, 30, 37, false},
@@ -327,7 +327,7 @@ func TestSpiritDiagnose(t *testing.T) {
 		t.Errorf("단계별 화면 저장: %v", saved)
 	}
 
-	// 실측(2026-10-07)과 같은 게임: 백그라운드 키 무시, 비활성이면 커서 안 그림, 창을 가져오면 커서가 캐릭터 칸으로
+	// 대비: 백그라운드 키를 안 받고, 비활성이면 커서를 안 그리고, 창을 가져오면 커서가 캐릭터 칸으로 가는 게임이라면
 	s = spiritSim{possessed: true, x: 46, y: 12, cdx: -2, cdy: -7, bgIgnored: true, hideInactive: true, resetOnActivate: true}
 	lines = SpiritDiagnose(s.io())
 	if !has(lines, "백그라운드 → 1칸 → 커서 캐릭터에서 -2,-7 칸") || !has(lines, "게임이 백그라운드 방향키를 안 받음") ||
