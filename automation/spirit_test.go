@@ -260,6 +260,30 @@ func TestSpiritMoveTo(t *testing.T) {
 	}
 }
 
+// 이미 사냥 자리여도 커서가 다른 칸에 남아 있으면 스킬 전에 캐릭터 칸으로 (2차 테스트 시작 때 커서 -7,-1)
+func TestSpiritKeepHome(t *testing.T) {
+	s := spiritSim{possessed: true, x: 34, y: 37, cdx: -7, cdy: -1, hideInactive: true}
+	if !SpiritMoveTo(s.io(), 34, 37, "5", "테스트") || s.cdx != 0 || s.cdy != 0 || s.x != 34 || s.y != 37 {
+		t.Errorf("커서 되돌림: 위치 (%d,%d) 커서 %+d,%+d keys=%v", s.x, s.y, s.cdx, s.cdy, s.keys)
+	}
+	for _, k := range s.keys {
+		if k == "q" || k == "5" {
+			t.Errorf("자리인데 Q·빙의 키를 누름: %v", s.keys)
+		}
+	}
+	// 빙의가 안 돼 있으면(파란 네모 없음) 자리에선 아무것도 안 누른다
+	s = spiritSim{x: 34, y: 37}
+	if SpiritMoveTo(s.io(), 34, 37, "5", "테스트") || len(s.keys) != 0 {
+		t.Errorf("빙의 안 됨 + 자리: %v", s.keys)
+	}
+	// 스킬 칸의 방향키로 커서가 한 칸 옆에 남아 있어도 다음 점검 때 되돌린다
+	s = spiritSim{possessed: true, x: 35, y: 36, cdx: 0, cdy: -1}
+	SpiritMoveTo(s.io(), 34, 37, "5", "테스트")
+	if s.cdx != 0 || s.cdy != 0 || s.x != 35 || s.y != 36 {
+		t.Errorf("한 칸 옆 커서: 위치 (%d,%d) 커서 %+d,%+d keys=%v", s.x, s.y, s.cdx, s.cdy, s.keys)
+	}
+}
+
 // 창별 기억: 백그라운드가 안 먹는 창은 다음 이동부터 바로 포그라운드, 이동이 안 되면 잠깐 쉼
 func TestSpiritMoveMode(t *testing.T) {
 	mode := &SpiritMode{}

@@ -298,7 +298,8 @@ func NewSpiritIO(wm *WindowManager, om *OCRManager, hwnd uint64, sleep func(time
 	}
 }
 
-// SpiritMoveTo 영술사를 (tx,ty) 로 옮긴다(±1 이면 그대로). 빙의 중이 아니면 possessKey(빙의:도깨비불)부터 누른다.
+// SpiritMoveTo 영술사를 (tx,ty) 로 옮긴다(±1 이면 그대로 — 대신 커서가 캐릭터 칸에 있는지만 확인해 되돌린다).
+// 빙의 중이 아니면 possessKey(빙의:도깨비불)부터 누른다.
 // 커서는 누르고 → 화면에서 자리를 확인하고 → 모자라면 더 누르는 식으로 목표 칸에 맞춘 뒤 Q, 성공은 좌표로 본다.
 // 백그라운드 키에 커서가 안 움직이면(화면으로 확인) 창을 앞으로 가져와 누르고, 그 창은 다음부터 바로 그렇게 한다.
 // 목표 칸이 못 가는 칸이면 캐릭터 쪽으로 한 칸씩 당겨 다시. 끝나면 커서를 캐릭터 칸에 둔다. 키를 눌렀으면 true.
@@ -322,7 +323,8 @@ func SpiritMoveTo(io SpiritIO, tx, ty int, possessKey, who string) bool {
 	}
 	dx, dy := tx-c.X, ty-c.Y
 	if meAbs(dx) <= 1 && meAbs(dy) <= 1 {
-		return false
+		// 이미 사냥 자리 — 그래도 스킬은 커서 자리에 나가므로 커서가 캐릭터 칸에 있는지 본다
+		return spiritKeepHome(io, mode, canFG, DetectSpiritView(img, io.Region(img)), who)
 	}
 	if v := DetectSpiritView(img, io.Region(img)); !v.Grid {
 		if _, ok, stopped := spiritPossess(io, canFG, possessKey, who); stopped {
@@ -394,6 +396,45 @@ func SpiritMoveTo(io SpiritIO, tx, ty int, possessKey, who string) bool {
 	io.Log(fmt.Sprintf("[영술사] %s Q를 눌러도 그대로 (%d,%d) — 커서 칸이 벽이거나 키가 안 먹음, %d초 뒤 다시", who, c.X, c.Y, int(spiritFailWait/time.Second)))
 	mode.failUntil.Store(time.Now().Add(spiritFailWait).UnixNano())
 	spiritCursorHome(io, fg, who)
+	return true
+}
+
+// spiritKeepHome 옮길 필요가 없을 때(이미 사냥 자리)도 커서가 캐릭터 칸에 있는지 본다 — 커서는 전에 옮긴 자리에
+// 남아 있을 수 있어(2차 테스트 시작 때 캐릭터 기준 -7,-1 칸) 그대로 두면 스킬이 엉뚱한 칸에 나간다(사용자 2026-10-07:
+// 스킬 쓸 땐 항상 커서가 캐릭터 칸). 다른 칸에 있으면 되돌린다 — 2초 점검마다 불리므로 제자리면 화면만 보고 끝.
+// 키를 눌렀으면 true.
+func spiritKeepHome(io SpiritIO, mode *SpiritMode, canFG bool, v SpiritView, who string) bool {
+	if !v.Grid {
+		return false
+	}
+	fg := canFG && mode.fg.Load()
+	if !v.Cursor {
+		// 비활성 창은 커서를 안 그린다 — 백그라운드면 활성 위장 뒤 한 번 더 본다(포그라운드 창은 매번 끌어오지 않음)
+		if fg || io.Wake == nil {
+			return false
+		}
+		io.Wake()
+		if !io.Sleep(150 * time.Millisecond) {
+			return false
+		}
+		var ok bool
+		if v, ok = spiritLook(io); !ok || !v.Grid || !v.Cursor {
+			return false
+		}
+	}
+	if v.DX == 0 && v.DY == 0 {
+		return false
+	}
+	io.Log(fmt.Sprintf("[영술사] %s 커서가 캐릭터에서 %+d,%+d 칸에 있음 — 스킬 전에 캐릭터 칸으로 되돌림", who, v.DX, v.DY))
+	tap := io.Tap
+	if fg {
+		io.Activate()
+		tap = io.TapFG
+	}
+	if st := spiritSteer(io, tap, !fg, v, 0, 0); st.stuck || (!st.reached && !st.stopped && st.view.Cursor) {
+		io.Log(fmt.Sprintf("[영술사] %s 커서를 캐릭터 칸으로 못 되돌림 (%s) — %d초 뒤 다시", who, spiritCursorText(st.view), int(spiritFailWait/time.Second)))
+		mode.failUntil.Store(time.Now().Add(spiritFailWait).UnixNano())
+	}
 	return true
 }
 
