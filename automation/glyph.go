@@ -213,7 +213,12 @@ func RecognizeGlyphs(b *GlyphBin, d GlyphDict) (string, bool) {
 			last = x
 		}
 	}
+	return recognizeGlyphSpan(b, d, top, bot, cols, first, last)
+}
 
+// recognizeGlyphSpan 열 [first,last] 만 읽는다. 밴드(top,bot)는 줄 전체 기준으로 받아야
+// 글리프 Top 이 사전과 맞는다 — 채팅은 단어 단위로 잘라 읽으므로 따로 뺐다.
+func recognizeGlyphSpan(b *GlyphBin, d GlyphDict, top, bot int, cols []bool, first, last int) (string, bool) {
 	type memo struct {
 		n   int
 		str string
@@ -233,7 +238,7 @@ func RecognizeGlyphs(b *GlyphBin, d GlyphDict) (string, bool) {
 		}
 		cache[i] = memo{} // 재귀 가드
 		best := memo{}
-		for w := 1; w <= glyphMaxW && i+w <= b.W; w++ {
+		for w := 1; w <= glyphMaxW && i+w <= last+1; w++ {
 			if !cols[i+w-1] {
 				continue // 글리프 오른쪽 끝은 잉크여야 한다
 			}

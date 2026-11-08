@@ -376,17 +376,48 @@ func main() {
 	})
 	app.EscWatcher.Start()
 
-	// 바람로그 시련 모집 감시 (10초 주기) + 사이트 헬스체크.
+	// 시련 모집 감시 — 고른 캐릭터 창의 채팅창을 읽는다(PrintWindow, 창을 건드리지 않음).
 	// 알림 전송은 호출 시점의 app.TelegramBot을 읽으므로 설정 변경이 즉시 반영된다
 	// (텔레그램 비활성화 시 TelegramBot이 nil → 조용히 건너뜀).
+	var chatHWND uint64 // 마지막으로 찾은 창 (poll 이 직렬이라 잠금 불필요)
+	readChat := func(nick string) ([]string, error) {
+		// 같은 캡처에서 닉네임이 맞는지 확인하고 채팅을 읽는다 — 창 순서가 바뀌어도 엉뚱한 창을 안 읽는다
+		read := func(h uint64) ([]string, bool) {
+			img, err := app.WindowManager.CaptureWindowQuiet(h)
+			if err != nil {
+				return nil, false
+			}
+			if n, ok := app.OCRManager.ReadNickGlyph(img, h); !ok || n != nick {
+				return nil, false
+			}
+			return app.OCRManager.ReadChatGlyph(img, h), true
+		}
+		if chatHWND != 0 {
+			if lines, ok := read(chatHWND); ok {
+				return lines, nil
+			}
+		}
+		chatHWND = 0
+		wins, err := app.WindowManager.FindGameWindows()
+		if err != nil {
+			return nil, err
+		}
+		for _, w := range wins {
+			if lines, ok := read(w.HWND); ok {
+				chatHWND = w.HWND
+				return lines, nil
+			}
+		}
+		return nil, fmt.Errorf("'%s' 창을 찾지 못했습니다 (꺼졌거나 최소화됨)", nick)
+	}
 	app.BaramlogWatcher = automation.NewBaramlogWatcher(func(text string) error {
 		if app.TelegramBot == nil {
 			return nil
 		}
 		return app.TelegramBot.SendMessage(text)
-	})
+	}, readChat)
 	app.BaramlogWatcher.SetLogFunc(func(msg string) {
-		sendEvent(app, "logMessage", map[string]string{"message": "[바람로그] " + msg})
+		sendEvent(app, "logMessage", map[string]string{"message": "[시련알림] " + msg})
 	})
 	// 자동 시작하지 않는다 — 기본은 중지 상태이고,
 	// "시련 알림" 화면의 시작 버튼으로 켠다.
@@ -2283,7 +2314,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 		json.NewEncoder(w).Encode(resp)
 	})
 
-	// 바람로그 시련 모집 감시 상태 (GET) / 수동 제어 (POST {action:"start"|"stop"|"sync"|"test"|"interval"})
+	// 시련 모집 감시 상태 (GET) / 수동 제어 (POST {action:"start"|"stop"|"sync"|"test"|"interval"|"window"})
 	http.HandleFunc("/api/baramlog/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if app.BaramlogWatcher == nil {
@@ -2294,13 +2325,20 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 			var req struct {
 				Action  string `json:"action"`
 				Seconds int    `json:"seconds"`
+				Nick    string `json:"nick"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&req)
 			switch req.Action {
 			case "stop":
 				app.BaramlogWatcher.Stop()
 			case "start":
-				app.BaramlogWatcher.Start()
+				if err := app.BaramlogWatcher.Start(); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+			case "window":
+				// 채팅을 읽을 캐릭터 (시련 창 감지에서 읽은 닉네임)
+				app.BaramlogWatcher.SetNick(req.Nick)
 			case "sync":
 				// 주기와 무관하게 즉시 동기화 (동기 호출이라 아래 상태는 최신)
 				app.BaramlogWatcher.SyncNow()

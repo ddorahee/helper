@@ -2,6 +2,27 @@ package automation
 
 import "testing"
 
+// 채팅 화면은 같은 줄이 여러 번 읽힌다 — 새로 올라온 모집 글만 한 번씩 알려야 한다.
+func TestBaramlogWatcherChatDedup(t *testing.T) {
+	screen := []string{"이브 : 나타 시련 10번 하실 격수분?"} // 감시 시작 전부터 떠 있던 글
+	var sent []string
+	bw := NewBaramlogWatcher(func(s string) error { sent = append(sent, s); return nil },
+		func(string) ([]string, error) { return screen, nil })
+	bw.SetNick("테라폼")
+
+	bw.poll() // 기준점: 이미 떠 있던 글은 알리지 않는다
+	if len(sent) != 0 {
+		t.Fatalf("기준점에서 알림 %d건", len(sent))
+	}
+	screen = append(screen, "탕녀: 브리트라한의면갑7성 7.5 팝니다", "해적단 : 시련왕궁 격수구해요")
+	bw.poll()
+	bw.poll() // 같은 화면 다시 읽기 → 또 알리면 안 됨
+	st := bw.GetStatus()
+	if st.TotalHits != 1 || len(sent) != 1 || st.RecentHits[0].Label != "왕궁 시련" || st.RecentHits[0].Name != "해적단" {
+		t.Fatalf("hits=%d sent=%d recent=%+v", st.TotalHits, len(sent), st.RecentHits)
+	}
+}
+
 // 실제 baramlog.com 채팅에서 관찰된 문구로 매칭 규칙 검증.
 // 붙여쓰기/어순 뒤바뀜이 흔해서 정확 문구 매칭으로는 대부분 놓친다.
 func TestMatchBaramlogTarget(t *testing.T) {

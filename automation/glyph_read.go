@@ -46,6 +46,15 @@ func (om *OCRManager) ReadNickGlyph(img image.Image, hwnd uint64) (string, bool)
 	return RecognizeGlyphs(BinarizeGlyph(img, reg), LoadGlyphDict())
 }
 
+// ReadChatGlyph 창 전체 이미지에서 좌하단 채팅 줄들을 읽는다.
+func (om *OCRManager) ReadChatGlyph(img image.Image, hwnd uint64) []string {
+	if img == nil {
+		return nil
+	}
+	offX, offY, cw, ch := om.clientBox(img, hwnd)
+	return ReadChatLines(img, offX, offY, cw, ch)
+}
+
 // GlyphSnapshot 학습/진단 화면에 보여줄 한 창의 현재 인식 상태
 type GlyphSnapshot struct {
 	MapName   string

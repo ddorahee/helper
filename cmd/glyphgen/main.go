@@ -12,6 +12,7 @@
 //
 //	go run ./cmd/glyphgen              # automation/glyph_dict.json 생성
 //	go run ./cmd/glyphgen -check       # 생성만 하고 기존 사전과 대조 (파일은 안 건드림)
+//	go run ./cmd/glyphgen -chat        # 채팅창용 보통 굵기 사전 → automation/glyph_dict_chat.json
 package main
 
 import (
@@ -31,13 +32,17 @@ import (
 const (
 	fontFace   = "굴림체"
 	fontHeight = 12
-	fontWeight = 700 // FW_BOLD — 이게 핵심이다
+	boldWeight = 700 // FW_BOLD — 이게 핵심이다
 	dictPath   = "automation/glyph_dict.json"
+	chatPath   = "automation/glyph_dict_chat.json"
 	seedPath   = "automation/glyph_dict_seed.json"
 
 	cellPitch = 24 // 렌더할 때 글자 사이 간격 (붙지 않게 넉넉히)
 	perRow    = 48
 )
+
+// 채팅창은 같은 굴림체 12px 이지만 보통 굵기(400)다.
+var fontWeight uintptr = boldWeight
 
 var (
 	gdi32                  = syscall.NewLazyDLL("gdi32.dll")
@@ -191,7 +196,12 @@ func findFontTop() int {
 
 func main() {
 	check := flag.Bool("check", false, "파일을 쓰지 않고 기존 사전과 대조만 한다")
+	chat := flag.Bool("chat", false, "채팅창용 보통 굵기 사전을 만든다")
 	flag.Parse()
+	outPath := dictPath
+	if *chat {
+		fontWeight, outPath = 400, chatPath
+	}
 
 	fontTop := findFontTop()
 	fmt.Printf("폰트: %s %dpx weight=%d, 윗줄 y=%d\n", fontFace, fontHeight, fontWeight, fontTop)
@@ -203,6 +213,17 @@ func main() {
 	}
 	for r := rune(0xAC00); r <= 0xD7A3; r++ {
 		targets = append(targets, r)
+	}
+	extra := map[rune]bool{}
+	if *chat {
+		// 채팅에 흔한 기호(‘’ ★ ㉿ 전각 ％＃ 등)와 ㅋㅋ·ㅠㅠ 같은 낱자모
+		for _, rg := range [][2]rune{{0xB7, 0xB7}, {0x2010, 0x206F}, {0x2190, 0x21FF}, {0x2460, 0x26FF},
+			{0x3000, 0x303F}, {0x3131, 0x318E}, {0x3200, 0x32FF}, {0xFF01, 0xFF5E}} {
+			for r := rg[0]; r <= rg[1]; r++ {
+				targets = append(targets, r)
+				extra[r] = true
+			}
+		}
 	}
 
 	out := map[string]string{}
@@ -234,7 +255,8 @@ func main() {
 				}
 				// 같은 비트맵이면 코드포인트가 낮은 쪽을 남긴다.
 				// 한글 음절은 (초성×중성×종성) 순이라 앞쪽이 실사용 빈도가 높다(재 > 쟤).
-				if []rune(prev)[0] < r {
+				// 기호가 한글·영문과 모양이 같으면 한글·영문을 남긴다
+				if extra[r] && !extra[[]rune(prev)[0]] || []rune(prev)[0] < r && !(extra[[]rune(prev)[0]] && !extra[r]) {
 					continue
 				}
 			}
@@ -245,7 +267,7 @@ func main() {
 		len(out), len(targets), collide, len(blank))
 	fmt.Printf("  겹침 예시: %s\n", strings.Join(samples, " "))
 	// 실측 사전(dataset 714장에서 뽑은 것)과 대조 — 어긋나면 그게 버그 신호다
-	if raw, err := os.ReadFile(seedPath); err == nil {
+	if raw, err := os.ReadFile(seedPath); err == nil && !*chat { // 실측 사전은 굵게 전용
 		seed := map[string]string{}
 		json.Unmarshal(raw, &seed)
 		hit, var_miss := 0, []string{}
@@ -268,10 +290,10 @@ func main() {
 		return
 	}
 	b, _ := json.Marshal(out)
-	if err := os.WriteFile(dictPath, b, 0644); err != nil {
+	if err := os.WriteFile(outPath, b, 0644); err != nil {
 		fmt.Println("저장 실패:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("저장: %s (%.0fKB)\n", dictPath, float64(len(b))/1024)
+	fmt.Printf("저장: %s (%.0fKB)\n", outPath, float64(len(b))/1024)
 	_ = image.Rect
 }

@@ -343,8 +343,9 @@ function setupDaeyaConfig() {
 }
 
 // 시련 모집 알림 화면 (전용 섹션)
-// 서버가 10초마다 baramlog.com을 확인하고, 여기서는 5초마다 상태만 갱신한다.
-// "새로고침"은 주기와 무관하게 서버에 즉시 동기화를 요청한다(서버가 조회를 마친 뒤 응답).
+// 서버가 2초마다 고른 창의 채팅창을 읽고, 여기서는 5초마다 상태만 갱신한다.
+// "새로고침"은 주기와 무관하게 서버에 즉시 읽기를 요청한다(서버가 읽기를 마친 뒤 응답).
+// 읽을 창(캐릭터 이름)은 이 PC에 저장해 두고, 프로그램을 다시 켜면 서버에 다시 넣는다.
 function setupBaramlog() {
     const section = document.getElementById('baramlog-section');
     if (!section) return;
@@ -359,7 +360,12 @@ function setupBaramlog() {
     const testBtn = document.getElementById('baramlog-test');
     const intervalSel = document.getElementById('baramlog-interval-select');
     const INTERVAL_KEY = 'baramlogIntervalSeconds';
+    const NICK_KEY = 'baramlogChatNick';
+    const winSel = document.getElementById('baramlog-window-select');
+    const detectBtn = document.getElementById('baramlog-detect');
+    const linesBox = document.getElementById('baramlog-lines');
     let appliedSavedInterval = false;
+    let appliedSavedNick = false;
     let running = false; // 기본은 중지 — 서버도 자동 시작하지 않는다
 
     function stat(label, value, color) {
@@ -374,8 +380,7 @@ function setupBaramlog() {
 
         let label, bg, fg;
         if (!st.running) { label = '중지됨'; bg = 'rgba(148,163,184,0.2)'; fg = '#94a3b8'; }
-        else if (!st.healthy) { label = '접속 실패'; bg = 'rgba(248,113,113,0.18)'; fg = '#f87171'; }
-        else if (st.stale) { label = '데이터 정체'; bg = 'rgba(245,166,35,0.18)'; fg = '#f5a623'; }
+        else if (!st.healthy) { label = '읽기 실패'; bg = 'rgba(248,113,113,0.18)'; fg = '#f87171'; }
         else { label = '감시중'; bg = 'rgba(52,211,153,0.18)'; fg = '#34d399'; }
         badge.textContent = label;
         badge.style.background = bg;
@@ -383,8 +388,23 @@ function setupBaramlog() {
         if (toggleBtn) toggleBtn.textContent = st.running ? '중지' : '시작';
         if (intervalEl && st.intervalSeconds) intervalEl.textContent = st.intervalSeconds;
 
+        // 저장해 둔 읽을 창을 최초 1회 서버에 다시 넣는다 (서버는 켤 때 비어 있다)
+        if (!appliedSavedNick) {
+            appliedSavedNick = true;
+            let savedNick = '';
+            try { savedNick = localStorage.getItem(NICK_KEY) || ''; } catch (e) {}
+            if (savedNick && savedNick !== st.nick) {
+                post('window', { nick: savedNick }).then(s2 => paint(s2)).catch(() => {});
+                return;
+            }
+        }
+        if (winSel && st.nick && ![...winSel.options].some(o => o.value === st.nick)) {
+            winSel.add(new Option(st.nick, st.nick));
+        }
+        if (winSel && winSel.value !== (st.nick || '')) winSel.value = st.nick || '';
+
         // 서버의 현재 주기를 드롭다운에 반영.
-        // 프로그램을 껐다 켜면 서버는 기본값(10초)으로 시작하므로,
+        // 프로그램을 껐다 켜면 서버는 기본값(2초)으로 시작하므로,
         // 저장해둔 사용자 선택이 있으면 최초 1회 서버에 다시 적용한다.
         if (intervalSel && st.intervalSeconds) {
             let saved = null;
@@ -412,26 +432,23 @@ function setupBaramlog() {
             stat('마지막 동기화', st.lastPollAt || '-') +
             stat('발견', `${st.totalHits || 0}건`) +
             stat('최근 발견', st.lastHitAt || '-') +
-            stat('사이트 상태',
-                !st.healthy ? `접속 실패 ${st.failCount}회`
-                    : st.stale ? `데이터 정체 ${st.dataAgeMinutes}분`
-                    : '정상',
-                !st.healthy ? '#f87171' : st.stale ? '#f5a623' : '#34d399') +
-            stat('사이트 최신 글', st.newestMessageAt || '-', st.stale ? '#f5a623' : undefined);
+            stat('읽는 창', st.nick || '고르지 않음', st.nick ? undefined : '#f5a623') +
+            stat('채팅 읽기',
+                !st.healthy ? `실패 ${st.failCount}회` : '정상',
+                !st.healthy ? '#f87171' : '#34d399');
 
         if (!st.healthy && st.lastError) {
             errBox.style.display = '';
-            errBox.style.background = 'rgba(248,113,113,0.12)';
-            errBox.style.color = '#f87171';
-            errBox.textContent = `baramlog.com 접속 실패 ${st.failCount}회 연속 — ${st.lastError}`;
-        } else if (st.stale) {
-            // 사이트는 응답하지만 새 글이 안 올라오는 상태 (사이트 쪽 문제)
-            errBox.style.display = '';
-            errBox.style.background = 'rgba(245,166,35,0.12)';
-            errBox.style.color = '#f5a623';
-            errBox.textContent = `사이트는 응답하지만 ${st.dataAgeMinutes}분째 새 글이 없습니다 (최신 글 ${st.newestMessageAt}). 사이트 쪽 문제로 보이며, 감시는 계속 돌고 있습니다.`;
+            errBox.textContent = `채팅 읽기 실패 ${st.failCount}회 연속 — ${st.lastError}`;
         } else {
             errBox.style.display = 'none';
+        }
+
+        if (linesBox) {
+            const lines = st.lastLines || [];
+            linesBox.innerHTML = lines.length === 0
+                ? '<p style="color:var(--text-muted)">아직 읽은 채팅이 없습니다. 창을 고르고 새로고침을 눌러 보세요.</p>'
+                : lines.map(l => `<div>${escapeHtmlMin(l)}</div>`).join('');
         }
 
         const hits = st.recentHits || [];
@@ -487,6 +504,7 @@ function setupBaramlog() {
                 addLogMessage(`시련 알림: ${st.running ? '감시 시작' : '감시 중지'}`);
             } catch (e) {
                 addLogMessage('시련 알림: 상태 변경 실패 - ' + e.message);
+                alert(e.message);
             }
             toggleBtn.disabled = false;
         });
@@ -514,7 +532,7 @@ function setupBaramlog() {
 
     if (intervalSel) {
         intervalSel.addEventListener('change', async () => {
-            const sec = parseInt(intervalSel.value) || 10;
+            const sec = parseInt(intervalSel.value) || 2;
             try {
                 const st = await post('interval', { seconds: sec });
                 try { localStorage.setItem(INTERVAL_KEY, String(sec)); } catch (e) {}
@@ -522,6 +540,40 @@ function setupBaramlog() {
                 addLogMessage(`시련 알림: 확인 주기 ${sec < 60 ? sec + '초' : (sec / 60) + '분'}로 변경`);
             } catch (e) {
                 addLogMessage('시련 알림: 주기 변경 실패 - ' + e.message);
+            }
+        });
+    }
+
+    // 창 찾기 — 시련 창 감지와 같은 조용한 방식(poll=1: 창을 건드리지 않음)으로 캐릭터 이름을 읽는다
+    if (detectBtn && winSel) {
+        detectBtn.addEventListener('click', async () => {
+            detectBtn.disabled = true;
+            try {
+                const r = await fetch('/api/trial/detect?poll=1');
+                if (!r.ok) throw new Error(await r.text());
+                const data = await r.json();
+                const wins = Array.isArray(data) ? data : (data.windows || []);
+                const nicks = [...new Set(wins.map(w => w.nick).filter(Boolean))];
+                const cur = winSel.value;
+                winSel.innerHTML = '<option value="">(고르세요)</option>' +
+                    nicks.map(n => `<option value="${escapeHtmlMin(n)}">${escapeHtmlMin(n)}</option>`).join('');
+                if (cur && !nicks.includes(cur)) winSel.add(new Option(cur + ' (안 보임)', cur));
+                winSel.value = cur;
+                addLogMessage(`시련 알림: 창 ${nicks.length}개 찾음${nicks.length ? ' — ' + nicks.join(', ') : ''}`);
+            } catch (e) {
+                addLogMessage('시련 알림: 창 찾기 실패 - ' + e.message);
+            }
+            detectBtn.disabled = false;
+        });
+    }
+    if (winSel) {
+        winSel.addEventListener('change', async () => {
+            try {
+                const st = await post('window', { nick: winSel.value });
+                try { localStorage.setItem(NICK_KEY, winSel.value); } catch (e) {}
+                paint(st);
+            } catch (e) {
+                addLogMessage('시련 알림: 창 변경 실패 - ' + e.message);
             }
         });
     }
