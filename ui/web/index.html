@@ -1119,6 +1119,12 @@
                             </label>
                             <span class="settings-label">시작 시 자동 실행</span>
                         </div>
+                        <div class="settings-item" style="flex-wrap:wrap;gap:0.4rem">
+                            <span class="settings-label">로그·디버깅 저장 폴더</span>
+                            <input id="logdir-input" type="text" placeholder="비우면 실행 위치의 logs" style="flex:1;min-width:220px;padding:0.35rem 0.5rem;font-size:0.8rem;border-radius:6px;border:1px solid var(--border-color);background:rgba(255,255,255,0.05);color:inherit">
+                            <button id="logdir-save" class="detect-btn" style="padding:0.35rem 0.8rem;font-size:0.8rem">저장</button>
+                            <div style="width:100%;font-size:0.72rem;color:var(--text-muted)">app.log, 못 읽은 채팅 화면(chat_unknown), 영술사 테스트 화면(spirit_test)이 여기에 쌓입니다. 바로 적용됩니다.</div>
+                        </div>
                     </div>
                 </div>
 

@@ -1,4 +1,4 @@
-package automation
+﻿package automation
 
 import (
 	_ "embed"
@@ -218,11 +218,14 @@ func RecognizeGlyphs(b *GlyphBin, d GlyphDict) (string, bool) {
 
 // recognizeGlyphSpan 열 [first,last] 만 읽는다. 밴드(top,bot)는 줄 전체 기준으로 받아야
 // 글리프 Top 이 사전과 맞는다 — 채팅은 단어 단위로 잘라 읽으므로 따로 뺐다.
-func recognizeGlyphSpan(b *GlyphBin, d GlyphDict, top, bot int, cols []bool, first, last int) (string, bool) {
+// alt 는 같은 자리를 다르게 이진화한 판(채팅: 구멍 지운 판). 글자마다 b 로 못 찾으면 alt 로 찾는다.
+// 글자 수가 같으면 alt 를 덜 쓴 쪽을 고른다.
+func recognizeGlyphSpan(b *GlyphBin, d GlyphDict, top, bot int, cols []bool, first, last int, alt ...*GlyphBin) (string, bool) {
 	type memo struct {
 		n   int
 		str string
 		ok  bool
+		alt int
 	}
 	cache := make(map[int]memo, b.W)
 	var solve func(i int) memo
@@ -247,6 +250,20 @@ func recognizeGlyphSpan(b *GlyphBin, d GlyphDict, top, bot int, cols []bool, fir
 				continue
 			}
 			ch, found := d[g.Key()]
+			usedAlt := 0
+			for _, a := range alt {
+				if found {
+					break
+				}
+				if ga, ok := glyphCut(a, top, bot, i, i+w); ok {
+					ch, found = d[ga.Key()]
+					usedAlt = 1
+				}
+			}
+			if !found && len(alt) > 0 {
+				ch, found = glyphSubsetLookup(b, alt[0], d, top, bot, i, i+w)
+				usedAlt = 1
+			}
 			if !found {
 				continue
 			}
@@ -254,8 +271,9 @@ func recognizeGlyphSpan(b *GlyphBin, d GlyphDict, top, bot int, cols []bool, fir
 			if !rest.ok {
 				continue
 			}
-			if !best.ok || rest.n+1 < best.n {
-				best = memo{rest.n + 1, ch + rest.str, true}
+			cand := memo{rest.n + 1, ch + rest.str, true, rest.alt + usedAlt}
+			if !best.ok || cand.n < best.n || cand.n == best.n && cand.alt < best.alt {
+				best = cand
 			}
 		}
 		cache[i] = best
@@ -263,6 +281,38 @@ func recognizeGlyphSpan(b *GlyphBin, d GlyphDict, top, bot int, cols []bool, fir
 	}
 	res := solve(first)
 	return res.str, res.ok
+}
+
+// glyphSubsetLookup b 와 alt 가 다른 픽셀(애매한 픽셀)이 몇 개 안 되면 그 조합을 다 넣어 보고 사전에 있는 걸 찾는다.
+// 채팅에서 배경이 글자색과 같을 때, 대각선 획 가운데 픽셀과 글자 틈은 모양상 구별이 안 되기 때문.
+func glyphSubsetLookup(b, alt *GlyphBin, d GlyphDict, top, bot, x0, x1 int) (string, bool) {
+	const maxAmbig = 7
+	var diff []int
+	for y := top; y <= bot; y++ {
+		for x := x0; x < x1; x++ {
+			if b.At(x, y) && !alt.At(x, y) {
+				if len(diff) == maxAmbig {
+					return "", false
+				}
+				diff = append(diff, y*b.W+x)
+			}
+		}
+	}
+	if len(diff) < 2 {
+		return "", false // 0·1개면 b·alt 두 판에서 이미 다 본 경우다
+	}
+	tmp := &GlyphBin{W: b.W, H: b.H, Px: append([]bool(nil), alt.Px...)}
+	for m := 1; m < 1<<len(diff)-1; m++ {
+		for k, i := range diff {
+			tmp.Px[i] = m>>k&1 == 1
+		}
+		if g, ok := glyphCut(tmp, top, bot, x0, x1); ok {
+			if ch, found := d[g.Key()]; found {
+				return ch, true
+			}
+		}
+	}
+	return "", false
 }
 
 // ===== 영역 계산 =====

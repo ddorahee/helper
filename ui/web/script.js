@@ -82,6 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupLogAutoRefresh();
     setupMultiEntry();
     setupBaramlog();
+    setupLogDir();
     setupDaeyaConfig();
     setupCollapsibles();
     setupGlyphLearn();
@@ -346,6 +347,34 @@ function setupDaeyaConfig() {
 // 서버가 2초마다 고른 창의 채팅창을 읽고, 여기서는 5초마다 상태만 갱신한다.
 // "새로고침"은 주기와 무관하게 서버에 즉시 읽기를 요청한다(서버가 읽기를 마친 뒤 응답).
 // 읽을 창(캐릭터 이름)은 이 PC에 저장해 두고, 프로그램을 다시 켜면 서버에 다시 넣는다.
+// 설정 탭: 로그·디버깅 저장 폴더 (서버 config/log_dir.txt 에 저장, 바로 적용)
+function setupLogDir() {
+    const input = document.getElementById('logdir-input');
+    const btn = document.getElementById('logdir-save');
+    if (!input || !btn) return;
+    fetch('/api/logdir').then(r => r.json()).then(d => {
+        input.value = d.dir === 'logs' ? '' : d.dir;
+        input.title = '지금 위치: ' + d.abs;
+    }).catch(() => {});
+    btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+            const r = await fetch('/api/logdir', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dir: input.value.trim() })
+            });
+            if (!r.ok) throw new Error(await r.text());
+            const d = await r.json();
+            input.title = '지금 위치: ' + d.abs;
+            addLogMessage('로그 저장 폴더: ' + d.abs);
+        } catch (e) {
+            alert('로그 폴더 변경 실패\n\n' + e.message);
+        }
+        btn.disabled = false;
+    });
+}
+
 function setupBaramlog() {
     const section = document.getElementById('baramlog-section');
     if (!section) return;

@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"example.com/m/automation"
@@ -380,6 +381,43 @@ func main() {
 	// 알림 전송은 호출 시점의 app.TelegramBot을 읽으므로 설정 변경이 즉시 반영된다
 	// (텔레그램 비활성화 시 TelegramBot이 nil → 조용히 건너뜀).
 	var chatHWND uint64 // 마지막으로 찾은 창 (poll 이 직렬이라 잠금 불필요)
+	var lastDump time.Time
+	dumped := map[string]bool{}
+	// 못 읽은 단어('?')가 있는 줄이 새로 보이면 원본 화면을 로그 폴더/chat_unknown 에 남긴다 — 원격으로 고치기 위함.
+	dumpUnknown := func(img image.Image, lines []string, nick string) {
+		if time.Since(lastDump) < 10*time.Second {
+			return
+		}
+		dir := filepath.Join(currentLogDir(), "chat_unknown")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return
+		}
+		for _, l := range lines {
+			unknown := false
+			ws := strings.Fields(l)
+			for i, w := range ws {
+				// 맨 끝 '?' 는 긴 줄이 읽는 영역 오른쪽 끝에서 잘린 것이라 제외
+				unknown = unknown || w == "?" && i < len(ws)-1
+			}
+			if !unknown || dumped[l] {
+				continue
+			}
+			if len(dumped) > 500 {
+				dumped = map[string]bool{}
+			}
+			dumped[l] = true
+			lastDump = time.Now()
+			base := filepath.Join(dir, "chat-"+lastDump.Format("0102-150405")+"-"+nick)
+			if f, err := os.Create(base + ".png"); err == nil {
+				png.Encode(f, img)
+				f.Close()
+				os.WriteFile(base+".txt", []byte(strings.Join(lines, "\n")), 0644)
+			} else {
+				log.Printf("[시련알림] 화면 저장 실패: %v", err)
+			}
+			return
+		}
+	}
 	readChat := func(nick string) ([]string, error) {
 		// 같은 캡처에서 닉네임이 맞는지 확인하고 채팅을 읽는다 — 창 순서가 바뀌어도 엉뚱한 창을 안 읽는다
 		read := func(h uint64) ([]string, bool) {
@@ -390,7 +428,9 @@ func main() {
 			if n, ok := app.OCRManager.ReadNickGlyph(img, h); !ok || n != nick {
 				return nil, false
 			}
-			return app.OCRManager.ReadChatGlyph(img, h), true
+			lines := app.OCRManager.ReadChatGlyph(img, h)
+			dumpUnknown(img, lines, nick)
+			return lines, true
 		}
 		if chatHWND != 0 {
 			if lines, ok := read(chatHWND); ok {
@@ -950,6 +990,29 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, `{"success": true}`)
+	})
+
+	// 로그·디버깅 저장 폴더 (GET 현재값 / POST {dir}). 바꾸면 바로 적용하고 config/log_dir.txt 에 저장
+	http.HandleFunc("/api/logdir", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost {
+			var req struct {
+				Dir string `json:"dir"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			if err := setLogDir(req.Dir); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			os.MkdirAll(filepath.Dir(logDirFile), 0755)
+			if err := os.WriteFile(logDirFile, []byte(strings.TrimSpace(req.Dir)), 0644); err != nil {
+				http.Error(w, "설정 저장 실패: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			log.Printf("[설정] 로그 폴더: %s", currentLogDir())
+		}
+		abs, _ := filepath.Abs(currentLogDir())
+		json.NewEncoder(w).Encode(map[string]string{"dir": currentLogDir(), "abs": abs})
 	})
 
 	// 설정 API
@@ -2534,7 +2597,7 @@ func setupAPIHandlers(app *Application, km *automation.KeyboardManager, tm *util
 				sendEvent(app, "logMessage", map[string]string{"message": m})
 			})
 		// 봇이 실제로 본 화면을 전부 남긴다(순서 번호_단계 이름) — 커서가 캡처에 어떻게 찍히는지 확인용
-		dir := filepath.Join("logs", "spirit_test", time.Now().Format("20060102-150405"))
+		dir := filepath.Join(currentLogDir(), "spirit_test", time.Now().Format("20060102-150405"))
 		if err := os.MkdirAll(dir, 0755); err == nil {
 			seq := 0
 			io.Save = func(name string, img *image.RGBA) {
@@ -3475,33 +3538,61 @@ func applyKeyMappings(app *Application) {
 	}
 }
 
-// 로그 파일 설정
-func setupLogging() {
-	// 로그 폴더 생성
-	logDir := "logs"
-	if !dirExists(logDir) {
-		err := os.MkdirAll(logDir, 0755)
-		if err != nil {
-			fmt.Println("경고: 로그 디렉토리를 생성할 수 없습니다:", err)
-		}
+// 로그·디버깅 파일(app.log, spirit_test, chat_unknown)을 쌓는 폴더.
+// 설정 탭에서 바꾸며 config/log_dir.txt 에 저장한다 (비어 있으면 실행 위치의 logs).
+const logDirFile = "config/log_dir.txt"
+
+var (
+	logDirMu  sync.Mutex
+	logDirVal = "logs"
+	logFileF  *os.File
+)
+
+func currentLogDir() string {
+	logDirMu.Lock()
+	defer logDirMu.Unlock()
+	return logDirVal
+}
+
+// setLogDir 로그 폴더를 바꾸고 app.log 를 새 위치에서 다시 연다. ""면 기본(logs).
+func setLogDir(dir string) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		dir = "logs"
 	}
-
-	// 로그 파일 이름 설정
-	logFile := filepath.Join(logDir, "app.log")
-
-	// 로그 파일 열기
-	f, err := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("폴더를 만들 수 없습니다: %v", err)
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "app.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		fmt.Println("경고: 로그 파일을 열 수 없습니다:", err)
-		return
+		return fmt.Errorf("로그 파일을 열 수 없습니다: %v", err)
 	}
-
-	// 표준 로그 설정: 파일 + 터미널(stdout) 동시 출력.
-	// 주의: 파일을 반드시 앞에 둘 것 — windowsgui 빌드에서는 os.Stdout이 무효 핸들이라
+	logDirMu.Lock()
+	old := logFileF
+	logDirVal, logFileF = dir, f
+	logDirMu.Unlock()
+	// 파일을 반드시 앞에 둘 것 — windowsgui 빌드에서는 os.Stdout이 무효 핸들이라
 	// 쓰기가 실패하는데, MultiWriter는 앞 writer가 실패하면 뒤 writer에 쓰지 않는다
 	// (stdout이 앞이면 로그 파일이 영원히 0바이트가 되는 버그).
-	multiWriter := io.MultiWriter(f, os.Stdout)
-	log.SetOutput(multiWriter)
+	log.SetOutput(io.MultiWriter(f, os.Stdout))
+	if old != nil {
+		old.Close()
+	}
+	return nil
+}
+
+// 로그 파일 설정
+func setupLogging() {
+	dir := "logs"
+	if b, err := os.ReadFile(logDirFile); err == nil && strings.TrimSpace(string(b)) != "" {
+		dir = strings.TrimSpace(string(b))
+	}
+	if err := setLogDir(dir); err != nil {
+		fmt.Println("경고:", err)
+		if dir == "logs" || setLogDir("logs") != nil { // 저장된 폴더가 사라졌으면 기본 위치로
+			return
+		}
+	}
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 }
 
@@ -3516,7 +3607,7 @@ func dirExists(dirPath string) bool {
 
 // 로그 파일 읽기 함수
 func readLogFile() (string, error) {
-	logFilePath := filepath.Join("logs", "app.log")
+	logFilePath := filepath.Join(currentLogDir(), "app.log")
 	content, err := os.ReadFile(logFilePath)
 	if err != nil {
 		return "", err
@@ -3526,7 +3617,7 @@ func readLogFile() (string, error) {
 
 // 로그 파일 지우기 함수
 func clearLogFile() error {
-	logFilePath := filepath.Join("logs", "app.log")
+	logFilePath := filepath.Join(currentLogDir(), "app.log")
 	// 파일을 비우는 방식으로 지우기
 	return os.WriteFile(logFilePath, []byte(""), 0666)
 }
