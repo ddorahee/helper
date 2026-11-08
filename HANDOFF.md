@@ -1,6 +1,6 @@
 # HANDOFF — 바람의나라 도우미 (helper)
 
-> 작성 2026-11-07 · 기준 커밋 `a48e39d` (main, 원격과 같음) · 이 문서 하나로 이어서 작업할 수 있게 정리함.
+> 작성 2026-11-07 · 갱신 2026-11-08 · 기준 커밋 `b528b10` (main, 원격과 같음) · 이 문서 하나로 이어서 작업할 수 있게 정리함.
 > 저장소의 `CLAUDE.md`는 일부 내용이 오래됨(6절 참고). 이 문서가 더 최신이다.
 
 ---
@@ -13,14 +13,31 @@
   - **자동사냥:** 여러 캐릭터 순환 사냥(`automation/rotation.go`) + 사냥 기다리는 동안 다른 창에서 메인화면 로직 돌리는 **동시실행**(`main.go`의 `rotationCompanion`), 예약 시작, 복숭아 자동 사용, 팅김 재접속, 최소화(딸깍) 모드
   - **시련:** 환상의시련장 솔로/그룹, 던전 대야/칸첸 선택(`automation/trial.go`, `ui/web/trial.js`)
   - **창 전환:** 전역 핫키 Shift+F1~F4·Alt+5 이동, Ctrl+Shift+1~5 등록(`automation/hotkey_switcher.go`)
-  - **바람로그:** baramlog.com 채팅에서 시련 모집 글을 찾아 텔레그램 알림(`automation/baramlog_watcher.go`)
+  - **바람로그(시련 모집 알림):** baramlog.com 이 죽어서 2026-11-08부터 **게임 채팅창을 글리프로 읽어** 시련 모집 글을 찾고 텔레그램으로 알린다(`automation/baramlog_watcher.go`, `automation/chat_read.go`). 탭 이름만 옛날 그대로다.
   - 비상 중지: **F12 빠르게 2번**(`automation/esc_stop.go`)
 - **입력·인식 방식:** 키는 백그라운드 PostMessage(활성 위장, `automation/bginput.go`) 또는 포그라운드 robotgo. 화면은 PrintWindow로 캡처해서 맵·닉네임·좌표를 **글리프(굴림체 12px 굵게 비트맵) 매칭**으로 읽는다(`automation/glyph*.go`). 예전 PowerShell WinRT OCR(`automation/ocr.go`)도 일부 남아 있다.
-- **현재 목표:** **진행 중인 요청 없음.** 마지막 요청(영술사 Q 이동)까지 사용자가 실제 게임에서 확인했고 푸시까지 끝났다(2026-10-07). 2026-10-07 이후 이 저장소에는 새 커밋이 없다.
+- **현재 목표:** **진행 중인 요청 없음.** 마지막 요청(채팅 읽기 시련 알림 + 로그 폴더 설정)까지 사용자가 실제 게임에서 확인했고 푸시까지 끝났다(2026-11-08).
 
 ---
 
 ## 2. 지금까지 한 작업
+
+### 2-0. 최근 작업 (2026-11-07 ~ 11-08, VM 개발 PC)
+
+| 기능 | 커밋 | 주요 파일 | 상태 |
+|---|---|---|---|
+| 시련 모집 알림을 **게임 채팅창 읽기**로 교체 (바람로그 사이트 사망) | `b8d74e2` | `automation/chat_read.go`, `automation/glyph_dict_chat.json`, `cmd/glyphgen`(`-chat`), `automation/glyph_read.go`(`ReadChatGlyph`), `automation/baramlog_watcher.go`(+`_test.go`), `main.go`, `ui/web/*` | 라이브 OK("잘 되네 굳굳") |
+| 채팅 읽기 보강(어두운 속색·검은 글자 세계후) + 못 읽은 화면 자동 저장 + **설정 탭 로그·디버깅 저장 폴더** | `b528b10` | `automation/chat_read.go`, `automation/glyph.go`, `automation/chat_read_test.go`(+`testdata/chat/`), `main.go`(`/api/logdir`, `dumpUnknown`), `ui/web/index.html`·`script.js` | 5분 모니터링으로 실패 수집·수정, 사용자 "완료" |
+
+**채팅 읽기 요약**(`automation/chat_read.go`):
+- 채팅은 굴림체 12px **보통 굵기(400)**라 굵게 사전과 따로 `glyph_dict_chat.json`(12,575자, 기호 범위 포함)을 쓴다. `go run ./cmd/glyphgen -chat`으로 다시 만든다.
+- 읽는 곳(1600x900 기준): y 738~846(아래 기준 ch-162 ~ ch-54), x 16~600. 줄 간격 15px, 한 줄 한 색, 밝기 170 이상이 글자.
+- 테두리 세계후: 가장 많은 밝은 색 = 테두리, 글자 = 그 안쪽 색. 밝은 색 상위 3개 + 테두리에 끼인 어두운 색 2개를 후보로 넣고 `?`가 가장 적은 결과를 쓴다.
+- 검은 글자 + 검은 배경: 테두리에 둘러싸인 픽셀만 글자로 보고(`chatOutside`), 구멍 지운 판(`dropChatHoles`)과 애매한 픽셀 조합(`glyphSubsetLookup`, 최대 7픽셀)을 글자마다 사전에 대 본다.
+- 녹화 6,773줄 기준 99%가 통째로 읽힌다.
+- 알림 조건: 공백 뺀 글에 "시련" + 장소(나타라자/나타/왕궁/스투파). 같은 줄은 5분 안에 다시 보여도 한 번만. 첫 읽기는 기준만 잡는다. 15번 연속 실패하면 다운 알림.
+- 닉네임으로 읽을 창을 고른다(UI에서 창 감지 → 선택, localStorage `baramlogChatNick`). 간격 1~600초, 기본 2초.
+- 못 읽은 줄(`?`가 끝이 아닌 자리에 있는 줄)이 나오면 화면 PNG + 읽은 줄 txt를 `<로그 폴더>/chat_unknown/chat-MMDD-HHMMSS-닉.png|txt`로 저장한다(10초에 1장, 같은 줄 1번).
 
 ### 2-1. 최근 작업 (2026-10-03 ~ 10-07, 이 문서를 만든 대화)
 
@@ -66,7 +83,12 @@
 
 ## 3. 진행 중인 작업
 
-- **없음.** 마지막 요청(영술사)까지 라이브 확인 + 푸시가 끝났다. 사용자 마지막 확인: 칸첸 실전에서 Q 이동과 스킬 `9,up,9,down,9,left,9,right`가 정상 동작.
+- **없음.** 마지막 요청(채팅 읽기 알림)까지 라이브 확인 + 푸시가 끝났다.
+- 채팅 읽기 **알려진 한계**(다시 볼 때 출발점):
+  - 검은 글자 + 검은 배경 세계후는 일부 단어(삽니다·장신구·5000)가 아직 `?`. `testdata/chat/blackfill_darkbg.png` 기대값이 부분만 있고 `shortcut:` 주석이 달려 있다.
+  - 600px 넘는 글은 안 읽는다(줄 끝 `?`).
+  - 아래 7줄만 보므로 채팅이 아주 빠르고 간격이 길면 놓칠 수 있다.
+  - 새 실패 화면은 공유 폴더 `\\vmware-host\Shared Folders\vm\chat_unknown`에 쌓인다(사용자가 로그 폴더를 거기로 지정). 처리 흐름: txt에서 `?` 줄 → PNG 픽셀 분석 → `chat_read.go` 최소 수정 → 클라이언트 (0,700)~(620,900) 크롭을 `testdata/chat/`에 넣고 기대값 추가 → `go test ./automation/ -run 'ReadChat|Baramlog'`.
 - 옛 PC 작업본에만 있던 **커밋 안 된 폴더**(새 PC에는 없음): `cmd/coordscan`, `cmd/hunbatch`, `cmd/hunlabel`, `cmd/msgscan`, `cmd/nametest`, `cmd/nametest2`, `cmd/nametest3`, `research/_prototype`
   - `cmd/*`는 `77e355b`에서 일부러 추적에서 뺀 옛 도구다.
   - `research/_prototype`는 용도를 모른다 — 확인 필요.
@@ -146,7 +168,10 @@
   - 옛 개발 PC에는 게임이 없었다. 라이브 검증은 **사용자가 자기 게임 PC에서** 한다.
 - **build.ps1:** 끝에 "실행하시겠습니까?"(Read-Host)를 물어서 비대화형으로 돌리면 멈춘다. 이 대화에선 7절의 직접 빌드 명령을 썼다.
 - **비밀 정보:** 텔레그램 토큰·채팅 ID는 `config/telegram.json`에만 있다. `config/*.json`은 .gitignore 대상이고 저장소에 없다. 새 PC에선 설정 탭에서 다시 넣어야 한다. 푸시 전엔 항상 diff에서 토큰 같은 문자열을 검사한다.
-- **드라이브(파일 주고받기):**
+- **개발 환경(2026-11-07~):** 개발 PC는 VMware VM이다. 빌드는 **`\\vmware-host\Shared Folders\vm\main.exe`**로 올리고 MD5를 확인한다. 사용자는 거기서 받아 게임 PC에서 돌린다.
+  - 원격 접속은 Tailscale(사용자 폰 연결됨, Orca를 밖에서 봄). 게임 PC에 Windows RDP를 붙이지 말 것 — 연결을 끊으면 PrintWindow가 검은 화면을 준다. SSH 세션은 다른 세션이라 게임 창을 못 본다.
+  - 같은 PC에 baram-yolo 쪽 Claude 세션이 있으면 SendMessage/ListAgents로 물어볼 수 있다.
+- **드라이브(파일 주고받기, 옛 방식):**
   - 사용자는 개인 구글 드라이브 **`helper/` 폴더**로 스샷·zip·`app.log`를 올리고, 빌드 exe도 거기서 받는다.
   - 옛 PC는 rclone(리모트 이름 `gdrive:`, 사용자 개인 계정 인증)으로 주고받았다. 새 PC는 rclone 설치와 사용자 본인 인증이 필요하다 — 확인 필요.
   - 드라이브 MCP 커넥터는 **다른(회사) 계정**이라 같은 폴더가 안 보이고, 수 MB 바이너리는 못 올린다.
@@ -176,8 +201,10 @@ go build -o main.exe -ldflags "-s -w -X example.com/m/config.Version=1.0.0 -X ex
 
 **실행:** exe를 실행하면 WebView 창이 뜨고 `localhost:8080`에서 서버가 돈다. 실행 위치 기준으로 다음 경로를 쓴다.
 - 설정: `config/characters.json`, `config/keymapping.json`, `config/telegram.json`
-- 로그: `logs/app.log`
-- 영술사 테스트 화면: `logs/spirit_test/…`
+- 로그 폴더: 기본 `logs/`. 설정 탭 '로그·디버깅 저장 폴더'로 바꾸면 `config/log_dir.txt`에 저장되고 바로 적용된다(`/api/logdir`). 그 안에 다음이 쌓인다.
+  - `app.log`
+  - 영술사 테스트 화면: `spirit_test/…`
+  - 못 읽은 채팅 화면: `chat_unknown/…`
 
 **테스트:**
 ```bash
@@ -205,7 +232,9 @@ go test ./automation/ -run 'Glyph|ExpBoost|Trial|Skill' -count=1
 - **빌드는 빨리:** "끝나면 바로 빌드하고 드라이브 올려줘, 변경사항 알려주고." 바뀐 점과 테스트 방법을 짧게 정리해서 알린다.
 - **큰 작업은 병렬 에이전트로**(에이전트마다 git worktree를 따로 주고 나중에 합친다). 긴 작업 중에는 짧게 진행 상황을 알린다.
 - **커밋·푸시는 사용자가 말할 때만:** "푸쉬 ㄱㄱ", "잘됨 푸쉬 ㄱㄱ". 메모리 저장 요청도 따로 한다("로컬에 메모리 저장 ㄱㄱ"). 커밋 메시지는 한국어로 쓴다.
-- **테스트 방식:** 사용자가 자기 게임 PC에서 직접 돌려 보고, 결과를 드라이브 `helper/`에 스샷·zip·로그로 올린 뒤 "올렸어"라고 알려 준다. 어떻게 테스트할지 물으면 단계별로 짧게 안내한다.
+- **테스트 방식:** 사용자가 자기 게임 PC에서 직접 돌려 보고 결과를 알려 준다. 어떻게 테스트할지 물으면 단계별로 짧게 안내한다.
+  - 사용자는 스샷을 손으로 올리는 걸 귀찮아한다("귀찮게 하지말고 너가 다 보면 좋겠다"). 그래서 실패 화면은 앱이 공유 폴더에 **알아서 쌓게** 하고, 이쪽에서 주기적으로(예: 5분 `/loop`) 확인하며 고친다. 이 방식이 잘 통했다.
+  - 기능별 덤프 폴더 설정은 싫어하고, **전역 로그 폴더 하나**로 모으길 원한다.
 - **하지 않기로 한 것:**
   - 텔레그램 토큰을 소스에 넣지 않는다.
   - 패킷 캡처나 클라이언트 후킹을 돕지 않는다.
