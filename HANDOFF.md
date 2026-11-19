@@ -28,6 +28,7 @@
 |---|---|---|---|
 | 시련 모집 알림을 **게임 채팅창 읽기**로 교체 (바람로그 사이트 사망) | `b8d74e2` | `automation/chat_read.go`, `automation/glyph_dict_chat.json`, `cmd/glyphgen`(`-chat`), `automation/glyph_read.go`(`ReadChatGlyph`), `automation/baramlog_watcher.go`(+`_test.go`), `main.go`, `ui/web/*` | 라이브 OK("잘 되네 굳굳") |
 | 채팅 읽기 보강(어두운 속색·검은 글자 세계후) + 못 읽은 화면 자동 저장 + **설정 탭 로그·디버깅 저장 폴더** | `b528b10` | `automation/chat_read.go`, `automation/glyph.go`, `automation/chat_read_test.go`(+`testdata/chat/`), `main.go`(`/api/logdir`, `dumpUnknown`), `ui/web/index.html`·`script.js` | 5분 모니터링으로 실패 수집·수정, 사용자 "완료" |
+| UI **블랙 테마**(기본) + 설정 탭 테마 선택(블랙/다크/라이트, localStorage `theme`) + 사이드바 **바람 로고** | (이 커밋) | `ui/web/styles.css`(`[data-theme="black"]`, `--primary-rgb`), `ui/web/index.html`, `ui/web/script.js` | 사용자 "푸쉬 ㄱㄱ". exe·창 아이콘은 아직 옛 것 |
 
 **채팅 읽기 요약**(`automation/chat_read.go`):
 - 채팅은 굴림체 12px **보통 굵기(400)**라 굵게 사전과 따로 `glyph_dict_chat.json`(12,575자, 기호 범위 포함)을 쓴다. `go run ./cmd/glyphgen -chat`으로 다시 만든다.

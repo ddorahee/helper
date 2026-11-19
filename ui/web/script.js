@@ -29,7 +29,7 @@ const exitBtn = document.getElementById('exit-btn');
 const navButtons = document.querySelectorAll('.nav-button');
 const modeOptions = document.querySelectorAll('input[name="mode"]');
 const timeOptions = document.querySelectorAll('input[name="time"]');
-const darkModeToggle = document.getElementById('dark-mode-toggle');
+const themeSelect = document.getElementById('theme-select');
 const soundToggle = document.getElementById('sound-toggle');
 const startupToggle = document.getElementById('startup-toggle');
 const appVersion = document.getElementById('app-version');
@@ -47,7 +47,7 @@ const logFilterInput = document.getElementById('log-filter-input');
 let isRunning = false;
 let currentMode = ModeDaeyaEnter;
 let currentTimeOption = TimeOption3Hour;
-let darkMode = true;
+let theme = document.documentElement.getAttribute('data-theme') || 'black'; // index.html head 에서 저장값으로 이미 적용됨
 let soundEnabled = true;
 let autoStartup = false;
 let currentContentSection = 'main';
@@ -70,7 +70,7 @@ let lastLogLength = 0;
 
 // 초기화
 document.addEventListener('DOMContentLoaded', () => {
-    setTheme(darkMode);
+    themeSelect.value = theme;
     setupNavigation();
     setupInitialSelections();
     setupButtonListeners();
@@ -1066,10 +1066,9 @@ function setupButtonListeners() {
 
 // 설정 관련 함수들
 function setupSettingsListeners() {
-    darkModeToggle.addEventListener('change', () => {
-        darkMode = darkModeToggle.checked;
-        setTheme(darkMode);
-        addLogMessage(`다크 모드: ${darkMode ? '켜짐' : '꺼짐'}`);
+    themeSelect.addEventListener('change', () => {
+        setTheme(themeSelect.value);
+        addLogMessage(`테마: ${themeSelect.options[themeSelect.selectedIndex].text}`);
     });
 
     soundToggle.addEventListener('change', () => {
@@ -1190,12 +1189,11 @@ function isDebugLog(log) {
 }
 
 // 테마 설정
-function setTheme(isDark) {
-    if (isDark) {
-        document.documentElement.removeAttribute('data-theme');
-    } else {
-        document.documentElement.setAttribute('data-theme', 'light');
-    }
+// black | dark | light — dark 는 :root 기본값이라 따로 규칙이 없다
+function setTheme(name) {
+    theme = name;
+    document.documentElement.setAttribute('data-theme', name);
+    try { localStorage.setItem('theme', name); } catch (e) {}
 }
 
 // 로그 메시지 추가
